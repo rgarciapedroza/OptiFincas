@@ -1,10 +1,9 @@
-# backend/app/clasificador.py
+
 import re
 from typing import Dict, List
 
 class ClasificadorMovimientos:
     def __init__(self):
-        # Reglas de clasificación para gastos e ingresos
         self.reglas = {
             "Ingreso Cuota": {
                 "palabras": ["comunidad", "cuota", "derrama", "gasto comunidad"],
@@ -58,10 +57,8 @@ class ClasificadorMovimientos:
         
         concepto_limpio = concepto.lower()
         
-        # Eliminar caracteres especiales
         concepto_limpio = re.sub(r'[^\w\s]', ' ', concepto_limpio)
         
-        # Buscar coincidencias
         for categoria, info in self.reglas.items():
             for palabra in info["palabras"]:
                 if palabra in concepto_limpio:
@@ -72,7 +69,6 @@ class ClasificadorMovimientos:
                         "confianza": confianza
                     }
         
-        # Si no hay coincidencia, clasificar por tipo de importe
         if importe > 0:
             return {"categoria": "Ingreso Otros", "tipo": "ingreso", "confianza": 0.5}
         else:
