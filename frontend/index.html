@@ -271,16 +271,29 @@
         
         <div id="error" class="error"></div>
         
-        <div class="upload-section">
-            <div class="upload-zone" id="uploadZone">
-                <div class="upload-icon">📄</div>
+<div class="upload-section">
+            <!-- Extracto Bancario -->
+            <div class="upload-zone" id="uploadZoneExtracto">
+                <div class="upload-icon">🏦</div>
                 <div class="upload-text">
-                    Arrastra tu archivo CSV aquí<br>
+                    Arrastra tu Extracto Bancario (CSV) aquí<br>
                     o haz clic para seleccionar
                 </div>
-                <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" hidden>
+                <input type="file" id="fileInputExtracto" accept=".csv,.xlsx,.xls" hidden>
             </div>
-            <div class="file-info" id="fileInfo"></div>
+            <div class="file-info" id="fileInfoExtracto"></div>
+            
+            <!-- Registro de Gastos Bancarios -->
+            <div class="upload-zone" id="uploadZoneGastos" style="margin-top: 20px;">
+                <div class="upload-icon">💳</div>
+                <div class="upload-text">
+                    Arrastra tu Registro de Gastos Bancarios (CSV) aquí<br>
+                    o haz clic para seleccionar
+                </div>
+                <input type="file" id="fileInputGastos" accept=".csv,.xlsx,.xls" hidden>
+            </div>
+            <div class="file-info" id="fileInfoGastos"></div>
+            
             <button class="btn" id="processBtn" disabled>Procesar Extracto</button>
         </div>
         
@@ -337,50 +350,98 @@
         </div>
     </div>
     
-    <script>
-        const uploadZone = document.getElementById('uploadZone');
-        const fileInput = document.getElementById('fileInput');
-        const fileInfo = document.getElementById('fileInfo');
+<script>
+        // Elementos para Extracto Bancario
+        const uploadZoneExtracto = document.getElementById('uploadZoneExtracto');
+        const fileInputExtracto = document.getElementById('fileInputExtracto');
+        const fileInfoExtracto = document.getElementById('fileInfoExtracto');
+        
+        // Elementos para Registro de Gastos
+        const uploadZoneGastos = document.getElementById('uploadZoneGastos');
+        const fileInputGastos = document.getElementById('fileInputGastos');
+        const fileInfoGastos = document.getElementById('fileInfoGastos');
+        
         const processBtn = document.getElementById('processBtn');
         const downloadBtn = document.getElementById('downloadBtn');
         const results = document.getElementById('results');
         const loading = document.getElementById('loading');
         const errorDiv = document.getElementById('error');
         
-        let selectedFile = null;
+        let selectedFileExtracto = null;
+        let selectedFileGastos = null;
         let lastResponse = null;
         
-        uploadZone.addEventListener('click', () => fileInput.click());
+        // Funciones para Extracto Bancario
+        uploadZoneExtracto.addEventListener('click', () => fileInputExtracto.click());
         
-        uploadZone.addEventListener('dragover', (e) => {
+        uploadZoneExtracto.addEventListener('dragover', (e) => {
             e.preventDefault();
-            uploadZone.classList.add('dragover');
+            uploadZoneExtracto.classList.add('dragover');
         });
         
-        uploadZone.addEventListener('dragleave', () => {
-            uploadZone.classList.remove('dragover');
+        uploadZoneExtracto.addEventListener('dragleave', () => {
+            uploadZoneExtracto.classList.remove('dragover');
         });
         
-        uploadZone.addEventListener('drop', (e) => {
+        uploadZoneExtracto.addEventListener('drop', (e) => {
             e.preventDefault();
-            uploadZone.classList.remove('dragover');
+            uploadZoneExtracto.classList.remove('dragover');
             const files = e.dataTransfer.files;
             if (files.length > 0) {
-                handleFileSelect(files[0]);
+                handleFileSelectExtracto(files[0]);
             }
         });
         
-        fileInput.addEventListener('change', (e) => {
+        fileInputExtracto.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
-                handleFileSelect(e.target.files[0]);
+                handleFileSelectExtracto(e.target.files[0]);
             }
         });
         
-        function handleFileSelect(file) {
-            selectedFile = file;
-            fileInfo.textContent = `📁 ${file.name}`;
-            fileInfo.style.display = 'block';
-            processBtn.disabled = false;
+        function handleFileSelectExtracto(file) {
+            selectedFileExtracto = file;
+            fileInfoExtracto.textContent = `🏦 ${file.name}`;
+            fileInfoExtracto.style.display = 'block';
+            checkBothFilesSelected();
+        }
+        
+        // Funciones para Registro de Gastos
+        uploadZoneGastos.addEventListener('click', () => fileInputGastos.click());
+        
+        uploadZoneGastos.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZoneGastos.classList.add('dragover');
+        });
+        
+        uploadZoneGastos.addEventListener('dragleave', () => {
+            uploadZoneGastos.classList.remove('dragover');
+        });
+        
+        uploadZoneGastos.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZoneGastos.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileSelectGastos(files[0]);
+            }
+        });
+        
+        fileInputGastos.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelectGastos(e.target.files[0]);
+            }
+        });
+        
+        function handleFileSelectGastos(file) {
+            selectedFileGastos = file;
+            fileInfoGastos.textContent = `💳 ${file.name}`;
+            fileInfoGastos.style.display = 'block';
+            checkBothFilesSelected();
+        }
+        
+        function checkBothFilesSelected() {
+            // Habilitar botón solo si ambos archivos están seleccionados
+            processBtn.disabled = !(selectedFileExtracto && selectedFileGastos);
         }
         
         function showError(message) {
@@ -394,17 +455,18 @@
         }
         
         processBtn.addEventListener('click', async () => {
-            if (!selectedFile) return;
+            if (!selectedFileExtracto || !selectedFileGastos) return;
             
             hideError();
             loading.classList.add('show');
             results.classList.remove('show');
             
             const formData = new FormData();
-            formData.append('file', selectedFile);
+            formData.append('extracto', selectedFileExtracto);
+            formData.append('gastos', selectedFileGastos);
             
             try {
-                const response = await fetch('http://127.0.0.1:8000/api/procesar-extracto', {
+                const response = await fetch('http://127.0.0.1:8000/api/procesar-dos-archivos', {
                     method: 'POST',
                     body: formData
                 });
@@ -472,7 +534,7 @@
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = selectedFile.name.replace('.csv', '_clasificado.csv');
+                a.download = selectedFileExtracto.name.replace('.csv', '_clasificado.csv');
                 document.body.appendChild(a);
                 a.click();
                 window.URL.revokeObjectURL(url);

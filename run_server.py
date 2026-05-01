@@ -2,7 +2,15 @@ import uvicorn
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(".")))
+# Add project root to path
+project_root = os.path.dirname(os.path.abspath("."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# Add backend folder to path for imports
+backend_path = os.path.join(project_root, "backend")
+if backend_path not in sys.path:
+    sys.path.insert(0, backend_path)
 
 from backend.app.main import app
 
