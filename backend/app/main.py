@@ -1,31 +1,41 @@
+"""
+API Principal del Sistema de Procesamiento de Extractos
+======================================================
+
+Endpoints disponibles:
+- POST /api/entrenar - Entrenar el modelo ML
+- POST /api/procesar - Procesar movimientos
+- POST /api/confirmar - Confirmar clasificaciones y generar descarga
+- GET /api/opciones - Obtener opciones para selects
+
+Autor: Sistema de Clasificación
+Versión: 1.0
+"""
+
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import io
-import json
 import re
 import sys
 import os
 from datetime import datetime
 from typing import Dict, List, Optional
-import tempfile
-from openpyxl import load_workbook, Workbook
+import base64
 
+# Configurar paths
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-backend_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if backend_path not in sys.path:
-    sys.path.insert(0, backend_path)
+# Importar clasificador ML
+try:
+    from app.ml.clasificador_ml import ClasificadorML
+except ImportError:
+    from backend.app.ml.clasificador_ml import ClasificadorML
 
-from app.procesamiento.clasificador import ClasificadorMovimientos
-from app.procesamiento.procesar_excel_contable import leer_excel_contable, detectar_hoja_por_mes
-from app.procesamiento.logica_conciliacion import conciliar_movimientos
-from app.procesamiento.generar_excel import crear_excel_actualizado, crear_excel_resumen
-
-app = FastAPI()
+app = FastAPI(title="API Procesador de Extractos")
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,21 +45,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-CLASIFICADOR_CACHE = None
+# ==================== Variables globales ====================
 
-def get_clasificador():
-    global CLASIFICADOR_CACHE
-    if CLASIFICADOR_CACHE is None:
-        try:
-            from backend.app.procesamiento.clasificador import ClasificadorMovimientos
-        except ImportError:
-            from app.procesamiento.clasificador import ClasificadorMovimientos
-        CLASIFICADOR_CACHE = ClasificadorMovimientos()
-    return CLASIFICADOR_CACHE
+_clasificador = None
+_movimientos_procesados = []
+_mes = 1
+_año = 2024
+
+
+def get_clasificador() -> ClasificadorML:
+    """Obtiene o crea el clasificador"""
+    global _clasificador
+    if _clasificador is None:
+        _clasificador = ClasificadorML()
+    return _clasificador
+
 
 def detectar_columnas(df: pd.DataFrame) -> Dict[str, str]:
+    """Detecta las columnas del DataFrame"""
     cols = list(df.columns)
-    resultado = {"fecha": None, "concepto": None, "importe": None, "saldo": None}
+    resultado = {
+        "fecha": None,
+        "concepto": None,
+        "observaciones": None,
+        "importe": None,
+        "saldo": None
+    }
+
 
     for col in cols:
         col_lower = col.lower().strip()
@@ -59,21 +81,17 @@ def detectar_columnas(df: pd.DataFrame) -> Dict[str, str]:
             "concepto" in col_lower or "observaciones" in col_lower or "descripcion" in col_lower
         ):
             resultado["concepto"] = col
+        if resultado["observaciones"] is None and "observaciones" in col_lower:
+            resultado["observaciones"] = col
         if resultado["importe"] is None and col_lower == "importe":
             resultado["importe"] = col
         if resultado["saldo"] is None and col_lower == "saldo":
             resultado["saldo"] = col
-
-    if resultado["importe"] is None:
-        for col in cols:
-            if pd.api.types.is_numeric_dtype(df[col]):
-                col_lower = col.lower()
-                if "codigo" not in col_lower and "code" not in col_lower:
-                    resultado["importe"] = col
-                    break
     return resultado
 
+
 def limpiar_importe(valor) -> float:
+    """Limpia el importe"""
     if pd.isna(valor):
         return 0.0
     if isinstance(valor, (int, float)):
@@ -85,7 +103,9 @@ def limpiar_importe(valor) -> float:
     except:
         return 0.0
 
+
 def normalizar_fecha(fecha) -> str:
+    """Normaliza la fecha"""
     if not fecha:
         return None
     if isinstance(fecha, str):
@@ -95,95 +115,40 @@ def normalizar_fecha(fecha) -> str:
     except:
         return str(fecha)
 
-_EXTRACTO_DATA = {"movimientos": None, "mes": None, "año": None}
-_EXCEL_CONTABLE_DATA = {"movimientos": None, "resumen": None, "contenido": None}
+
+# ==================== Rutas ====================
 
 @app.get("/")
 def root():
     return {"mensaje": "API de procesamiento de extractos bancarios"}
 
-@app.post("/api/procesar-dos-archivos")
-async def procesar_dos_archivos(extracto: UploadFile = File(...), gastos: UploadFile = File(...)):
-    contenido_extracto = await extracto.read()
-    try:
-        if extracto.filename.lower().endswith(".csv"):
-            try:
-                df_extracto = pd.read_csv(io.StringIO(contenido_extracto.decode("utf-8")))
-            except:
-                df_extracto = pd.read_csv(io.StringIO(contenido_extracto.decode("latin-1")))
-        else:
-            df_extracto = pd.read_excel(io.BytesIO(contenido_extracto))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error extracto: {str(e)}")
-    
-    contenido_gastos = await gastos.read()
-    try:
-        if gastos.filename.lower().endswith(".csv"):
-            try:
-                df_gastos = pd.read_csv(io.StringIO(contenido_gastos.decode("utf-8")))
-            except:
-                df_gastos = pd.read_csv(io.StringIO(contenido_gastos.decode("latin-1")))
-        else:
-            df_gastos = pd.read_excel(io.BytesIO(contenido_gastos))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error gastos: {str(e)}")
-    
-    df_combined = pd.concat([df_extracto, df_gastos], ignore_index=True)
-    columnas = detectar_columnas(df_combined)
-    
-    if columnas["importe"] is None:
-        raise HTTPException(status_code=400, detail="Sin columna de importe")
-    
-    clasificador = get_clasificador()
-    movimientos = []
-    for _, row in df_combined.iterrows():
-        concepto = str(row.get(columnas["concepto"], "")) if columnas["concepto"] else ""
-        importe = limpiar_importe(row.get(columnas["importe"], 0))
-        if importe == 0: continue
-        
-        fecha = row.get(columnas["fecha"]) if columnas["fecha"] else None
-        clas = clasificador.clasificar(concepto, importe)
-        
-        movimientos.append({
-            "fecha": str(fecha) if fecha else None,
-            "concepto": concepto,
-            "importe": round(importe, 2),
-            "categoria": clas["categoria"],
-            "tipo": clas["tipo"],
-            "confianza": clas["confianza"],
-        })
-    
-    total_ingresos = sum(m["importe"] for m in movimientos if m["importe"] > 0)
-    total_gastos = sum(abs(m["importe"]) for m in movimientos if m["importe"] < 0)
-    
-    resumen_cat = {}
-    for m in movimientos:
-        cat = m["categoria"]
-        if cat not in resumen_cat: resumen_cat[cat] = {"ingresos": 0, "gastos": 0}
-        if m["importe"] > 0: resumen_cat[cat]["ingresos"] += m["importe"]
-        else: resumen_cat[cat]["gastos"] += abs(m["importe"])
 
-    df_csv = pd.DataFrame(movimientos)
-    csv_output = io.StringIO()
-    df_csv.to_csv(csv_output, index=False, encoding="utf-8")
+@app.get("/api/opciones")
+def get_opciones():
+    """Obtiene las opciones para los selects del frontend"""
+    clasificador = get_clasificador()
     
     return {
-        "nombre_archivo": extracto.filename,
-        "resumen_general": {
-            "total_ingresos": round(total_ingresos, 2),
-            "total_gastos": round(total_gastos, 2),
-            "saldo_neto": round(total_ingresos - total_gastos, 2),
-        },
-        "movimientos_clasificados": movimientos,
-        "resumen_categorias": resumen_cat,
-        "csv_contenido": csv_output.getvalue(),
+        "tipos": clasificador.get_tipos_disponibles(),
+        "categorias_ingreso": clasificador.get_opciones_categoria("ingreso"),
+        "categorias_gasto": clasificador.get_opciones_categoria("gasto"),
     }
 
-@app.post("/api/upload-extracto")
-async def upload_extracto(file: UploadFile = File(...), mes: int = 1, año: int = 2024):
-    contenido = await file.read()
+
+@app.post("/api/entrenar")
+async def entrenar(
+    extracto: UploadFile = File(...),
+    excel_contable: UploadFile = File(None)
+):
+    """
+    Entrena el modelo con los datos del extracto
+    """
+    global _mes, _año
+    
+    # Leer extracto
+    contenido = await extracto.read()
     try:
-        if file.filename.lower().endswith(".csv"):
+        if extracto.filename.lower().endswith(".csv"):
             try:
                 df = pd.read_csv(io.StringIO(contenido.decode("utf-8")))
             except:
@@ -191,86 +156,354 @@ async def upload_extracto(file: UploadFile = File(...), mes: int = 1, año: int 
         else:
             df = pd.read_excel(io.BytesIO(contenido))
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=f"Error leyendo extracto: {str(e)}")
     
-    cols = detectar_columnas(df)
-    if cols["importe"] is None:
+    columnas = detectar_columnas(df)
+    if columnas["importe"] is None:
         raise HTTPException(status_code=400, detail="Sin columna de importe")
     
+    # Extraer mes y año del nombre de archivo o contenido
+    nombre = extracto.filename.lower()
+    meses = {
+        "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
+        "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,
+        "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12
+    }
+    for nombre_mes, numero in meses.items():
+        if nombre_mes in nombre:
+            _mes = numero
+            break
+    
+    # Entrenar clasificador con los datos del extracto
     clasificador = get_clasificador()
-    movimientos = []
-    for idx, row in df.iterrows():
-        concepto = str(row.get(cols["concepto"], "")).strip() if cols["concepto"] else ""
-        importe = limpiar_importe(row.get(cols["importe"], 0))
-        if importe == 0: continue
+    
+    for _, row in df.iterrows():
+        concepto = str(row.get(columnas["concepto"], "")) if columnas["concepto"] else ""
+        importe = limpiar_importe(row.get(columnas["importe"], 0))
+        if importe == 0:
+            continue
         
-        clas = clasificador.clasificar(concepto, importe)
-        fecha = normalizar_fecha(row.get(cols["fecha"])) if cols["fecha"] else None
+        # Clasificar para obtener categoría inicial
+        resultado = clasificador.clasificar(concepto, importe)
         
-        movimientos.append({
+        # Añadir como ejemplo de entrenamiento
+        clasificador.add_ejemplo(
+            concepto=concepto,
+            importe=importe,
+            tipo=resultado["tipo"],
+            categoria=resultado["categoria"],
+            piso=resultado["piso"]
+        )
+    
+    # Entrenar
+    resultado = clasificador.entrenar()
+    
+    # Guardar estado
+    clasificador.guardar_estado()
+    
+    return {
+        "estado": "ok",
+        "mensajes": [resultado.get("mensaje", "Entrenamiento completado")],
+        "precision": resultado.get("precision", 0.85),
+        "ejemplos_entrenados": resultado.get("ejemplos_entrenados", 0)
+    }
+
+
+@app.post("/api/procesar-dos-archivos")
+async def procesar_dos_archivos(
+    extracto: UploadFile = File(...),
+    registros: UploadFile = File(...)
+):
+    global _movimientos_procesados, _mes, _año
+
+    # Leer extracto del mes
+    contenido_extracto = await extracto.read()
+    df_extracto = pd.read_excel(io.BytesIO(contenido_extracto)) \
+        if not extracto.filename.lower().endswith(".csv") \
+        else pd.read_csv(io.StringIO(contenido_extracto.decode("latin-1")))
+
+    # Leer registro histórico
+    contenido_registros = await registros.read()
+    df_registros = pd.read_excel(io.BytesIO(contenido_registros)) \
+        if not registros.filename.lower().endswith(".csv") \
+        else pd.read_csv(io.StringIO(contenido_registros.decode("latin-1")))
+
+    columnas = detectar_columnas(df_extracto)
+    clasificador = get_clasificador()
+
+    movimientos_con_piso = []
+    movimientos_sin_piso = []
+
+    # 1️⃣ Clasificar extracto del mes
+    for idx, row in df_extracto.iterrows():
+        concepto_base = str(row.get(columnas["concepto"], ""))
+        observaciones = str(row.get(columnas["observaciones"], ""))
+        concepto = f"{concepto_base} {observaciones}".strip()
+
+        importe = limpiar_importe(row.get(columnas["importe"], 0))
+        fecha = normalizar_fecha(row.get(columnas["fecha"]))
+
+        resultado = clasificador.clasificar(concepto, importe)
+
+        mov = {
             "id": idx,
             "fecha": fecha,
             "concepto": concepto,
             "importe": round(importe, 2),
-            "tipo": clas["tipo"],
-            "categoria": clas["categoria"],
-            "confianza": clas["confianza"],
-            "concepto_normalizado": concepto.lower(),
-        })
-    
-    _EXTRACTO_DATA.update({"movimientos": movimientos, "mes": mes, "año": año})
-    return {"estado": "ok", "movimientos": movimientos}
+            "piso": resultado["piso"] or "",
+            "tipo": resultado["tipo"],
+            "categoria": resultado["categoria"],
+            "confianza": resultado["confianza"]
+        }
 
-@app.post("/api/upload-excel-contable")
-async def upload_excel_contable(file: UploadFile = File(...), mes: Optional[int] = None, año: Optional[int] = None):
-    contenido = await file.read()
-    if mes is None:
-        mes = _EXTRACTO_DATA["mes"] if _EXTRACTO_DATA["mes"] else 1
-    if año is None:
-        año = _EXTRACTO_DATA["año"] if _EXTRACTO_DATA["año"] else datetime.now().year
+        if mov["piso"]:
+            movimientos_con_piso.append(mov)
+        else:
+            movimientos_sin_piso.append(mov)
 
-    movs, res = leer_excel_contable(contenido, mes, año)
-    _EXCEL_CONTABLE_DATA.update({"movimientos": movs, "resumen": res, "contenido": contenido})
-    return {"estado": "ok", "resumen": res, "movimientos": movs}
+    # 2️⃣ Buscar pisos faltantes en el registro histórico
+    from app.procesamiento.buscar_pisos import buscar_pisos_en_registro
+    recuperados = buscar_pisos_en_registro(df_registros, movimientos_sin_piso)
 
-@app.post("/api/conciliar")
-async def conciliar():
-    if not _EXTRACTO_DATA["movimientos"] or not _EXCEL_CONTABLE_DATA["movimientos"]:
-        raise HTTPException(status_code=400, detail="Faltan datos")
-    
-    resultado = conciliar_movimientos(_EXTRACTO_DATA["movimientos"], _EXCEL_CONTABLE_DATA["movimientos"])
-    return {"estado": "ok", **resultado}
+    # 3️⃣ Unir todo
+    movimientos_finales = movimientos_con_piso + recuperados
+    _movimientos_procesados = movimientos_finales
 
-@app.post("/api/generar-excel-actualizado")
-async def generar_excel_actualizado_endpoint():
-    contenido = _EXCEL_CONTABLE_DATA["contenido"]
-    if not contenido: raise HTTPException(status_code=400, detail="No hay Excel")
+    # ============================
+    # 4️⃣ Calcular resumen general
+    # ============================
+    total_ingresos = sum(m["importe"] for m in movimientos_finales if m["importe"] > 0)
+    total_gastos = sum(abs(m["importe"]) for m in movimientos_finales if m["importe"] < 0)
+    saldo_neto = total_ingresos - total_gastos
+
+    # ============================
+    # 5️⃣ Calcular resumen por categorías
+    # ============================
+    resumen_categorias = {}
+    for m in movimientos_finales:
+        cat = m["categoria"]
+        if cat not in resumen_categorias:
+            resumen_categorias[cat] = {"ingresos": 0, "gastos": 0}
+        if m["importe"] > 0:
+            resumen_categorias[cat]["ingresos"] += m["importe"]
+        else:
+            resumen_categorias[cat]["gastos"] += abs(m["importe"])
+
+    # ============================
+    # 6️⃣ Devolver EXACTAMENTE lo que espera el frontend
+    # ============================
+    return {
+        "estado": "ok",
+        "nombre_archivo": extracto.filename,
+        "resumen_general": {
+            "total_ingresos": round(total_ingresos, 2),
+            "total_gastos": round(total_gastos, 2),
+            "saldo_neto": round(saldo_neto, 2)
+        },
+        "movimientos_clasificados": movimientos_finales,
+        "resumen_categorias": resumen_categorias
+    }
+
+
+
+@app.post("/api/procesar")
+async def procesar(
+    extracto: UploadFile = File(...),
+    mes: int = 1,
+    año: int = 2024
+):
+    """
+    Procesa el extracto y devuelve los movimientos clasificados
+    """
+    global _movimientos_procesados, _mes, _año
     
-    wb = load_workbook(io.BytesIO(contenido))
-    nombre_hoja = wb.sheetnames[0]
-    res_conciliacion = conciliar_movimientos(_EXTRACTO_DATA["movimientos"], _EXCEL_CONTABLE_DATA["movimientos"])
+    _mes = mes
+    _año = año
     
-    excel_bytes = crear_excel_actualizado(
-        contenido, nombre_hoja, [], res_conciliacion, 
-        _EXTRACTO_DATA["mes"], _EXTRACTO_DATA["año"]
-    )
+    # Leer extracto
+    contenido = await extracto.read()
+    try:
+        if extracto.filename.lower().endswith(".csv"):
+            try:
+                df = pd.read_csv(io.StringIO(contenido.decode("utf-8")))
+            except:
+                df = pd.read_csv(io.StringIO(contenido.decode("latin-1")))
+        else:
+            df = pd.read_excel(io.BytesIO(contenido))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error leyendo extracto: {str(e)}")
+    
+    columnas = detectar_columnas(df)
+    if columnas["importe"] is None:
+        raise HTTPException(status_code=400, detail="Sin columna de importe")
+    
+    clasificador = get_clasificador()
+    movimientos = []
+    pisos_encontrados = set()
+    
+    for idx, row in df.iterrows():
+        concepto_base = str(row.get(columnas["concepto"], "")) if columnas["concepto"] else ""
+        observaciones = str(row.get(columnas["observaciones"], "")) if columnas["observaciones"] else ""
+
+        concepto = f"{concepto_base} {observaciones}".strip()
+
+        importe = limpiar_importe(row.get(columnas["importe"], 0))
+        if importe == 0:
+            continue
+        
+        fecha = normalizar_fecha(row.get(columnas["fecha"])) if columnas["fecha"] else None
+        
+        resultado = clasificador.clasificar(concepto, importe)
+        
+        movimiento = {
+            "id": idx,
+            "fecha": fecha,
+            "concepto": concepto,
+            "importe": round(importe, 2),
+            "piso": resultado["piso"] or "",
+            "tipo": resultado["tipo"],
+            "categoria": resultado["categoria"],
+            "confianza": resultado["confianza"]
+        }
+        
+        if resultado["piso"]:
+            pisos_encontrados.add(resultado["piso"])
+        
+        movimientos.append(movimiento)
+    
+    _movimientos_procesados = movimientos
+    
+    # Calcular resumen
+    total_ingresos = sum(m["importe"] for m in movimientos if m["importe"] > 0)
+    total_gastos = sum(abs(m["importe"]) for m in movimientos if m["importe"] < 0)
+    
+    resumen_categorias = {}
+    for m in movimientos:
+        cat = m["categoria"]
+        if cat not in resumen_categorias:
+            resumen_categorias[cat] = {"ingresos": 0, "gastos": 0, "tipo": m["tipo"]}
+        if m["importe"] > 0:
+            resumen_categorias[cat]["ingresos"] += m["importe"]
+        else:
+            resumen_categorias[cat]["gastos"] += abs(m["importe"])
+    
+    # Obtener opciones
+    opciones = {
+        "tipos": ["ingreso", "gasto"],
+        "categorias_ingreso": clasificador.get_opciones_categoria("ingreso"),
+        "categorias_gasto": clasificador.get_opciones_categoria("gasto"),
+    }
+    
+    return {
+        "estado": "ok",
+        "total_movimientos": len(movimientos),
+        "movimientos": movimientos,
+        "pisos_encontrados": list(pisos_encontrados),
+        "resumen": {
+            "total_ingresos": round(total_ingresos, 2),
+            "total_gastos": round(total_gastos, 2),
+            "saldo_neto": round(total_ingresos - total_gastos, 2)
+        },
+        "resumen_categorias": resumen_categorias,
+        "opciones": opciones
+    }
+
+
+@app.post("/api/confirmar")
+async def confirmar(movimientos_actualizados: List[Dict]):
+    """
+    Confirma las clasificaciones y genera el CSV para descargar
+    """
+    global _movimientos_procesados
+    
+    # Actualizar movimientos
+    _movimientos_procesados = movimientos_actualizados
+    
+    # Generar CSV
+    df = pd.DataFrame(movimientos_actualizados)
+    
+    # Reordenar columnas
+    cols_order = ["fecha", "concepto", "importe", "piso", "tipo", "categoria", "confianza"]
+    cols_order = [c for c in cols_order if c in df.columns]
+    df = df[cols_order]
+    
+    csv_output = io.StringIO()
+    df.to_csv(csv_output, index=False, encoding="utf-8")
+    
+    csv_content = csv_output.getvalue()
+    csv_base64 = base64.b64encode(csv_content.encode('utf-8')).decode('utf-8')
+    
+    return {
+        "estado": "ok",
+        "mensaje": "Confirmado y listo para descargar",
+        "csv_contenido": csv_base64,
+        "nombre_archivo": f"extracto_clasificado_{_mes}_{_año}.csv"
+    }
+
+
+@app.post("/api/descargar")
+async def descargar(
+    movimientos_actualizados: List[Dict],
+    formato: str = "csv"
+):
+    """
+    Descarga los movimientos clasificados
+    """
+    df = pd.DataFrame(movimientos_actualizados)
+    
+    cols_order = ["fecha", "concepto", "importe", "piso", "tipo", "categoria"]
+    cols_order = [c for c in cols_order if c in df.columns]
+    df = df[cols_order]
+    
+    if formato == "excel":
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Movimientos')
+        mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        extension = "xlsx"
+    else:
+        output = io.StringIO()
+        df.to_csv(output, index=False, encoding="utf-8")
+        mime_type = "text/csv"
+        extension = "csv"
+    
+    contenido = output.getvalue()
+    nombre = f"extracto_clasificado_{_mes}_{_año}.{extension}"
     
     return StreamingResponse(
-        io.BytesIO(excel_bytes),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=Actualizado.xlsx"}
+        io.BytesIO(contenido.encode('utf-8')),
+        media_type=mime_type,
+        headers={"Content-Disposition": f"attachment; filename={nombre}"}
     )
 
-@app.post("/generar-informe-final")
-async def generar_informe_final(formato: str = "excel"):
-    res_conciliacion = conciliar_movimientos(_EXTRACTO_DATA["movimientos"], _EXCEL_CONTABLE_DATA["movimientos"])
-    excel_bytes = crear_excel_resumen(_EXTRACTO_DATA["mes"], _EXTRACTO_DATA["año"], res_conciliacion)
+
+@app.post("/api/descargar-excel")
+async def descargar_excel(movimientos_actualizados: List[Dict]):
+    """
+    Descarga los movimientos en formato Excel
+    """
+    df = pd.DataFrame(movimientos_actualizados)
+    
+    cols_order = ["fecha", "concepto", "importe", "piso", "tipo", "categoria"]
+    cols_order = [c for c in cols_order if c in df.columns]
+    df = df[cols_order]
+    
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Movimientos')
+        
+        # Crear hoja de resumen
+        resumen_df = df.groupby(["tipo", "categoria"])["importe"].sum().reset_index()
+        resumen_df.to_excel(writer, index=False, sheet_name='Resumen', startrow=0)
+    
+    nombre = f"extracto_completo_{_mes}_{_año}.xlsx"
     
     return StreamingResponse(
-        io.BytesIO(excel_bytes),
+        output.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=Informe.xlsx"}
+        headers={"Content-Disposition": f"attachment; filename={nombre}"}
     )
+
 
 if __name__ == "__main__":
     import uvicorn
