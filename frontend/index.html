@@ -4,305 +4,52 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Procesador de Extractos Bancarios</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-        
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            overflow: hidden;
-        }
-        
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
-        }
-        
-        .header h1 {
-            font-size: 2em;
-            margin-bottom: 10px;
-        }
-        
-        .header p {
-            opacity: 0.9;
-        }
-        
-        .upload-section {
-            padding: 40px;
-            text-align: center;
-            border-bottom: 1px solid #eee;
-        }
-        
-        .upload-zone {
-            border: 3px dashed #667eea;
-            border-radius: 12px;
-            padding: 50px 20px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            background: #f8f9ff;
-        }
-        
-        .upload-zone:hover {
-            background: #e8ecff;
-            border-color: #764ba2;
-        }
-        
-        .upload-zone.dragover {
-            background: #e8ecff;
-            border-color: #764ba2;
-            transform: scale(1.02);
-        }
-        
-        .upload-icon {
-            font-size: 48px;
-            margin-bottom: 15px;
-        }
-        
-        .upload-text {
-            color: #666;
-            font-size: 1.1em;
-        }
-        
-        .file-info {
-            margin-top: 15px;
-            padding: 10px 20px;
-            background: #e8f5e9;
-            border-radius: 8px;
-            color: #2e7d32;
-            display: none;
-        }
-        
-        .btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 15px 40px;
-            font-size: 1.1em;
-            border-radius: 8px;
-            cursor: pointer;
-            margin-top: 20px;
-            transition: transform 0.2s;
-        }
-        
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
-        }
-        
-        .btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
-        
-        .btn-download {
-            background: #4caf50;
-        }
-        
-        .btn-download:hover {
-            background: #43a047;
-        }
-        
-        .results {
-            padding: 30px;
-            display: none;
-        }
-        
-        .results.show {
-            display: block;
-        }
-        
-        .summary-cards {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .card {
-            background: #f8f9ff;
-            padding: 20px;
-            border-radius: 10px;
-            text-align: center;
-        }
-        
-        .card.ingresos {
-            border-left: 4px solid #4caf50;
-        }
-        
-        .card.gastos {
-            border-left: 4px solid #f44336;
-        }
-        
-        .card.saldo {
-            border-left: 4px solid #2196f3;
-        }
-        
-        .card-label {
-            font-size: 0.9em;
-            color: #666;
-            margin-bottom: 5px;
-        }
-        
-        .card-value {
-            font-size: 1.8em;
-            font-weight: bold;
-        }
-        
-        .card.ingresos .card-value { color: #4caf50; }
-        .card.gastos .card-value { color: #f44336; }
-        .card.saldo .card-value { color: #2196f3; }
-        
-        .section-title {
-            font-size: 1.3em;
-            margin: 30px 0 15px;
-            color: #333;
-            border-bottom: 2px solid #667eea;
-            padding-bottom: 10px;
-        }
-        
-        .movimientos-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-        }
-        
-        .movimientos-table th,
-        .movimientos-table td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #eee;
-        }
-        
-        .movimientos-table th {
-            background: #f8f9ff;
-            font-weight: 600;
-            color: #666;
-        }
-        
-        .movimientos-table tr:hover {
-            background: #f8f9ff;
-        }
-        
-        .tipo-ingreso {
-            color: #4caf50;
-            font-weight: 600;
-        }
-        
-        .tipo-gasto {
-            color: #f44336;
-            font-weight: 600;
-        }
-        
-        .categoria {
-            display: inline-block;
-            padding: 4px 10px;
-            border-radius: 20px;
-            font-size: 0.85em;
-            background: #e8f5e9;
-            color: #2e7d32;
-        }
-        
-        .loading {
-            text-align: center;
-            padding: 40px;
-            display: none;
-        }
-        
-        .loading.show {
-            display: block;
-        }
-        
-        .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        .error {
-            background: #ffebee;
-            color: #c62828;
-            padding: 15px 20px;
-            border-radius: 8px;
-            margin: 20px;
-            display: none;
-        }
-        
-        .error.show {
-            display: block;
-        }
-        
-        .actions {
-            text-align: center;
-            margin-top: 30px;
-        }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>🏦 Procesador de Extractos Bancarios</h1>
-            <p>Sube tu extracto bancario (CSV) y genera tu informe de ingresos y gastos</p>
+            <p>Sube tu extracto, clasifica movimientos y descarga el resultado</p>
         </div>
         
         <div id="error" class="error"></div>
         
-<div class="upload-section">
-            <!-- Extracto Bancario -->
-            <div class="upload-zone" id="uploadZoneExtracto">
-                <div class="upload-icon">🏦</div>
-                <div class="upload-text">
-                    Arrastra tu Extracto Bancario (CSV) aquí<br>
-                    o haz clic para seleccionar
+<!-- ==================== PANTALLA 1 ==================== -->
+        <div id="pantalla1" class="pantalla show">
+            <div class="upload-section">
+                <h3 class="section-title">📤 Subir Archivos</h3>
+                
+                <!-- Extracto del mes actual -->
+                <label style="display:block; margin-bottom:5px; font-weight:600;">📅 Extracto de Este Mes</label>
+                <div class="upload-zone" id="uploadZoneExtracto">
+                    <div class="upload-icon">🏦</div>
+                    <div class="upload-text">
+                        Arrastra el Extracto Bancario (CSV) aquí<br>o haz clic para seleccionar
+                    </div>
+                    <input type="file" id="fileInputExtracto" accept=".csv,.xlsx,.xls" hidden>
                 </div>
-                <input type="file" id="fileInputExtracto" accept=".csv,.xlsx,.xls" hidden>
-            </div>
-            <div class="file-info" id="fileInfoExtracto"></div>
-            
-            <!-- Registro de Gastos Bancarios -->
-            <div class="upload-zone" id="uploadZoneGastos" style="margin-top: 20px;">
-                <div class="upload-icon">💳</div>
-                <div class="upload-text">
-                    Arrastra tu Registro de Gastos Bancarios (CSV) aquí<br>
-                    o haz clic para seleccionar
+                <div class="file-info" id="fileInfoExtracto"></div>
+                
+                <!-- Registro de extractos mensuales -->
+                <label style="display:block; margin:20px 0 5px; font-weight:600;">📊 Registro de Extractos Mensuales</label>
+                <div class="upload-zone" id="uploadZoneRegistros">
+                    <div class="upload-icon">📋</div>
+                    <div class="upload-text">
+                        Arrastra el Registro de Extractos (CSV) aquí<br>o haz clic para seleccionar
+                    </div>
+                    <input type="file" id="fileInputRegistros" accept=".csv,.xlsx,.xls" hidden>
                 </div>
-                <input type="file" id="fileInputGastos" accept=".csv,.xlsx,.xls" hidden>
+                <div class="file-info" id="fileInfoRegistros"></div>
+                
+                <div class="actions">
+                    <button class="btn" id="processBtn" disabled>Procesar</button>
+                </div>
             </div>
-            <div class="file-info" id="fileInfoGastos"></div>
-            
-            <button class="btn" id="processBtn" disabled>Procesar Extracto</button>
         </div>
         
-        <div class="loading" id="loading">
-            <div class="spinner"></div>
-            <p>Procesando extracto...</p>
-        </div>
-        
-        <div class="results" id="results">
+        <!-- ==================== PANTALLA 2 ==================== -->
+        <div id="pantalla2" class="pantalla">
             <div class="summary-cards">
                 <div class="card ingresos">
                     <div class="card-label">Total Ingresos</div>
@@ -318,231 +65,51 @@
                 </div>
             </div>
             
-            <h3 class="section-title">Resumen por Categoría</h3>
-            <table class="movimientos-table" id="categoriasTable">
-                <thead>
-                    <tr>
-                        <th>Categoría</th>
-                        <th>Ingresos</th>
-                        <th>Gastos</th>
-                    </tr>
-                </thead>
-                <tbody id="categoriasBody"></tbody>
-            </table>
+            <h3 class="section-title">✏️ Revisa y Corrige las clasificaciones</h3>
+            <p style="margin-bottom: 15px; color: #666; font-size: 0.9em;">
+                Edita el Piso, Tipo y Categoría si es necesario
+            </p>
             
-            <h3 class="section-title">Movimientos Clasificados</h3>
-            <table class="movimientos-table">
-                <thead>
-                    <tr>
-                        <th>Fecha</th>
-                        <th>Concepto</th>
-                        <th>Importe</th>
-                        <th>Tipo</th>
-                        <th>Categoría</th>
-                    </tr>
-                </thead>
-                <tbody id="movimientosBody"></tbody>
-            </table>
+            <div class="table-container">
+                <table class="movimientos-table">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Concepto</th>
+                            <th>Importe</th>
+                            <th>Tipo</th>
+                            <th>Categoría</th>
+                            <th>Piso</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaBody"></tbody>
+                </table>
+            </div>
             
             <div class="actions">
-                <button class="btn btn-download" id="downloadBtn">Descargar CSV Clasificado</button>
+                <button class="btn btn-secondary" id="btnAtras">← Atrás</button>
+                <button class="btn btn-success" id="btnConfirmar">Confirmar y Descargar</button>
             </div>
+        </div>
+        
+        <!-- ==================== PANTALLA 3 ==================== -->
+        <div id="pantalla3" class="pantalla">
+            <div class="text-center p-20">
+                <div class="upload-icon">✅</div>
+                <h3>¡Completado!</h3>
+                <p style="margin: 20px 0; color: #666;">
+                    Los movimientos se han clasificado y descargado.
+                </p>
+                <button class="btn btn-secondary" id="btnReiniciar">🔄 Procesar Otro</button>
+            </div>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Procesando...</p>
         </div>
     </div>
     
-<script>
-        // Elementos para Extracto Bancario
-        const uploadZoneExtracto = document.getElementById('uploadZoneExtracto');
-        const fileInputExtracto = document.getElementById('fileInputExtracto');
-        const fileInfoExtracto = document.getElementById('fileInfoExtracto');
-        
-        // Elementos para Registro de Gastos
-        const uploadZoneGastos = document.getElementById('uploadZoneGastos');
-        const fileInputGastos = document.getElementById('fileInputGastos');
-        const fileInfoGastos = document.getElementById('fileInfoGastos');
-        
-        const processBtn = document.getElementById('processBtn');
-        const downloadBtn = document.getElementById('downloadBtn');
-        const results = document.getElementById('results');
-        const loading = document.getElementById('loading');
-        const errorDiv = document.getElementById('error');
-        
-        let selectedFileExtracto = null;
-        let selectedFileGastos = null;
-        let lastResponse = null;
-        
-        // Funciones para Extracto Bancario
-        uploadZoneExtracto.addEventListener('click', () => fileInputExtracto.click());
-        
-        uploadZoneExtracto.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadZoneExtracto.classList.add('dragover');
-        });
-        
-        uploadZoneExtracto.addEventListener('dragleave', () => {
-            uploadZoneExtracto.classList.remove('dragover');
-        });
-        
-        uploadZoneExtracto.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadZoneExtracto.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                handleFileSelectExtracto(files[0]);
-            }
-        });
-        
-        fileInputExtracto.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                handleFileSelectExtracto(e.target.files[0]);
-            }
-        });
-        
-        function handleFileSelectExtracto(file) {
-            selectedFileExtracto = file;
-            fileInfoExtracto.textContent = `🏦 ${file.name}`;
-            fileInfoExtracto.style.display = 'block';
-            checkBothFilesSelected();
-        }
-        
-        // Funciones para Registro de Gastos
-        uploadZoneGastos.addEventListener('click', () => fileInputGastos.click());
-        
-        uploadZoneGastos.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadZoneGastos.classList.add('dragover');
-        });
-        
-        uploadZoneGastos.addEventListener('dragleave', () => {
-            uploadZoneGastos.classList.remove('dragover');
-        });
-        
-        uploadZoneGastos.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadZoneGastos.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                handleFileSelectGastos(files[0]);
-            }
-        });
-        
-        fileInputGastos.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                handleFileSelectGastos(e.target.files[0]);
-            }
-        });
-        
-        function handleFileSelectGastos(file) {
-            selectedFileGastos = file;
-            fileInfoGastos.textContent = `💳 ${file.name}`;
-            fileInfoGastos.style.display = 'block';
-            checkBothFilesSelected();
-        }
-        
-        function checkBothFilesSelected() {
-            // Habilitar botón solo si ambos archivos están seleccionados
-            processBtn.disabled = !(selectedFileExtracto && selectedFileGastos);
-        }
-        
-        function showError(message) {
-            errorDiv.textContent = message;
-            errorDiv.classList.add('show');
-            setTimeout(() => errorDiv.classList.remove('show'), 5000);
-        }
-        
-        function hideError() {
-            errorDiv.classList.remove('show');
-        }
-        
-        processBtn.addEventListener('click', async () => {
-            if (!selectedFileExtracto || !selectedFileGastos) return;
-            
-            hideError();
-            loading.classList.add('show');
-            results.classList.remove('show');
-            
-            const formData = new FormData();
-            formData.append('extracto', selectedFileExtracto);
-            formData.append('gastos', selectedFileGastos);
-            
-            try {
-                const response = await fetch('http://127.0.0.1:8000/api/procesar-dos-archivos', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || 'Error al procesar');
-                }
-                
-                lastResponse = await response.json();
-                displayResults(lastResponse);
-            } catch (error) {
-                showError('Error: ' + error.message);
-            } finally {
-                loading.classList.remove('show');
-            }
-        });
-        
-        function displayResults(data) {
-            document.getElementById('totalIngresos').textContent = 
-                data.resumen_general.total_ingresos.toFixed(2) + ' €';
-            document.getElementById('totalGastos').textContent = 
-                data.resumen_general.total_gastos.toFixed(2) + ' €';
-            document.getElementById('saldoNeto').textContent = 
-                data.resumen_general.saldo_neto.toFixed(2) + ' €';
-            
-            const categoriasBody = document.getElementById('categoriasBody');
-            categoriasBody.innerHTML = '';
-            
-            for (const [categoria, stats] of Object.entries(data.resumen_categorias)) {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${categoria}</td>
-                    <td style="color: #4caf50;">${stats.ingresos.toFixed(2)} €</td>
-                    <td style="color: #f44336;">${stats.gastos.toFixed(2)} €</td>
-                `;
-                categoriasBody.appendChild(row);
-            }
-            
-            const movimientosBody = document.getElementById('movimientosBody');
-            movimientosBody.innerHTML = '';
-            
-            for (const mov of data.movimientos_clasificados.slice(0, 50)) {
-                const row = document.createElement('tr');
-                const tipoClass = mov.importe > 0 ? 'tipo-ingreso' : 'tipo-gasto';
-                const tipoTexto = mov.importe > 0 ? 'Ingreso' : 'Gasto';
-                row.innerHTML = `
-                    <td>${mov.fecha || '-'}</td>
-                    <td>${mov.concepto.substring(0, 40)}${mov.concepto.length > 40 ? '...' : ''}</td>
-                    <td class="${tipoClass}">${mov.importe.toFixed(2)} €</td>
-                    <td class="${tipoClass}">${tipoTexto}</td>
-                    <td><span class="categoria">${mov.categoria}</span></td>
-                `;
-                movimientosBody.appendChild(row);
-            }
-            
-            results.classList.add('show');
-        }
-        
-        downloadBtn.addEventListener('click', async () => {
-            if (!lastResponse || !lastResponse.csv_contenido) return;
-            
-            try {
-                const blob = new Blob([lastResponse.csv_contenido], { type: 'text/csv;charset=utf-8;' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = selectedFileExtracto.name.replace('.csv', '_clasificado.csv');
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-            } catch (error) {
-                showError('Error: ' + error.message);
-            }
-        });
-    </script>
+    <script src="app.js"></script>
 </body>
 </html>
