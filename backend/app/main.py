@@ -64,7 +64,7 @@ def detectar_columnas(df: pd.DataFrame) -> Dict[str, str]:
             resultado["observaciones"] = col
         if resultado["importe"] is None and col_lower == "importe":
             resultado["importe"] = col
-        if resultado["saldo"] is None and col_lower == "saldo":
+        if resultado["saldo"] is None and ("saldo" in col_lower or "balance" in col_lower):
             resultado["saldo"] = col
     return resultado
 
@@ -206,32 +206,46 @@ async def procesar_dos_archivos(
     for idx, row in df_extracto.iterrows():
         concepto_base = str(row.get(columnas["concepto"], ""))
         observaciones = str(row.get(columnas["observaciones"], ""))
-        concepto = f"{concepto_base} {observaciones}".strip()
+        concepto_combinado = f"{concepto_base} {observaciones}".strip()
 
         importe = limpiar_importe(row.get(columnas["importe"], 0))
         fecha = normalizar_fecha(row.get(columnas["fecha"]))
 
-        resultado = clasificador.clasificar(concepto, importe)
+        resultado = clasificador.clasificar(concepto_combinado, importe)
+
+        # Construir Observaciones = concepto + observaciones
+        observaciones_completas = f"{concepto_base} {observaciones}".strip()
+
+        # Determinar CONCEPTO final
+        if importe < 0:
+            # Es gasto → usar la categoría del clasificador
+            concepto_final = resultado["categoria"]
+        else:
+            # Es ingreso → usar piso o desconocido
+            concepto_final = resultado["piso"] if resultado["piso"] else "Piso desconocido"
 
         mov = {
             "id": idx,
-            "fecha": fecha,
-            "concepto": concepto,
+            "fecha_contable": fecha,
+            "observaciones": observaciones_completas,
             "importe": round(importe, 2),
-            "piso": resultado["piso"] or "",
+            "saldo": row.get("Saldo") if "Saldo" in df_extracto.columns else None,
+            "concepto": concepto_final,
             "tipo": resultado["tipo"],
             "categoria": resultado["categoria"],
             "confianza": resultado["confianza"]
         }
-
+        # Si es gasto → nunca buscar piso
         if mov["importe"] < 0:
-            mov["piso"] = ""
             movimientos_con_piso.append(mov)
             continue
 
-        if mov["piso"]:
+        # Si es ingreso → usar el piso detectado por el clasificador
+        if resultado["piso"]:
+            mov["piso"] = resultado["piso"]
             movimientos_con_piso.append(mov)
         else:
+            mov["piso"] = ""
             movimientos_sin_piso.append(mov)
 
     recuperados = buscar_pisos_en_historico(excel_registros, movimientos_sin_piso)
@@ -239,8 +253,9 @@ async def procesar_dos_archivos(
     movimientos_finales = movimientos_con_piso + recuperados
     movimientos_finales = sorted(
         movimientos_finales,
-            key=lambda m: (m["fecha"] is None, m["fecha"])
-        )
+        key=lambda m: m["id"]
+    )
+    
     _movimientos_procesados = movimientos_finales
 
     total_ingresos = sum(m["importe"] for m in movimientos_finales if m["importe"] > 0)
@@ -380,7 +395,15 @@ async def confirmar(movimientos_actualizados: List[Dict]):
     
     df = pd.DataFrame(movimientos_actualizados)
     
-    cols_order = ["fecha", "concepto", "importe", "piso", "tipo", "categoria", "confianza"]
+    cols_order = [
+        "fecha_contable",
+        "observaciones",
+        "importe",
+        "saldo",
+        "concepto"
+    ]
+
+
     cols_order = [c for c in cols_order if c in df.columns]
     df = df[cols_order]
     
@@ -406,7 +429,19 @@ async def descargar(
     """ Descarga los movimientos clasificados"""
     df = pd.DataFrame(movimientos_actualizados)
     
-    cols_order = ["fecha", "concepto", "importe", "piso", "tipo", "categoria"]
+    cols_order = [
+        "fecha_contable",
+        "fecha_valor",
+        "observaciones",
+        "concepto",
+        "importe",
+        "saldo",
+        "piso",
+        "tipo",
+        "categoria",
+        "confianza"
+    ]
+
     cols_order = [c for c in cols_order if c in df.columns]
     df = df[cols_order]
     

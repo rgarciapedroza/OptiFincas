@@ -17,6 +17,7 @@ import os
 from typing import Dict, List, Tuple, Optional
 from collections import Counter
 import logging
+from difflib import SequenceMatcher
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -51,43 +52,41 @@ class ClasificadorML:
         r'\b(\d{1,2}\s*[-/]\s*[A-Za-z])\b',              # 4-J, 4/J
     ]
 
-
-        
-        # Reglas por defecto
         self.reglas = {
             "INGRESO MENSUALIDAD": {
-                "palabras": ["comunidad", "cuota", "derrama", "gasto comunidad"],
+                "palabras": ["comunidad", "cuota", "derrama", "gasto comunidad", "mensualidad"],
                 "tipo": "ingreso"
             },
             "ENERGIA ASCENSOR": {
-                "palabras": ["energia", "endesa", "luz", "electricidad", "iberdrola", "naturgy"],
+                "palabras": ["energia", "endesa", "luz", "electricidad", "iberdrola", "naturgy", "cpvr", "suministro"],
                 "tipo": "gasto"
             },
             "LUZ PORTAL Y ESCALERA": {
-                "palabras": ["energia", "endesa", "luz", "electricidad", "iberdrola", "naturgy"],
+                "palabras": ["energia", "endesa", "luz", "electricidad", "iberdrola", "naturgy", "portal", "escalera"],
                 "tipo": "gasto"
             },
             "SEGURO COMUNIDAD": {
-                "palabras": ["generali", "seguros", "aqualia"],
+                "palabras": ["generali", "seguro", "seguros", "poliza", "aseguradora"],
                 "tipo": "gasto"
             },
             "MANTENIMIENTO ASCENSOR": {
-                "palabras": ["zardoya", "otis", "ascensor", "mantenimiento ascensor"],
+                "palabras": ["zardoya", "otis", "ascensor", "mantenimiento", "instalacion", "reparacion", "tecnico", "hidro", "tecno"],
                 "tipo": "gasto"
             },
             "LIMPIEZA": {
-                "palabras": ["limpieza", "productos limpieza"],
+                "palabras": ["limpieza", "limp", "productos", "portal", "escalera"],
+                "tipo": "gasto"
+            },
+            "GASTOS VARIOS": {
+                "palabras": ["deh", "notificacion", "electronica", "comision", "cargo"],
                 "tipo": "gasto"
             },
             "INGRESOS SIN IDENTIFICAR": {
                 "palabras": [],
                 "tipo": "ingreso"
-            },
-            "GASTOS VARIOS": {
-                "palabras": [],
-                "tipo": "gasto"
             }
         }
+
         
         self._inicializar_palabras()
     
@@ -192,7 +191,13 @@ class ClasificadorML:
                 if confianza > mejor_confianza:
                     mejor_confianza = confianza
                     mejor_coincidencia = categoria
-        
+        for palabra, categoria in self.palabras_categoria.items():
+            sim = SequenceMatcher(None, palabra, concepto_lower).ratio()
+            if sim > 0.65:  # umbral ajustable
+                mejor_coincidencia = categoria
+                mejor_confianza = sim
+                break
+            
         if mejor_coincidencia is None:
             for categoria, info in self.reglas.items():
                 for palabra in info["palabras"]:
