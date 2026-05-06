@@ -84,15 +84,17 @@ def limpiar_importe(valor) -> float:
 
 
 def normalizar_fecha(fecha) -> str:
-    """Normaliza la fecha"""
+    """Convierte cualquier fecha a formato YYYY-MM-DD"""
     if not fecha:
         return None
-    if isinstance(fecha, str):
-        return fecha[:10] if len(fecha) >= 10 else fecha
     try:
-        return pd.to_datetime(fecha).strftime("%Y-%m-%d")
+        return pd.to_datetime(fecha, dayfirst=True).strftime("%Y-%m-%d")
     except:
-        return str(fecha)
+        try:
+            return pd.to_datetime(str(fecha), dayfirst=True).strftime("%Y-%m-%d")
+        except:
+            return None
+
 
 @app.get("/")
 def root():
@@ -232,12 +234,13 @@ async def procesar_dos_archivos(
         else:
             movimientos_sin_piso.append(mov)
 
-
-    from app.procesamiento.buscar_pisos import buscar_pisos_en_historico
-
     recuperados = buscar_pisos_en_historico(excel_registros, movimientos_sin_piso)
 
     movimientos_finales = movimientos_con_piso + recuperados
+    movimientos_finales = sorted(
+        movimientos_finales,
+            key=lambda m: (m["fecha"] is None, m["fecha"])
+        )
     _movimientos_procesados = movimientos_finales
 
     total_ingresos = sum(m["importe"] for m in movimientos_finales if m["importe"] > 0)
