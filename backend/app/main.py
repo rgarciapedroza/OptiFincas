@@ -1,20 +1,7 @@
-"""
-API Principal del Sistema de Procesamiento de Extractos
-======================================================
-
-Endpoints disponibles:
-- POST /api/entrenar - Entrenar el modelo ML
-- POST /api/procesar - Procesar movimientos
-- POST /api/confirmar - Confirmar clasificaciones y generar descarga
-- GET /api/opciones - Obtener opciones para selects
-
-Autor: Sistema de Clasificación
-Versión: 1.0
-"""
-
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from backend.app.procesamiento.buscar_pisos import buscar_pisos_en_historico
 import pandas as pd
 import io
 import re
@@ -23,17 +10,11 @@ import os
 from datetime import datetime
 from typing import Dict, List, Optional
 import base64
+from backend.app.ml.clasificador_ml import ClasificadorML
 
-# Configurar paths
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
-
-# Importar clasificador ML
-try:
-    from app.ml.clasificador_ml import ClasificadorML
-except ImportError:
-    from backend.app.ml.clasificador_ml import ClasificadorML
 
 app = FastAPI(title="API Procesador de Extractos")
 
@@ -45,8 +26,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ==================== Variables globales ====================
-
 _clasificador = None
 _movimientos_procesados = []
 _mes = 1
@@ -54,7 +33,7 @@ _año = 2024
 
 
 def get_clasificador() -> ClasificadorML:
-    """Obtiene o crea el clasificador"""
+    """Obtiene (o crea) el clasificador"""
     global _clasificador
     if _clasificador is None:
         _clasificador = ClasificadorML()
@@ -62,7 +41,7 @@ def get_clasificador() -> ClasificadorML:
 
 
 def detectar_columnas(df: pd.DataFrame) -> Dict[str, str]:
-    """Detecta las columnas del DataFrame"""
+    """Detecta las columnas"""
     cols = list(df.columns)
     resultado = {
         "fecha": None,
@@ -115,9 +94,6 @@ def normalizar_fecha(fecha) -> str:
     except:
         return str(fecha)
 
-
-# ==================== Rutas ====================
-
 @app.get("/")
 def root():
     return {"mensaje": "API de procesamiento de extractos bancarios"}
@@ -140,12 +116,9 @@ async def entrenar(
     extracto: UploadFile = File(...),
     excel_contable: UploadFile = File(None)
 ):
-    """
-    Entrena el modelo con los datos del extracto
-    """
+    """Entrena el modelo con los datos del extracto"""
     global _mes, _año
     
-    # Leer extracto
     contenido = await extracto.read()
     try:
         if extracto.filename.lower().endswith(".csv"):
@@ -162,7 +135,6 @@ async def entrenar(
     if columnas["importe"] is None:
         raise HTTPException(status_code=400, detail="Sin columna de importe")
     
-    # Extraer mes y año del nombre de archivo o contenido
     nombre = extracto.filename.lower()
     meses = {
         "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
@@ -174,7 +146,6 @@ async def entrenar(
             _mes = numero
             break
     
-    # Entrenar clasificador con los datos del extracto
     clasificador = get_clasificador()
     
     for _, row in df.iterrows():
@@ -183,10 +154,8 @@ async def entrenar(
         if importe == 0:
             continue
         
-        # Clasificar para obtener categoría inicial
         resultado = clasificador.clasificar(concepto, importe)
         
-        # Añadir como ejemplo de entrenamiento
         clasificador.add_ejemplo(
             concepto=concepto,
             importe=importe,
@@ -195,10 +164,8 @@ async def entrenar(
             piso=resultado["piso"]
         )
     
-    # Entrenar
     resultado = clasificador.entrenar()
     
-    # Guardar estado
     clasificador.guardar_estado()
     
     return {
@@ -216,17 +183,17 @@ async def procesar_dos_archivos(
 ):
     global _movimientos_procesados, _mes, _año
 
-    # Leer extracto del mes
     contenido_extracto = await extracto.read()
     df_extracto = pd.read_excel(io.BytesIO(contenido_extracto)) \
         if not extracto.filename.lower().endswith(".csv") \
         else pd.read_csv(io.StringIO(contenido_extracto.decode("latin-1")))
 
-    # Leer registro histórico
     contenido_registros = await registros.read()
-    df_registros = pd.read_excel(io.BytesIO(contenido_registros)) \
-        if not registros.filename.lower().endswith(".csv") \
-        else pd.read_csv(io.StringIO(contenido_registros.decode("latin-1")))
+    if registros.filename.lower().endswith(".csv"):
+        excel_registros = {"CSV": pd.read_csv(io.StringIO(contenido_registros.decode("latin-1")))}
+    else:
+        excel_registros = pd.ExcelFile(io.BytesIO(contenido_registros))
+
 
     columnas = detectar_columnas(df_extracto)
     clasificador = get_clasificador()
@@ -234,7 +201,6 @@ async def procesar_dos_archivos(
     movimientos_con_piso = []
     movimientos_sin_piso = []
 
-    # 1️⃣ Clasificar extracto del mes
     for idx, row in df_extracto.iterrows():
         concepto_base = str(row.get(columnas["concepto"], ""))
         observaciones = str(row.get(columnas["observaciones"], ""))
@@ -256,29 +222,28 @@ async def procesar_dos_archivos(
             "confianza": resultado["confianza"]
         }
 
+        if mov["importe"] < 0:
+            mov["piso"] = ""
+            movimientos_con_piso.append(mov)
+            continue
+
         if mov["piso"]:
             movimientos_con_piso.append(mov)
         else:
             movimientos_sin_piso.append(mov)
 
-    # 2️⃣ Buscar pisos faltantes en el registro histórico
-    from app.procesamiento.buscar_pisos import buscar_pisos_en_registro
-    recuperados = buscar_pisos_en_registro(df_registros, movimientos_sin_piso)
 
-    # 3️⃣ Unir todo
+    from app.procesamiento.buscar_pisos import buscar_pisos_en_historico
+
+    recuperados = buscar_pisos_en_historico(excel_registros, movimientos_sin_piso)
+
     movimientos_finales = movimientos_con_piso + recuperados
     _movimientos_procesados = movimientos_finales
 
-    # ============================
-    # 4️⃣ Calcular resumen general
-    # ============================
     total_ingresos = sum(m["importe"] for m in movimientos_finales if m["importe"] > 0)
     total_gastos = sum(abs(m["importe"]) for m in movimientos_finales if m["importe"] < 0)
     saldo_neto = total_ingresos - total_gastos
 
-    # ============================
-    # 5️⃣ Calcular resumen por categorías
-    # ============================
     resumen_categorias = {}
     for m in movimientos_finales:
         cat = m["categoria"]
@@ -289,9 +254,6 @@ async def procesar_dos_archivos(
         else:
             resumen_categorias[cat]["gastos"] += abs(m["importe"])
 
-    # ============================
-    # 6️⃣ Devolver EXACTAMENTE lo que espera el frontend
-    # ============================
     return {
         "estado": "ok",
         "nombre_archivo": extracto.filename,
@@ -320,7 +282,6 @@ async def procesar(
     _mes = mes
     _año = año
     
-    # Leer extracto
     contenido = await extracto.read()
     try:
         if extracto.filename.lower().endswith(".csv"):
@@ -373,7 +334,6 @@ async def procesar(
     
     _movimientos_procesados = movimientos
     
-    # Calcular resumen
     total_ingresos = sum(m["importe"] for m in movimientos if m["importe"] > 0)
     total_gastos = sum(abs(m["importe"]) for m in movimientos if m["importe"] < 0)
     
@@ -387,7 +347,6 @@ async def procesar(
         else:
             resumen_categorias[cat]["gastos"] += abs(m["importe"])
     
-    # Obtener opciones
     opciones = {
         "tipos": ["ingreso", "gasto"],
         "categorias_ingreso": clasificador.get_opciones_categoria("ingreso"),
@@ -411,18 +370,13 @@ async def procesar(
 
 @app.post("/api/confirmar")
 async def confirmar(movimientos_actualizados: List[Dict]):
-    """
-    Confirma las clasificaciones y genera el CSV para descargar
-    """
+    """Confirma las clasificaciones y genera el CSV para descargar"""
     global _movimientos_procesados
     
-    # Actualizar movimientos
     _movimientos_procesados = movimientos_actualizados
     
-    # Generar CSV
     df = pd.DataFrame(movimientos_actualizados)
     
-    # Reordenar columnas
     cols_order = ["fecha", "concepto", "importe", "piso", "tipo", "categoria", "confianza"]
     cols_order = [c for c in cols_order if c in df.columns]
     df = df[cols_order]
@@ -446,9 +400,7 @@ async def descargar(
     movimientos_actualizados: List[Dict],
     formato: str = "csv"
 ):
-    """
-    Descarga los movimientos clasificados
-    """
+    """ Descarga los movimientos clasificados"""
     df = pd.DataFrame(movimientos_actualizados)
     
     cols_order = ["fecha", "concepto", "importe", "piso", "tipo", "categoria"]
@@ -479,9 +431,7 @@ async def descargar(
 
 @app.post("/api/descargar-excel")
 async def descargar_excel(movimientos_actualizados: List[Dict]):
-    """
-    Descarga los movimientos en formato Excel
-    """
+    """Descarga los movimientos en formato Excel"""
     df = pd.DataFrame(movimientos_actualizados)
     
     cols_order = ["fecha", "concepto", "importe", "piso", "tipo", "categoria"]
@@ -491,8 +441,7 @@ async def descargar_excel(movimientos_actualizados: List[Dict]):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Movimientos')
-        
-        # Crear hoja de resumen
+    
         resumen_df = df.groupby(["tipo", "categoria"])["importe"].sum().reset_index()
         resumen_df.to_excel(writer, index=False, sheet_name='Resumen', startrow=0)
     
