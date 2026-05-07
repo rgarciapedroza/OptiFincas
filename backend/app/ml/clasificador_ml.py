@@ -53,7 +53,7 @@ class ClasificadorML:
     ]
 
         self.reglas = {
-            "INGRESO MENSUALIDAD": {
+            "ADMINISTRACION": {
                 "palabras": ["comunidad", "cuota", "derrama", "gasto comunidad", "mensualidad"],
                 "tipo": "ingreso"
             },
@@ -66,7 +66,7 @@ class ClasificadorML:
                 "tipo": "gasto"
             },
             "SEGURO COMUNIDAD": {
-                "palabras": ["generali", "seguro", "seguros", "poliza", "aseguradora"],
+                "palabras": ["generali", "seguro", "seguros", "poliza", "aseguradora" "mapfre", "allianz", "santa lucia"],
                 "tipo": "gasto"
             },
             "MANTENIMIENTO ASCENSOR": {
@@ -197,7 +197,7 @@ class ClasificadorML:
                 mejor_coincidencia = categoria
                 mejor_confianza = sim
                 break
-            
+
         if mejor_coincidencia is None:
             for categoria, info in self.reglas.items():
                 for palabra in info["palabras"]:
