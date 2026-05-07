@@ -46,7 +46,8 @@ def buscar_pisos_en_registro(df_registro, movimientos_sin_piso):
     recuperados = []
 
     for mov in movimientos_sin_piso:
-        concepto_mov = normalizar_texto(mov["concepto"])
+        concepto_mov = normalizar_texto(mov.get("concepto_original", mov["concepto"]))
+
         palabras = concepto_mov.split()
         nombre_mov = " ".join(palabras[:3])
 
