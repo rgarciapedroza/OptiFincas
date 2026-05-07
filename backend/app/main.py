@@ -1,7 +1,12 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from backend.app.procesamiento.buscar_pisos import buscar_pisos_en_historico
+from backend.app.procesamiento.buscar_pisos import (
+    buscar_pisos_en_historico,
+    detectar_fila_cabecera,
+    similar
+)
+
 import pandas as pd
 import io
 import re
@@ -11,6 +16,9 @@ from datetime import datetime
 from typing import Dict, List, Optional
 import base64
 from backend.app.ml.clasificador_ml import ClasificadorML
+
+from backend.app.adaptadores.csv_bbva import leer_extracto_csv
+from backend.app.adaptadores.excel_bbva import leer_extracto_excel
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if project_root not in sys.path:
@@ -41,32 +49,45 @@ def get_clasificador() -> ClasificadorML:
 
 
 def detectar_columnas(df: pd.DataFrame) -> Dict[str, str]:
-    """Detecta las columnas"""
     cols = list(df.columns)
     resultado = {
         "fecha": None,
+        "fecha_valor": None,
         "concepto": None,
         "observaciones": None,
         "importe": None,
-        "saldo": None
+        "saldo": None,
+        "ordenante": None
     }
-
 
     for col in cols:
         col_lower = col.lower().strip()
-        if resultado["fecha"] is None and ("fecha" in col_lower or "date" in col_lower):
+
+        if resultado["fecha"] is None and ("f. contable" in col_lower or "contable" in col_lower):
             resultado["fecha"] = col
-        if resultado["concepto"] is None and (
-            "concepto" in col_lower or "observaciones" in col_lower or "descripcion" in col_lower
-        ):
+
+        if resultado["fecha_valor"] is None and ("f. valor" in col_lower or "valor" in col_lower):
+            resultado["fecha_valor"] = col
+
+        if resultado["concepto"] is None and "concepto" in col_lower:
             resultado["concepto"] = col
-        if resultado["observaciones"] is None and "observaciones" in col_lower:
+
+        if resultado["observaciones"] is None and "observ" in col_lower:
             resultado["observaciones"] = col
-        if resultado["importe"] is None and col_lower == "importe":
+
+        if resultado["ordenante"] is None and (
+            "ordenante" in col_lower or "beneficiario" in col_lower
+        ):
+            resultado["ordenante"] = col
+
+        if resultado["importe"] is None and "importe" in col_lower:
             resultado["importe"] = col
-        if resultado["saldo"] is None and ("saldo" in col_lower or "balance" in col_lower):
+
+        if resultado["saldo"] is None and "saldo" in col_lower:
             resultado["saldo"] = col
+
     return resultado
+
 
 
 def limpiar_importe(valor) -> float:
@@ -185,10 +206,14 @@ async def procesar_dos_archivos(
 ):
     global _movimientos_procesados, _mes, _año
 
-    contenido_extracto = await extracto.read()
-    df_extracto = pd.read_excel(io.BytesIO(contenido_extracto)) \
-        if not extracto.filename.lower().endswith(".csv") \
-        else pd.read_csv(io.StringIO(contenido_extracto.decode("latin-1")))
+    extension_ext = extracto.filename.lower().split(".")[-1]
+
+    if extension_ext == "csv":
+        df_extracto = leer_extracto_csv(extracto)
+    elif extension_ext in ("xlsx", "xls"):
+        df_extracto = leer_extracto_excel(extracto)
+    else:
+        raise HTTPException(status_code=400, detail="Formato de extracto no soportado")
 
     contenido_registros = await registros.read()
     if registros.filename.lower().endswith(".csv"):
@@ -204,24 +229,25 @@ async def procesar_dos_archivos(
     movimientos_sin_piso = []
 
     for idx, row in df_extracto.iterrows():
-        concepto_base = str(row.get(columnas["concepto"], ""))
-        observaciones = str(row.get(columnas["observaciones"], ""))
-        concepto_combinado = f"{concepto_base} {observaciones}".strip()
+
+        concepto_combinado = str(row["concepto_original"])
 
         importe = limpiar_importe(row.get(columnas["importe"], 0))
         fecha = normalizar_fecha(row.get(columnas["fecha"]))
 
+        piso_regex = None
+        if columnas["observaciones"]:
+            obs_texto = str(row.get(columnas["observaciones"], ""))
+            m = re.search(r"\b(\d{1,2}\s*[A-Z])\b", obs_texto, re.IGNORECASE)
+            if m:
+                piso_regex = m.group(1).replace(" ", "").upper()
+
         resultado = clasificador.clasificar(concepto_combinado, importe)
+        observaciones_completas = concepto_combinado
 
-        # Construir Observaciones = concepto + observaciones
-        observaciones_completas = f"{concepto_base} {observaciones}".strip()
-
-        # Determinar CONCEPTO final
         if importe < 0:
-            # Es gasto → usar la categoría del clasificador
             concepto_final = resultado["categoria"]
         else:
-            # Es ingreso → usar piso o desconocido
             concepto_final = resultado["piso"] if resultado["piso"] else "Piso desconocido"
 
         mov = {
@@ -229,31 +255,118 @@ async def procesar_dos_archivos(
             "fecha_contable": fecha,
             "observaciones": observaciones_completas,
             "importe": round(importe, 2),
-            "saldo": row.get("Saldo") if "Saldo" in df_extracto.columns else None,
-
-            # 🔥 Guardamos ambos conceptos
-            "concepto_original": concepto_combinado,   # para buscar piso
-            "concepto": concepto_final,                # para mostrar
-
+            "saldo": row.get("saldo") if "saldo" in df_extracto.columns else None,
+            "concepto_original": concepto_combinado,
+            "concepto": concepto_final,
             "tipo": resultado["tipo"],
             "categoria": resultado["categoria"],
-            "confianza": resultado["confianza"]
+            "confianza": resultado["confianza"],
+            "piso": ""
         }
 
-        # Si es gasto → nunca buscar piso
-        if mov["importe"] < 0:
+        if importe < 0:
             movimientos_con_piso.append(mov)
             continue
 
-        # Si es ingreso → usar el piso detectado por el clasificador
+        if piso_regex:
+            mov["piso"] = piso_regex
+            movimientos_con_piso.append(mov)
+            continue
+
         if resultado["piso"]:
             mov["piso"] = resultado["piso"]
             movimientos_con_piso.append(mov)
-        else:
-            mov["piso"] = ""
-            movimientos_sin_piso.append(mov)
+            continue
+
+        movimientos_sin_piso.append(mov)
 
     recuperados = buscar_pisos_en_historico(excel_registros, movimientos_sin_piso)
+
+    for mov in recuperados:
+        if mov.get("piso"):
+            continue
+
+        concepto = mov["concepto_original"].upper()
+        partes = concepto.split()
+        nombres = []
+
+        for p in partes[::-1]:
+            if p.isalpha() and len(p) > 2:
+                nombres.append(p)
+            else:
+                break
+
+        nombres = nombres[::-1]
+
+        if len(nombres) < 2:
+            continue
+
+        nombre1, nombre2 = nombres[:2]
+
+        if len(nombres) < 2:
+            continue
+
+        nombre1, nombre2 = nombres[:2]
+
+        mejor_piso = None
+        mejor_score = 0.0
+
+        if isinstance(excel_registros, dict):
+            hojas = excel_registros.items()
+        else:
+            hojas = [(nombre, None) for nombre in excel_registros.sheet_names]
+
+        for nombre_hoja, df_csv in hojas:
+
+            if df_csv is not None:
+                df_registro = df_csv
+            else:
+                df_raw = excel_registros.parse(nombre_hoja, header=None)
+                header_row = detectar_fila_cabecera(df_raw)
+                if header_row is None:
+                    continue
+                df_registro = excel_registros.parse(nombre_hoja, header=header_row)
+                df_registro.columns = [str(c).strip().lower() for c in df_registro.columns]
+
+            cols_reg = {str(c).strip().lower(): c for c in df_registro.columns}
+            col_observ = next((v for k, v in cols_reg.items() if "observ" in k), None)
+            col_concepto = next((v for k, v in cols_reg.items() if "concept" in k), None)
+
+            if not col_observ and not col_concepto:
+                continue
+
+
+            for _, row_reg in df_registro.iterrows():
+
+                texto_obs = str(row_reg.get(col_observ, "")) if col_observ else ""
+                texto_concepto = str(row_reg.get(col_concepto, "")) if col_concepto else ""
+
+                texto_total = f"{texto_obs} {texto_concepto}".upper()
+                palabras_hist = [p for p in texto_total.split() if p.isalpha() and len(p) > 2]
+
+                if not palabras_hist:
+                    continue
+
+                sim1 = max(similar(nombre1, p) for p in palabras_hist)
+                sim2 = max(similar(nombre2, p) for p in palabras_hist)
+
+                if sim1 >= 0.85 and sim2 >= 0.85:
+
+                    m = re.search(r"\b(\d{1,2}\s*[A-Z])\b", texto_total, re.IGNORECASE)
+                    if m:
+                        piso = m.group(1).replace(" ", "").upper()
+                        score = (sim1 + sim2) / 2
+                        if score > mejor_score:
+                            mejor_score = score
+                            mejor_piso = piso
+
+                        score = (sim1 + sim2) / 2
+                        if score > mejor_score:
+                            mejor_score = score
+                            mejor_piso = piso
+
+        if mejor_piso:
+            mov["piso"] = mejor_piso
 
     movimientos_finales = movimientos_con_piso + recuperados
     movimientos_finales = sorted(
@@ -268,6 +381,7 @@ async def procesar_dos_archivos(
     saldo_neto = total_ingresos - total_gastos
 
     resumen_categorias = {}
+
     for m in movimientos_finales:
         cat = m["categoria"]
         if cat not in resumen_categorias:
@@ -288,8 +402,6 @@ async def procesar_dos_archivos(
         "movimientos_clasificados": movimientos_finales,
         "resumen_categorias": resumen_categorias
     }
-
-
 
 @app.post("/api/procesar")
 async def procesar(
