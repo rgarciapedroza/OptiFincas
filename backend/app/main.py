@@ -230,11 +230,16 @@ async def procesar_dos_archivos(
             "observaciones": observaciones_completas,
             "importe": round(importe, 2),
             "saldo": row.get("Saldo") if "Saldo" in df_extracto.columns else None,
-            "concepto": concepto_final,
+
+            # 🔥 Guardamos ambos conceptos
+            "concepto_original": concepto_combinado,   # para buscar piso
+            "concepto": concepto_final,                # para mostrar
+
             "tipo": resultado["tipo"],
             "categoria": resultado["categoria"],
             "confianza": resultado["confianza"]
         }
+
         # Si es gasto → nunca buscar piso
         if mov["importe"] < 0:
             movimientos_con_piso.append(mov)
