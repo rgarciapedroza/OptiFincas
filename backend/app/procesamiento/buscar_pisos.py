@@ -23,7 +23,6 @@ def normalizar_texto(texto: str) -> str:
     texto = texto.replace("º", "")
     texto = texto.replace("ª", "")
 
-    # 2. Normalización estándar
     texto = unicodedata.normalize("NFKD", texto)
     texto = "".join(c for c in texto if not unicodedata.combining(c))
     texto = re.sub(r"[^A-Za-z0-9\s]", " ", texto)
@@ -81,6 +80,8 @@ def buscar_pisos_en_registro(df_registro, movimientos_sin_piso):
     pisos_validos = obtener_pisos_validos(df_registro)
 
     for mov in movimientos_sin_piso:
+        nombre_a_buscar = mov.get("texto_busqueda_nombres", "VACÍO")
+        print(f"DEBUG BUSCADOR: Buscando al vecino '{nombre_a_buscar}' en el histórico...")
         concepto_mov = normalizar_texto(mov.get("concepto_original", mov["concepto"]))
         palabras = concepto_mov.split()
         palabras_nombre = [p for p in palabras if es_nombre_o_apellido(p)]
