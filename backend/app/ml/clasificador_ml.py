@@ -43,13 +43,13 @@ class ClasificadorML:
         
         # Patrones regex para detección de piso
         self.patrones_piso = [
-        r'\b(\d{1,2}\s*[A-Za-z])\b',                     # 4J, 4 J
-        r'\b(\d{1,2}[ºª]?\s*[A-Za-z])\b',                # 4ºJ, 4ªJ
-        r'\b(p[ií]s?[o0]?\s*\d{1,2}\s*[A-Za-z])\b',      # piso, pizo, piso 4J, pis0 4J
-        r'\b(pl[aá]n?t?a?\s*\d{1,2}\s*[A-Za-z])\b',      # planta, plnta, plta, plnta 4J
-        r'\b(p\.?\s*\d{1,2}\s*[A-Za-z])\b',              # p. 4J, p 4J
-        r'\b(pl\.?\s*\d{1,2}\s*[A-Za-z])\b',             # pl. 4J
-        r'\b(\d{1,2}\s*[-/]\s*[A-Za-z])\b',              # 4-J, 4/J
+            r'\b(?:PISO|PIZO|PIS0)\s*(\d{1,2}\s*[A-Z]?)\b',    # PISO 4, PISO 4J
+            r'\b(?:PLANTA|PLNTA|PLTA)\s*(\d{1,2}\s*[A-Z]?)\b',# PLANTA 2
+            r'\bP\.?\s*(\d{1,2}\s*[A-Z]?)\b',                 # P. 4, P 4J
+            r'\bPL\.?\s*(\d{1,2}\s*[A-Z]?)\b',                # PL. 2
+            r'\b(\d{1,2}\s*[-/]\s*[A-Z])\b',                  # 4-J, 4/J
+            r'\b(\d{1,2}\s*[A-Z])\b',                         # 4J, 4 J
+            r'\b(\d{1,2}[ºª]\s*[A-Z]?)\b',                    # 4º, 4ª, 4ºJ
     ]
 
         self.reglas = {
@@ -157,11 +157,10 @@ class ClasificadorML:
                     if not grupo:
                         continue
 
-                    # Extraer solo el número + letra
-                    limpio = re.findall(r'\d{1,2}\s*[A-Z]', grupo.upper())
-                    if limpio:
-                        piso = re.sub(r'\s+', '', limpio[0]).upper()
-                        return piso
+                    # Limpiar el resultado (quitar espacios sobrantes)
+                    piso_limpio = re.sub(r'\s+', '', grupo).upper()
+                    if piso_limpio:
+                        return piso_limpio
 
         return None
 

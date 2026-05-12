@@ -74,12 +74,11 @@
                 <table class="movimientos-table">
                     <thead>
                         <tr>
-                            <th>Fecha</th>
-                            <th>Concepto</th>
-                            <th>Importe</th>
-                            <th>Tipo</th>
-                            <th>Categoría</th>
-                            <th>Piso</th>
+                            <th>FECHA</th>
+                            <th>OBSERVACIONES</th>
+                            <th>IMPORTE</th>
+                            <th>SALDO</th>
+                            <th>CONCEPTO</th>
                         </tr>
                     </thead>
                     <tbody id="tablaBody"></tbody>
@@ -88,7 +87,8 @@
             
             <div class="actions">
                 <button class="btn btn-secondary" id="btnAtras">← Atrás</button>
-                <button class="btn btn-success" id="btnConfirmar">Confirmar y Descargar</button>
+                <button class="btn btn-info" id="btnDescargarMensual">Solo Extracto Mensual</button>
+                <button class="btn btn-success" id="btnDescargarHistorico">Actualizar Histórico (Excel)</button>
             </div>
         </div>
         
@@ -110,6 +110,16 @@
         </div>
     </div>
     
+    <!-- Modal para detalles de asignación histórica -->
+    <div id="modalInfo" class="error" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000; max-width: 500px; box-shadow: 0 5px 30px rgba(0,0,0,0.5); display: none; background: white;">
+        <div style="padding: 20px;">
+            <h3 style="margin-top: 0; color: var(--primary-dark);">ℹ️ Detalle de Asignación</h3>
+            <hr>
+            <div id="modalBody" style="margin: 15px 0; font-size: 0.9em; color: #444; line-height: 1.4;"></div>
+            <button class="btn btn-secondary" onclick="document.getElementById('modalInfo').style.display='none'" style="padding: 8px 20px; font-size: 0.9em;">Cerrar</button>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 </html>

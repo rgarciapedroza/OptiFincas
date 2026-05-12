@@ -22,7 +22,10 @@ def detectar_columnas(df: pd.DataFrame) -> Dict[str, str]:
     for col in cols:
         col_lower = col.lower().strip()
 
-        if resultado["fecha"] is None and ("f. contable" in col_lower or "contable" in col_lower):
+        if resultado["fecha"] is None and any(x in col_lower for x in [
+            "f. contable", "contable", "fecha proceso", "f. proceso", 
+            "fecha oper", "f. oper", "fecha valor"
+        ]):
             resultado["fecha"] = col
 
         if resultado["fecha_valor"] is None and ("f. valor" in col_lower or "valor" in col_lower):
@@ -71,15 +74,22 @@ def limpiar_importe(valor) -> float:
 
 
 def normalizar_fecha(fecha) -> str:
-    if not fecha:
+    if fecha is None:
         return None
+
+    # Si viene como solo guiones ("-", "--", "—", etc.), no es una fecha válida
+    texto = str(fecha).strip()
+    if not texto or all(ch in "-–—_ ." for ch in texto):
+        return None
+
     try:
-        return pd.to_datetime(fecha, dayfirst=True).strftime("%Y-%m-%d")
+        return pd.to_datetime(fecha, dayfirst=True).strftime("%d/%m/%Y")
     except:
         try:
-            return pd.to_datetime(str(fecha), dayfirst=True).strftime("%Y-%m-%d")
+            return pd.to_datetime(texto, dayfirst=True).strftime("%d/%m/%Y")
         except:
             return None
+
 
 
 def cargar_extracto_a_df(extracto: UploadFile) -> pd.DataFrame:

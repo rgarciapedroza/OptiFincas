@@ -20,8 +20,8 @@ async def procesar_dos_archivos(extracto: UploadFile = File(...), registros: Upl
     return await procesar_dos_archivos_controller(extracto, registros)
 
 @router.post("/confirmar")
-async def confirmar(movimientos_actualizados: list[dict]):
-    return await confirmar_controller(movimientos_actualizados)
+async def confirmar(movimientos_actualizados: list[dict], modo: str = "mensual"):
+    return await confirmar_controller(movimientos_actualizados, modo)
 
 @router.post("/descargar")
 async def descargar(movimientos_actualizados: list[dict], formato: str = "csv"):
