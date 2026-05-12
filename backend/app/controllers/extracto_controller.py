@@ -1,15 +1,23 @@
 import io
 import base64
+import os
+import re
 import pandas as pd
+from datetime import datetime
 from fastapi import UploadFile, HTTPException
 from fastapi.responses import StreamingResponse
 from backend.app.ml.clasificador_ml import ClasificadorML
 from backend.app.servicios.procesar_movimientos import procesar_extracto_y_registros
 from backend.app.servicios.procesar_extracto import detectar_columnas, limpiar_importe
 from backend.app.servicios.resumen import calcular_resumen_categorias_con_tipo
+from backend.app.procesamiento.generar_excel import crear_excel_actualizado
+from backend.app.procesamiento.procesar_excel_contable import obtener_nombre_hoja
 
 clasificador = ClasificadorML()
 _movimientos_procesados = []
+_registros_contenido = None
+_registros_filename = "Registros.xlsx"
+_extracto_filename = "Extracto.csv" # Nueva variable global para el nombre del extracto
 _mes = 1
 _año = 2024
 
@@ -77,7 +85,13 @@ async def entrenar_controller(extracto: UploadFile, excel_contable: UploadFile):
     }
 
 async def procesar_dos_archivos_controller(extracto: UploadFile, registros: UploadFile):
-    global _movimientos_procesados
+    global _movimientos_procesados, _registros_contenido, _registros_filename, _extracto_filename
+
+    # Guardar contenido de registros para uso posterior en descargas históricas
+    _registros_contenido = await registros.read()
+    _registros_filename = registros.filename
+    registros.file.seek(0)
+    _extracto_filename = extracto.filename # Guardar el nombre del archivo de extracto
 
     resultado = procesar_extracto_y_registros(extracto, registros, clasificador)
     _movimientos_procesados = resultado["movimientos_clasificados"]
@@ -94,47 +108,87 @@ async def procesar_dos_archivos_controller(extracto: UploadFile, registros: Uplo
         "resumen_categorias": resultado["resumen_categorias"]
     }
 
-async def confirmar_controller(movimientos_actualizados: list[dict]):
-    global _movimientos_procesados
+async def confirmar_controller(movimientos_actualizados: list[dict], modo: str = "mensual"):
+    global _movimientos_procesados, _registros_contenido, _registros_filename, _extracto_filename
 
     _movimientos_procesados = movimientos_actualizados
 
-    df = pd.DataFrame(movimientos_actualizados)
+    # Determinar nombre de hoja (MES AÑO en MAYUSCULAS) basado en los datos
+    hoja_nombre = obtener_nombre_hoja(_mes, _año).upper()
+    if movimientos_actualizados:
+        for mov in movimientos_actualizados:
+            f = mov.get("FECHA")
+            if f and len(str(f)) >= 10:
+                try:
+                    dt = datetime.strptime(str(f), "%d/%m/%Y")
+                    meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+                             "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
+                    hoja_nombre = f"{meses[dt.month-1]} {dt.year}"
+                    break
+                except: continue
 
-    cols_order = [
-        "fecha_contable",
-        "observaciones",
-        "importe",
-        "saldo",
-        "concepto"
-    ]
+    nombre_base_registros = os.path.splitext(_registros_filename)[0]
+    
+    # Limpiar el nombre del archivo histórico de mes y año para el título interno
+    nombre_limpio = nombre_base_registros
+    meses_es = r"(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)"
+    
+    # 1. Eliminar mes literal
+    nombre_limpio = re.sub(rf"[-_\s]?{meses_es}\b", "", nombre_limpio, flags=re.IGNORECASE)
+    # 2. Eliminar años (4 dígitos o 2 dígitos precedidos de separador)
+    nombre_limpio = re.sub(r"[-_\s]?\d{4}\b", "", nombre_limpio)
+    nombre_limpio = re.sub(r"[-_\s]\d{2}\b", "", nombre_limpio)
+    # 3. Eliminar meses numéricos (_01, -01, etc.)
+    nombre_limpio = re.sub(r"[-_](0[1-9]|1[0-2])\b", "", nombre_limpio)
+    # 4. Limpiar separadores sobrantes al inicio o al final
+    nombre_limpio = re.sub(r"^[-_\s]+|[-_\s]+$", "", nombre_limpio)
+    
+    if not nombre_limpio:
+        nombre_limpio = "Registros"
 
-    cols_order = [c for c in cols_order if c in df.columns]
-    df = df[cols_order]
+    if modo == "mensual":
+        # Para el mensual, se crea un nuevo libro desde cero
+        base_excel_content = None
+        # El nombre del archivo de descarga para el mensual mantiene el formato original con fecha
+        nombre_archivo = f"{nombre_base_registros} {hoja_nombre}.xlsx"
+    else:
+        # Para el histórico, se usa el contenido original
+        base_excel_content = _registros_contenido
+        nombre_archivo = f"{nombre_limpio}.xlsx"
 
-    csv_output = io.StringIO()
-    df.to_csv(csv_output, index=False, encoding="utf-8")
+    # El título que aparece DENTRO del Excel (antes de la tabla) siempre es el nombre limpio del histórico
+    document_name_for_excel = nombre_limpio
 
-    csv_content = csv_output.getvalue()
-    csv_base64 = base64.b64encode(csv_content.encode("utf-8")).decode("utf-8")
+    # Generar el Excel usando el servicio de procesamiento que incluye estilos
+    excel_bytes = crear_excel_actualizado(
+        contenido_excel=base_excel_content,
+        nombre_hoja=hoja_nombre,
+        movimientos_nuevos=movimientos_actualizados,
+        resultado_conciliacion={}, # No se requiere conciliación completa para esta descarga
+        mes=_mes,
+        año=_año,
+        nombre_documento=document_name_for_excel
+    )
+
+    excel_base64 = base64.b64encode(excel_bytes).decode("utf-8")
 
     return {
         "estado": "ok",
-        "mensaje": "Confirmado y listo para descargar",
-        "csv_contenido": csv_base64,
-        "nombre_archivo": f"extracto_clasificado_{_mes}_{_año}.csv"
+        "mensaje": f"Documento {modo} generado correctamente",
+        "excel_contenido": excel_base64,
+        "nombre_archivo": nombre_archivo
     }
 
 async def descargar_controller(movimientos_actualizados: list[dict], formato: str):
     df = pd.DataFrame(movimientos_actualizados)
 
     cols_order = [
-        "fecha_contable",
-        "fecha_valor",
+        "fecha",
+        "ordenante",
         "observaciones",
-        "concepto",
         "importe",
         "saldo",
+        "concepto",
         "piso",
         "tipo",
         "categoria",
@@ -170,7 +224,7 @@ async def descargar_controller(movimientos_actualizados: list[dict], formato: st
 async def descargar_excel_controller(movimientos_actualizados: list[dict]):
     df = pd.DataFrame(movimientos_actualizados)
 
-    cols_order = ["fecha", "concepto", "importe", "piso", "tipo", "categoria", "metodo_piso"]
+    cols_order = ["fecha", "ordenante", "observaciones", "importe", "saldo", "concepto"]
     cols_order = [c for c in cols_order if c in df.columns]
     df = df[cols_order]
 

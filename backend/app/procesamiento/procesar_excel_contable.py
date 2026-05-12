@@ -207,7 +207,7 @@ def leer_excel_contable(
         if columnas.get("fecha") and columnas["fecha"] in row.index:
             fecha = row[columnas["fecha"]]
             if hasattr(fecha, "strftime"):
-                fecha = fecha.strftime("%Y-%m-%d")
+                fecha = fecha.strftime("%d/%m/%Y")
         
         categoria = None
         if columnas.get("categoria") and columnas["categoria"] in row.index:

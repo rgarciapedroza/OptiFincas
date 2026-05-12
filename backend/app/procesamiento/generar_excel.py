@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import openpyxl
 from openpyxl import load_workbook
@@ -9,15 +10,23 @@ from datetime import datetime
 
 ESTILO_CONCILIADO = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
 ESTILO_NO_CONCILIADO = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
-ESTILO_NUEVO = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
+ESTILO_CABECERA = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+ESTILO_BLANCO = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
 ESTILO_DIFERENCIA = PatternFill(start_color="9CB2D4", end_color="9CB2D4", fill_type="solid")
 
 FUENTE_NEGRITA = Font(bold=True)
-BORDE_FINO = Border(
-    left=Side(style='thin'),
-    right=Side(style='thin'),
-    top=Side(style='thin'),
-    bottom=Side(style='thin')
+FUENTE_ROJA = Font(color="FF0000")
+FUENTE_NEGRITA_ROJA = Font(bold=True, color="FF0000")
+FUENTE_NORMAL = Font(bold=False)
+
+ALINEACION_ESTANDAR = Alignment(wrap_text=True, vertical='top', horizontal='left')
+ALINEACION_CENTRO = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+BORDE_GRUESO = Border(
+    left=Side(style='medium', color="000000"),
+    right=Side(style='medium', color="000000"),
+    top=Side(style='medium', color="000000"),
+    bottom=Side(style='medium', color="000000")
 )
 
 def crear_excel_actualizado(
@@ -26,80 +35,133 @@ def crear_excel_actualizado(
     movimientos_nuevos: List[Dict],
     resultado_conciliacion: Dict,
     mes: int,
-    año: int
+    año: int,
+    nombre_documento: str = ""
 ) -> bytes:
-    try:
-        workbook = load_workbook(io.BytesIO(contenido_excel))
-    except Exception as e:
-        raise ValueError(f"Error al cargar Excel: {str(e)}")
-    
-    if nombre_hoja not in workbook.sheetnames:
-        workbook.create_sheet(nombre_hoja)
-    
-    hoja = workbook[nombre_hoja]
-    ultima_fila = hoja.max_row if hoja.max_row > 1 else 1
-    
-    df_existente = None
-    try:
-        df_existente = pd.read_excel(io.BytesIO(contenido_excel), sheet_name=nombre_hoja)
-    except:
-        pass
-    
-    if df_existente is not None and not df_existente.empty:
-        if "Estado_Conciliacion" not in df_existente.columns:
-            df_existente["Estado_Conciliacion"] = ""
-        if "ID_Extracto" not in df_existente.columns:
-            df_existente["ID_Extracto"] = ""
-        
-        conciliados = resultado_conciliacion.get("conciliados", [])
-        
-        for idx, _ in df_existente.iterrows():
-            encontrado = False
-            for conc in conciliados:
-                mov_contable = conc.get("movimiento_contable", {})
-                if mov_contable.get("id") == idx:
-                    df_existente.at[idx, "Estado_Conciliacion"] = "CONCILIADO"
-                    encontrado = True
+    # 1. Determinar nombre de hoja dinámico basado en las transacciones
+    # IMPORTANTE: no reasignar nombre_hoja en modo histórico si venía ya calculado.
+    # Si el string FECHA no corresponde al mes/año esperado, puedes acabar creando una hoja "incorrecta"
+    # y el usuario percibe que el histórico "no se copia".
+    if movimientos_nuevos and not nombre_hoja:
+        for mov in movimientos_nuevos:
+            fecha_str = mov.get("FECHA")
+            if fecha_str and len(str(fecha_str)) >= 10:
+                try:
+                    dt = datetime.strptime(str(fecha_str), "%d/%m/%Y")
+                    meses_esp = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+                                 "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
+                    nombre_hoja = f"{meses_esp[dt.month-1]} {dt.year}"
                     break
-            
-            if not encontrado:
-                df_existente.at[idx, "Estado_Conciliacion"] = ""
-    
-    no_conciliados = resultado_conciliacion.get("no_conciliados", [])
-    
-    for mov in no_conciliados:
-        mov_extracto = mov.get("movimiento", {})
+                except:
+                    continue
+
+    if not nombre_hoja:
+        raise ValueError("nombre_hoja no puede estar vacío")
+
+
+    # Si no se provee contenido, creamos un libro nuevo (Modo solo extracto)
+    if not contenido_excel:
+        workbook = openpyxl.Workbook()
+        hoja = workbook.active
+        hoja.title = nombre_hoja
+    else:
+        try:
+            workbook = load_workbook(io.BytesIO(contenido_excel))
+        except Exception as e:
+            raise ValueError(f"Error al cargar Excel histórico: {str(e)}")
         
+        # Determinar el nombre final de la hoja para evitar duplicados
+        final_nombre_hoja = nombre_hoja
+        if final_nombre_hoja in workbook.sheetnames:
+            # Si la hoja ya existe, creamos una nueva con un sufijo para preservar la original
+            counter = 1
+            while f"{nombre_hoja} ({counter})" in workbook.sheetnames:
+                counter += 1
+            final_nombre_hoja = f"{nombre_hoja} ({counter})"
+        
+        # Siempre la creamos al final para que sea "la última" y contenga todas las originales
+        hoja = workbook.create_sheet(final_nombre_hoja)
+
+    # Establecer la hoja recién creada como activa para que el Excel se abra por ella
+    workbook.active = workbook.index(hoja)
+
+    # Títulos especiales antes de la cabecera (en columna OBSERVACIONES = 2)
+    # El título del documento es el nombre del segundo archivo (histórico)
+    # Nota: para modo histórico queremos que se vea la copia del histórico completo.
+    # Este código solo añade una hoja nueva al final y NO borra las existentes.
+    cell_doc = hoja.cell(row=1, column=2, value=os.path.splitext(nombre_documento)[0])
+
+    cell_doc.font = Font(bold=True, size=16)
+    cell_doc.alignment = ALINEACION_CENTRO
+
+    cell_sheet = hoja.cell(row=2, column=2, value=nombre_hoja)
+    cell_sheet.font = Font(bold=True, size=14)
+    cell_sheet.alignment = ALINEACION_CENTRO
+
+    # Definir encabezados
+    headers = ["FECHA", "OBSERVACIONES", "IMPORTE", "SALDO", "CONCEPTO"]
+    for col_idx, text in enumerate(headers, 1):
+        cell = hoja.cell(row=4, column=col_idx, value=text)
+        cell.font = FUENTE_NEGRITA
+        cell.alignment = ALINEACION_CENTRO
+        cell.fill = ESTILO_CABECERA
+        cell.border = BORDE_GRUESO
+
+    # La cabecera termina en la fila 4, los datos empiezan en la 5
+    ultima_fila = 4
+    
+    # Usar movimientos_nuevos directamente (los enviados desde la UI editada)
+    for mov_extracto in movimientos_nuevos:
         if not mov_extracto:
             continue
         
         ultima_fila += 1
         
-        fecha = mov_extracto.get("fecha", "")
-        concepto = mov_extracto.get("concepto", "")
+        # Extraer datos con el nuevo mapeo solicitado
+        fecha = mov_extracto.get("FECHA", "")
+        # El PISO ahora es el CONCEPTO principal
+        concepto_piso = mov_extracto.get("CONCEPTO", "") or "Sin asignar"
+        # El CONCEPTO original ahora es OBSERVACIONES
+        observaciones_mov = mov_extracto.get("OBSERVACIONES", "")
         importe = mov_extracto.get("importe", 0)
-        tipo = mov_extracto.get("tipo", "")
-        categoria = mov_extracto.get("categoria", "")
-        
+        saldo_mov = mov_extracto.get("SALDO", 0)
+
         hoja.cell(row=ultima_fila, column=1, value=fecha)
-        hoja.cell(row=ultima_fila, column=2, value=concepto)
-        
-        if tipo == "gasto":
-            hoja.cell(row=ultima_fila, column=3, value=abs(importe) if importe < 0 else 0)
-            hoja.cell(row=ultima_fila, column=4, value=0)
-        else:
-            hoja.cell(row=ultima_fila, column=3, value=0)
-            hoja.cell(row=ultima_fila, column=4, value=abs(importe) if importe > 0 else 0)
-        
-        hoja.cell(row=ultima_fila, column=5, value=categoria)
-        hoja.cell(row=ultima_fila, column=6, value="PENDIENTE")
-        hoja.cell(row=ultima_fila, column=7, value=mov_extracto.get("id_original", "NUEVO"))
-        
-        for col in range(1, 8):
-            hoja.cell(row=ultima_fila, column=col).fill = ESTILO_NUEVO
-    
-    hoja = recalcular_totales(hoja)
-    
+        hoja.cell(row=ultima_fila, column=2, value=observaciones_mov)
+        hoja.cell(row=ultima_fila, column=3, value=importe)
+        hoja.cell(row=ultima_fila, column=4, value=saldo_mov)
+        hoja.cell(row=ultima_fila, column=5, value=concepto_piso)
+
+        is_gasto = float(importe) < 0
+
+        for col in range(1, 6):
+            cell = hoja.cell(row=ultima_fila, column=col)
+            cell.fill = ESTILO_BLANCO
+            cell.border = BORDE_GRUESO
+            
+            # Aplicar alineación según columna
+            if col in [1, 3, 4, 5]:
+                cell.alignment = ALINEACION_CENTRO
+            else:
+                cell.alignment = ALINEACION_ESTANDAR
+            
+            # Estilos de fuente (Rojo para gastos, Negrita para concepto)
+            is_col_concepto = (col == 5)
+            if is_gasto:
+                cell.font = FUENTE_NEGRITA_ROJA if is_col_concepto else FUENTE_ROJA
+            elif is_col_concepto:
+                cell.font = FUENTE_NEGRITA
+            else:
+                cell.font = FUENTE_NORMAL
+
+    # Ajustar anchos de columna automáticamente
+    for col in hoja.columns:
+        max_length = 0
+        column = col[0].column_letter
+        for cell in col:
+            if cell.value: max_length = max(max_length, len(str(cell.value)))
+        hoja.column_dimensions[column].width = min(max_length + 2, 50)
+
     output = io.BytesIO()
     workbook.save(output)
     output.seek(0)
@@ -121,33 +183,23 @@ def recalcular_totales(hoja: openpyxl.worksheet.worksheet.Worksheet) -> openpyxl
         hoja.cell(row=fila_totales, column=1, value="TOTALES")
         hoja.cell(row=fila_totales, column=1).font = FUENTE_NEGRITA
     
-    suma_debe = 0
-    suma_haber = 0
+    suma_importe = 0
     
     for row in range(2, fila_totales):
-        debe_val = hoja.cell(row=row, column=3).value
-        haber_val = hoja.cell(row=row, column=4).value
+        imp_val = hoja.cell(row=row, column=3).value
         
         try:
-            if debe_val:
-                suma_debe += float(debe_val)
+            if imp_val:
+                suma_importe += float(imp_val)
         except:
             pass
         
-        try:
-            if haber_val:
-                suma_haber += float(haber_val)
-        except:
-            pass
-    
-    hoja.cell(row=fila_totales, column=3, value=round(suma_debe, 2))
-    hoja.cell(row=fila_totales, column=4, value=round(suma_haber, 2))
+    # Mostrar el total de movimientos en la columna de importe
+    hoja.cell(row=fila_totales, column=3, value=round(suma_importe, 2))
     hoja.cell(row=fila_totales, column=3).font = FUENTE_NEGRITA
-    hoja.cell(row=fila_totales, column=4).font = FUENTE_NEGRITA
     
-    saldo = suma_haber - suma_debe
-    hoja.cell(row=fila_totales, column=5, value=round(saldo, 2))
-    hoja.cell(row=fila_totales, column=5).font = FUENTE_NEGRITA
+    # El saldo final del periodo en la columna 4
+    hoja.cell(row=fila_totales, column=4).font = FUENTE_NEGRITA
     
     return hoja
 

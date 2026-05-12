@@ -187,74 +187,82 @@ function renderizarTabla(movimientos) {
     
     tbody.innerHTML = '';
     
-    // Determinar opciones por tipo
-    const opcionesIngreso = opcionesCategoria.filter(c => 
-        c.toLowerCase().includes('ingreso')
-    );
-    const opcionesGasto = opcionesCategoria.filter(c => 
-        c.toLowerCase().includes('gasto')
-    );
-    
     movimientos.forEach((mov, idx) => {
         const esIngreso = mov.importe > 0;
-        const catOptions = esIngreso ? opcionesIngreso : opcionesGasto;
         
         const tr = document.createElement('tr');
+        
+        // Punto indicador de histórico
+        let indicadorHistorico = '';
+        if (mov.es_historico) {
+            indicadorHistorico = `<span class="badge-historico" 
+                style="color: #2196f3; cursor: help; margin-right: 5px; font-weight: bold;" 
+                onclick="mostrarDetalleHistorico(${idx})">●</span>`;
+        }
+
         tr.innerHTML = 
-            '<td>' + (mov.fecha || '-') + '</td>' +
-            '<td>' + (mov.concepto || '').substring(0, 35) + ((mov.concepto || '').length > 35 ? '...' : '') + '</td>' +
+            '<td>' + (mov.FECHA || '-') + '</td>' +
+            '<td>' + (mov.OBSERVACIONES || '-') + '</td>' +
             '<td class="' + (esIngreso ? 'tipo-ingreso' : 'tipo-gasto') + '">' +
                 mov.importe.toFixed(2) + ' €' +
             '</td>' +
-            '<td>' +
-                '<select class="select-tipo" data-id="' + idx + '">' +
-                    '<option value="ingreso"' + (esIngreso ? ' selected' : '') + '>Ingreso</option>' +
-                    '<option value="gasto"' + (!esIngreso ? ' selected' : '') + '>Gasto</option>' +
-                '</select>' +
-            '</td>' +
-            '<td>' +
-                '<select class="select-cat" data-id="' + idx + '">' +
-                    catOptions.map(c => '<option value="' + c + '"' + (c === mov.categoria ? ' selected' : '') + '>' + c + '</option>').join('') +
-                '</select>' +
-            '</td>' +
-            '<td>' +
-                '<input type="text" class="input-piso" value="' + (mov.piso || '') + '" data-id="' + idx + '" placeholder="Piso">' +
+            '<td>' + (typeof mov.SALDO === 'number' ? mov.SALDO.toFixed(2) + ' €' : '-') + '</td>' +
+            '<td>' + 
+                indicadorHistorico + 
+                '<input type="text" class="input-concepto-edit" value="' + (mov.CONCEPTO || '') + '" data-id="' + idx + '" style="width: 120px;">' +
             '</td>';
+
         tbody.appendChild(tr);
     });
+}
+
+function mostrarDetalleHistorico(idx) {
+    const mov = movimientosProcesados[idx];
+    if (!mov || !mov.detalle_historico) return;
+
+    const modal = document.getElementById('modalInfo');
+    const body = document.getElementById('modalBody');
+    
+    // Usamos las nuevas claves del detalle_historico para mostrar la información
+    body.innerHTML = `
+        <p><strong>Piso asignado:</strong> ${mov.detalle_historico.piso_asignado}</p>
+        <p><strong>Observación del movimiento actual:</strong> ${mov.detalle_historico.observacion_movimiento_actual}</p>
+        <p><strong>Concepto original del movimiento actual:</strong> ${mov.detalle_historico.concepto_original_movimiento_actual}</p>
+        <p style="background: #f0f7ff; padding: 10px; border-radius: 5px; border-left: 3px solid #2196f3;">
+            ${mov.detalle_historico.motivo}
+        </p>
+    `;
+    
+    modal.style.display = 'block';
 }
 
 function getMovimientosActualizados() {
     const tbody = document.getElementById('tablaBody');
     if (!tbody) return movimientosProcesados;
     
-    const rows = tbody.querySelectorAll('tr');
-    const actualizados = [];
+    const inputs = tbody.querySelectorAll('.input-concepto-edit');
+    const actualizados = [...movimientosProcesados];
     
-    rows.forEach((row, idx) => {
-        const mov = {...movimientosProcesados[idx]};
-        
-        const selectTipo = row.querySelector('.select-tipo');
-        const selectCat = row.querySelector('.select-cat');
-        const inputPiso = row.querySelector('.input-piso');
-        
-        if (selectTipo) mov.tipo = selectTipo.value;
-        if (selectCat) mov.categoria = selectCat.value;
-        if (inputPiso) mov.piso = inputPiso.value;
-        
-        actualizados.push(mov);
+    inputs.forEach(input => {
+        const idx = parseInt(input.getAttribute('data-id'));
+        actualizados[idx].CONCEPTO = input.value;
     });
     
     return actualizados;
 }
 
-async function confirmarYDescargar() {
+async function confirmarYDescargar(modo) {
     const movimientos = getMovimientosActualizados();
     
     mostrarLoading();
     
     try {
-        const response = await fetch('http://127.0.0.1:8000/api/confirmar', {
+        // Para evitar el error 422, enviamos la lista de movimientos directamente.
+        // Pasamos el 'modo' como un parámetro de consulta (URL) para que no rompa la validación del cuerpo.
+        const url = new URL('http://127.0.0.1:8000/api/confirmar');
+        url.searchParams.append('modo', modo);
+
+        const response = await fetch(url, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(movimientos)
@@ -264,19 +272,27 @@ async function confirmarYDescargar() {
         
         const data = await response.json();
         
-        // Decodificar base64
-        const csvContent = atob(data.csv_contenido);
-        
-        // Descargar
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = window.URL.createObjectURL(blob);
+        // Procesar descarga de Excel (Binario desde base64)
+        const byteCharacters = atob(data.excel_contenido);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+        const downloadUrl = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url;
+        a.href = downloadUrl;
         a.download = data.nombre_archivo;
         document.body.appendChild(a);
         a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+        
+        // Retardo para evitar que el navegador cancele la descarga al revocar la URL demasiado pronto
+        setTimeout(() => {
+            window.URL.revokeObjectURL(downloadUrl);
+            if (document.body.contains(a)) document.body.removeChild(a);
+        }, 150);
         
         ocultarLoading();
         mostrarPantalla(3);
@@ -301,7 +317,10 @@ function configurarBotones() {
     
     if (processBtn) processBtn.addEventListener('click', procesarExtracto);
     if (btnAtras) btnAtras.addEventListener('click', () => mostrarPantalla(1));
-    if (btnConfirmar) btnConfirmar.addEventListener('click', confirmarYDescargar);
+    
+    document.getElementById('btnDescargarMensual')?.addEventListener('click', () => confirmarYDescargar('mensual'));
+    document.getElementById('btnDescargarHistorico')?.addEventListener('click', () => confirmarYDescargar('historico'));
+
     if (btnReiniciar) {
         btnReiniciar.addEventListener('click', () => {
             selectedFileExtracto = null;

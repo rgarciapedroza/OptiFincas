@@ -27,14 +27,31 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
     
     col_ordenante = buscar_columna_ordenante(df_extracto)
 
+    # Si es CSV, buscamos la columna que contenga "FECHA PROCESO" explícitamente
+    col_fecha_proceso_csv = None
+    if es_csv:
+        for col in df_extracto.columns:
+            col_up = str(col).upper()
+            if any(x in col_up for x in ["PROCESO", "OPER", "VALOR"]):
+                col_fecha_proceso_csv = col
+                break
+
     for idx, row in df_extracto.iterrows():
+        # Intentamos obtener la fecha. normalizar_fecha devuelve None si encuentra guiones ("-") o nulos.
+        fecha_final = normalizar_fecha(row.get(columnas["fecha"]))
+        
+        # Lógica de fallback: Si la fecha principal no es válida y detectamos "FECHA PROCESO" (común en BBVA), la usamos.
+        if not fecha_final and es_csv and col_fecha_proceso_csv:
+            fecha_final = normalizar_fecha(row.get(col_fecha_proceso_csv))
+
         c_base = str(row.get(columnas["concepto"], "")).strip()
         c_obs = str(row.get(columnas["observaciones"], "")).strip()
-        
         c_ben = str(row.get(col_ordenante, "")).strip() if col_ordenante else ""
 
         concepto_completo = f"{c_base} {c_ben} {c_obs}".strip()
         importe = limpiar_importe(row.get(columnas["importe"], 0))
+        # Corregimos la obtención del saldo usando la columna detectada
+        saldo_val = limpiar_importe(row.get(columnas["saldo"], 0)) if columnas.get("saldo") else 0
         
         if importe == 0: continue
 
@@ -42,23 +59,34 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
         
         mov = {
             "id": idx,
-            "fecha_contable": normalizar_fecha(row.get(columnas["fecha"])),
-            "observaciones": concepto_completo,
+            # Cabeceras en MAYÚSCULAS para la UI y Excel
+            "FECHA": fecha_final or "",
+            "CONCEPTO": resultado_ml["piso"] or "Sin asignar",
+            "OBSERVACIONES": c_obs,
+            "SALDO": saldo_val,
+
+            # Campos técnicos internos (mantener en minúsculas para compatibilidad)
+            "fecha": fecha_final,
+            "concepto": concepto_completo,
             "importe": round(importe, 2),
-            "concepto_original": concepto_completo,
-            "concepto": "Piso desconocido",
+            "saldo": saldo_val,
+            "ordenante": c_ben if col_ordenante else "",
             "piso": resultado_ml["piso"] or "",
             "tipo": resultado_ml["tipo"],
             "categoria": resultado_ml["categoria"],
+            "concepto_original": concepto_completo,
             "confianza": resultado_ml["confianza"],
-            "texto_busqueda_nombres": c_ben if (not es_csv and c_ben) else concepto_completo
+            "metodo_piso": resultado_ml.get("metodo", ""),
+            "texto_busqueda_nombres": c_ben if (not es_csv and c_ben) else concepto_completo,
         }
 
+
+
         if importe < 0:
-            mov["concepto"] = resultado_ml["categoria"]
+            mov["CONCEPTO"] = resultado_ml["categoria"]
             movimientos_con_piso.append(mov)
         elif mov["piso"]:
-            mov["concepto"] = mov["piso"]
+            mov["CONCEPTO"] = mov["piso"]
             movimientos_con_piso.append(mov)
         else:
             movimientos_sin_piso.append(mov)
@@ -71,6 +99,21 @@ def completar_pisos(movimientos_sin_piso, excel_registros, es_csv: bool):
     
     if not es_csv:
         recuperados = aplicar_busqueda_por_ordenante(excel_registros, recuperados)
+        
+    # Marcamos los movimientos recuperados del histórico para la UI
+    for m in recuperados:
+        m["es_historico"] = True
+        # Guardamos el motivo de la asignación para el modal
+        # Se usan las claves del movimiento actual que se está procesando
+        m["detalle_historico"] = {
+            "piso_asignado": m.get("piso", "N/A"),
+            "observacion_movimiento_actual": m.get("OBSERVACIONES", "N/A"),
+            "concepto_original_movimiento_actual": m.get("concepto_original", "N/A"),
+            "motivo": "Coincidencia encontrada en registros históricos de meses anteriores."
+        }
+        # Asegurar que el piso recuperado se asigne a la columna visible CONCEPTO
+        if m.get("piso"):
+            m["CONCEPTO"] = m["piso"]
         
     return recuperados
 
@@ -91,12 +134,16 @@ def procesar_extracto_y_registros(extracto: UploadFile, registros: UploadFile, c
     movimientos_finales = sorted(movimientos_finales, key=lambda m: m["id"])
 
     for m in movimientos_finales:
-        if m["importe"] > 0:
-            if m.get("piso") and str(m["piso"]).strip():
-                m["concepto"] = m["piso"]
-            else:
-                m["concepto"] = "Piso desconocido"
-
+        piso_id = str(m.get("piso", "")).strip()
+        
+        # Si se identificó un piso (por ML o histórico) y CONCEPTO aún es un valor por defecto, asignarlo.
+        if piso_id:
+            if m.get("CONCEPTO") in ["Sin asignar", "Piso desconocido", "", None]:
+                m["CONCEPTO"] = piso_id
+        # Si no se identificó piso y CONCEPTO es un valor por defecto, establecer "Piso desconocido".
+        elif m.get("CONCEPTO") in ["Sin asignar", "", None]:
+            m["CONCEPTO"] = "Piso desconocido"
+        
     total_ingresos = sum(m["importe"] for m in movimientos_finales if m["importe"] > 0)
     total_gastos = sum(abs(m["importe"]) for m in movimientos_finales if m["importe"] < 0)
     
