@@ -94,6 +94,8 @@ async def procesar_dos_archivos_controller(extracto: UploadFile, registros: Uplo
     _extracto_filename = extracto.filename # Guardar el nombre del archivo de extracto
 
     resultado = procesar_extracto_y_registros(extracto, registros, clasificador)
+    
+    es_excel = extracto.filename.lower().endswith((".xlsx", ".xls"))
     _movimientos_procesados = resultado["movimientos_clasificados"]
 
     return {
@@ -105,7 +107,8 @@ async def procesar_dos_archivos_controller(extracto: UploadFile, registros: Uplo
             "saldo_neto": resultado["saldo_neto"]
         },
         "movimientos_clasificados": resultado["movimientos_clasificados"],
-        "resumen_categorias": resultado["resumen_categorias"]
+        "resumen_categorias": resultado["resumen_categorias"],
+        "es_excel": es_excel
     }
 
 async def confirmar_controller(movimientos_actualizados: list[dict], modo: str = "mensual"):
@@ -113,6 +116,77 @@ async def confirmar_controller(movimientos_actualizados: list[dict], modo: str =
 
     _movimientos_procesados = movimientos_actualizados
 
+    # Crear un DataFrame de Pandas para asegurar el orden de las columnas
+    df_movimientos = pd.DataFrame(movimientos_actualizados)
+
+    es_excel_extracto = _extracto_filename.lower().endswith((".xlsx", ".xls"))
+
+    # Asegurar que las columnas existan y tengan el nombre correcto antes de reordenar
+    mapeo = {
+        "fecha": "FECHA", 
+        "ordenante": "ORDENANTE", 
+        "beneficiario": "ORDENANTE",
+        "observaciones": "OBSERVACIONES",
+        "observación": "OBSERVACIONES",
+        "importe": "IMPORTE", 
+        "saldo": "SALDO", 
+        "concepto": "CONCEPTO"
+    }
+    
+    # Normalización agresiva de columnas basadas en el mapeo
+    for col_old, col_new in mapeo.items():
+        # Si es un CSV, no queremos crear la columna ORDENANTE
+        if col_new == "ORDENANTE" and not es_excel_extracto:
+            continue
+        for actual_col in df_movimientos.columns:
+            if col_old in actual_col.lower():
+                # Si la columna destino está vacía o es 0, intentamos llenarla con el valor de la columna encontrada
+                if col_new not in df_movimientos.columns:
+                    df_movimientos[col_new] = df_movimientos[actual_col]
+                else:
+                    # Evitar convertir NaN a la cadena literal "nan"
+                    val_clean = df_movimientos[col_new].fillna("")
+                    serie_destino = val_clean.astype(str).str.strip()
+                    vacio = serie_destino.isin(['', '0', '0.0', 'nan', 'None']).all()
+                    if vacio:
+                        df_movimientos[col_new] = df_movimientos[actual_col]
+
+    # Asegurar que las columnas clave existan (excluyendo ORDENANTE si no es excel)
+    columnas_clave = ["FECHA", "OBSERVACIONES", "IMPORTE", "SALDO", "CONCEPTO"]
+    if es_excel_extracto:
+        columnas_clave.insert(1, "ORDENANTE")
+
+    for col in columnas_clave:
+        if col not in df_movimientos.columns:
+            df_movimientos[col] = ""
+        else:
+            # Limpieza final para evitar "nan" en el Excel
+            if col not in ["IMPORTE", "SALDO"]:
+                df_movimientos[col] = df_movimientos[col].fillna("").astype(str).replace("nan", "")
+
+    # Convertir a numérico para evitar que el Excel trate los números como texto
+    for col_num in ["IMPORTE", "SALDO"]:
+        # Limpiar posibles formatos de string antes de convertir
+        if df_movimientos[col_num].dtype == object:
+            df_movimientos[col_num] = df_movimientos[col_num].astype(str).str.replace(',', '.')
+        df_movimientos[col_num] = pd.to_numeric(df_movimientos[col_num], errors="coerce").fillna(0)
+
+    # Definir el orden deseado de las columnas principales
+    core_cols_order = ["FECHA"]
+    if es_excel_extracto:
+        core_cols_order.append("ORDENANTE")
+    core_cols_order.extend(["OBSERVACIONES", "IMPORTE", "SALDO", "CONCEPTO"])
+
+    # Obtener todas las columnas existentes en el DataFrame
+    all_cols = df_movimientos.columns.tolist()
+    
+    # Construir el orden final de las columnas: las principales primero, luego el resto
+    final_cols_order = [col for col in core_cols_order if col in all_cols]
+    final_cols_order.extend([col for col in all_cols if col not in final_cols_order])
+
+    # Reindexar el DataFrame para aplicar el orden de las columnas
+    df_movimientos = df_movimientos.reindex(columns=final_cols_order)
+    
     # Determinar nombre de hoja (MES AÑO en MAYUSCULAS) basado en los datos
     hoja_nombre = obtener_nombre_hoja(_mes, _año).upper()
     if movimientos_actualizados:
@@ -132,16 +206,6 @@ async def confirmar_controller(movimientos_actualizados: list[dict], modo: str =
     # Limpiar el nombre del archivo histórico de mes y año para el título interno
     nombre_limpio = nombre_base_registros
     meses_es = r"(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)"
-    
-    # 1. Eliminar mes literal
-    nombre_limpio = re.sub(rf"[-_\s]?{meses_es}\b", "", nombre_limpio, flags=re.IGNORECASE)
-    # 2. Eliminar años (4 dígitos o 2 dígitos precedidos de separador)
-    nombre_limpio = re.sub(r"[-_\s]?\d{4}\b", "", nombre_limpio)
-    nombre_limpio = re.sub(r"[-_\s]\d{2}\b", "", nombre_limpio)
-    # 3. Eliminar meses numéricos (_01, -01, etc.)
-    nombre_limpio = re.sub(r"[-_](0[1-9]|1[0-2])\b", "", nombre_limpio)
-    # 4. Limpiar separadores sobrantes al inicio o al final
-    nombre_limpio = re.sub(r"^[-_\s]+|[-_\s]+$", "", nombre_limpio)
     
     if not nombre_limpio:
         nombre_limpio = "Registros"
@@ -163,11 +227,12 @@ async def confirmar_controller(movimientos_actualizados: list[dict], modo: str =
     excel_bytes = crear_excel_actualizado(
         contenido_excel=base_excel_content,
         nombre_hoja=hoja_nombre,
-        movimientos_nuevos=movimientos_actualizados,
+        movimientos_nuevos=df_movimientos.to_dict(orient="records"), # Convertir a lista de diccionarios con el orden de columnas garantizado
         resultado_conciliacion={}, # No se requiere conciliación completa para esta descarga
         mes=_mes,
         año=_año,
-        nombre_documento=document_name_for_excel
+        nombre_documento=document_name_for_excel,
+        es_excel=es_excel_extracto
     )
 
     excel_base64 = base64.b64encode(excel_bytes).decode("utf-8")
@@ -182,13 +247,16 @@ async def confirmar_controller(movimientos_actualizados: list[dict], modo: str =
 async def descargar_controller(movimientos_actualizados: list[dict], formato: str):
     df = pd.DataFrame(movimientos_actualizados)
 
+    # (Usamos la extensión real del extracto que se guardó globalmente en `procesar_dos_archivos_controller`).
+    es_excel_extracto = _extracto_filename.lower().endswith((".xlsx", ".xls"))
+
     cols_order = [
-        "fecha",
-        "ordenante",
-        "observaciones",
-        "importe",
-        "saldo",
-        "concepto",
+        "FECHA",
+        "ORDENANTE" if (es_excel_extracto and "ORDENANTE" in df.columns) else None,
+        "OBSERVACIONES",
+        "IMPORTE",
+        "SALDO",
+        "CONCEPTO",
         "piso",
         "tipo",
         "categoria",
@@ -196,7 +264,8 @@ async def descargar_controller(movimientos_actualizados: list[dict], formato: st
         "metodo_piso"
     ]
 
-    cols_order = [c for c in cols_order if c in df.columns]
+    cols_order = [c for c in cols_order if c is not None and c in df.columns]
+
     df = df[cols_order]
 
     if formato == "excel":
@@ -223,8 +292,13 @@ async def descargar_controller(movimientos_actualizados: list[dict], formato: st
 
 async def descargar_excel_controller(movimientos_actualizados: list[dict]):
     df = pd.DataFrame(movimientos_actualizados)
+    es_excel_extracto = _extracto_filename.lower().endswith((".xlsx", ".xls"))
 
-    cols_order = ["fecha", "ordenante", "observaciones", "importe", "saldo", "concepto"]
+    cols_order = ["FECHA"]
+    if es_excel_extracto:
+        cols_order.append("ORDENANTE")
+    cols_order.extend(["OBSERVACIONES", "IMPORTE", "SALDO", "CONCEPTO"])
+
     cols_order = [c for c in cols_order if c in df.columns]
     df = df[cols_order]
 

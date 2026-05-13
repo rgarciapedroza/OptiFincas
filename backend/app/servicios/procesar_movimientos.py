@@ -36,6 +36,12 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
                 col_fecha_proceso_csv = col
                 break
 
+    def clean_str(val):
+        if pd.isna(val) or val is None:
+            return ""
+        s = str(val).strip()
+        return "" if s.lower() == "nan" else s
+
     for idx, row in df_extracto.iterrows():
         # Intentamos obtener la fecha. normalizar_fecha devuelve None si encuentra guiones ("-") o nulos.
         fecha_final = normalizar_fecha(row.get(columnas["fecha"]))
@@ -44,9 +50,9 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
         if not fecha_final and es_csv and col_fecha_proceso_csv:
             fecha_final = normalizar_fecha(row.get(col_fecha_proceso_csv))
 
-        c_base = str(row.get(columnas["concepto"], "")).strip()
-        c_obs = str(row.get(columnas["observaciones"], "")).strip()
-        c_ben = str(row.get(col_ordenante, "")).strip() if col_ordenante else ""
+        c_base = clean_str(row.get(columnas["concepto"]))
+        c_obs = clean_str(row.get(columnas["observaciones"]))
+        c_ben = clean_str(row.get(col_ordenante)) if col_ordenante else ""
 
         concepto_completo = f"{c_base} {c_ben} {c_obs}".strip()
         importe = limpiar_importe(row.get(columnas["importe"], 0))
@@ -64,13 +70,15 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
             "CONCEPTO": resultado_ml["piso"] or "Sin asignar",
             "OBSERVACIONES": c_obs,
             "SALDO": saldo_val,
+            "IMPORTE": round(importe, 2),
 
             # Campos técnicos internos (mantener en minúsculas para compatibilidad)
             "fecha": fecha_final,
             "concepto": concepto_completo,
             "importe": round(importe, 2),
             "saldo": saldo_val,
-            "ordenante": c_ben if col_ordenante else "",
+            "ordenante": c_ben if (col_ordenante and not es_csv) else "", # En UI mostrar solo si no es CSV
+
             "piso": resultado_ml["piso"] or "",
             "tipo": resultado_ml["tipo"],
             "categoria": resultado_ml["categoria"],
@@ -79,6 +87,10 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
             "metodo_piso": resultado_ml.get("metodo", ""),
             "texto_busqueda_nombres": c_ben if (not es_csv and c_ben) else concepto_completo,
         }
+
+        # Para la visualización en la UI, incluimos ORDENANTE solo si es Excel
+        if not es_csv and col_ordenante:
+            mov["ORDENANTE"] = c_ben
 
 
 
@@ -103,14 +115,23 @@ def completar_pisos(movimientos_sin_piso, excel_registros, es_csv: bool):
     # Marcamos los movimientos recuperados del histórico para la UI
     for m in recuperados:
         m["es_historico"] = True
+        
         # Guardamos el motivo de la asignación para el modal
-        # Se usan las claves del movimiento actual que se está procesando
-        m["detalle_historico"] = {
-            "piso_asignado": m.get("piso", "N/A"),
-            "observacion_movimiento_actual": m.get("OBSERVACIONES", "N/A"),
-            "concepto_original_movimiento_actual": m.get("concepto_original", "N/A"),
-            "motivo": "Coincidencia encontrada en registros históricos de meses anteriores."
-        }
+        if es_csv:
+            m["detalle_historico"] = {
+                "piso_encontrado": m.get("piso", "N/A"),
+                "observacion_historica": m.get("observacion_historica", "N/A"),
+                "concepto_original": m.get("concepto_original", "N/A"),
+                "motivo": "Coincidencia encontrada en registros históricos."
+            }
+        else:
+            m["detalle_historico"] = {
+                "piso_asignado": m.get("piso", "N/A"),
+                "ordenante_actual": m.get("ORDENANTE") or m.get("ordenante") or "N/A",
+                "ordenante_identificado": m.get("ordenante_historico") or "N/A",
+                "motivo": "Coincidencia encontrada por nombre del ordenante en el histórico."
+            }
+
         # Asegurar que el piso recuperado se asigne a la columna visible CONCEPTO
         if m.get("piso"):
             m["CONCEPTO"] = m["piso"]
@@ -132,6 +153,19 @@ def procesar_extracto_y_registros(extracto: UploadFile, registros: UploadFile, c
     
     movimientos_finales = movimientos_con_piso + recuperados
     movimientos_finales = sorted(movimientos_finales, key=lambda m: m["id"])
+
+    # Si es CSV, nos aseguramos de que no existan las claves de ORDENANTE para evitar ruidos en la UI
+    if es_csv:
+        columnas_visibles_csv = ["FECHA", "OBSERVACIONES", "IMPORTE", "SALDO", "CONCEPTO"]
+        for i, m in enumerate(movimientos_finales):
+            # Eliminamos claves de ordenante si existen
+            m.pop("ORDENANTE", None)
+            m.pop("ordenante", None)
+            # Reordenamos el diccionario para que las claves principales aparezcan primero (opcional, ayuda a depurar)
+            ordenado = {k: m[k] for k in ["id"] + columnas_visibles_csv if k in m}
+            # Añadimos el resto de campos técnicos al final
+            ordenado.update({k: v for k, v in m.items() if k not in ordenado})
+            movimientos_finales[i] = ordenado
 
     for m in movimientos_finales:
         piso_id = str(m.get("piso", "")).strip()

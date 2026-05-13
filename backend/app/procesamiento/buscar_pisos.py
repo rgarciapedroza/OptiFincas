@@ -94,6 +94,8 @@ def buscar_pisos_en_registro(df_registro, movimientos_sin_piso):
         nombre1, nombre2 = palabras_nombre[:2]
 
         mejor_piso = None
+        mejor_nombre_identificado = None
+        mejor_obs_identificada = None
         mejor_score = 0.0
 
         for _, row in df_registro.iterrows():
@@ -113,8 +115,13 @@ def buscar_pisos_en_registro(df_registro, movimientos_sin_piso):
                 if score_total > mejor_score:
                     mejor_score = score_total
                     mejor_piso = piso_reg
+                    mejor_nombre_identificado = str(row.get(col_concepto, ""))
+                    mejor_obs_identificada = str(row.get(col_observ, ""))
 
         mov["piso"] = mejor_piso or ""
+        if mejor_piso:
+            mov["ordenante_historico"] = mejor_nombre_identificado
+            mov["observacion_historica"] = mejor_obs_identificada
         recuperados.append(mov)
 
     return recuperados
