@@ -57,7 +57,7 @@ body {
 
 .header h1 {
     font-size: 1.8em;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
 }
 
 .header p {
@@ -89,12 +89,18 @@ body {
 .upload-zone {
     border: 3px dashed var(--primary);
     border-radius: 12px;
-    padding: 40px 20px;
+    padding: 34px 20px;
     cursor: pointer;
     transition: all 0.3s ease;
     background: #f8f9ff;
-    margin-bottom: 15px;
+    margin-bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 165px;
 }
+
 
 .upload-zone:hover {
     background: #e8ecff;
@@ -117,18 +123,80 @@ body {
     font-size: 1.1em;
 }
 
+.upload-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    align-items: start;
+    margin: 0 auto;
+}
+
+.upload-col {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+
+.upload-label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: var(--dark);
+}
+
 .file-info {
-    margin-top: 15px;
-    padding: 10px 20px;
-    background: #e8f5e9;
-    border-radius: 8px;
-    color: #2e7d32;
+    margin-top: 10px;
     display: none;
 }
 
-.file-info.show {
+/* Cuando hay archivo, lo mostramos como un “pill” alineado con el upload */
+.file-info > .file-item-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: #e8f5e9;
+    border-radius: 999px;
+    color: #2e7d32;
+    max-width: 100%;
+}
+
+.file-info.show,
+.file-info:not(:empty) {
     display: block;
 }
+
+.file-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 280px;
+}
+
+.remove-file-btn {
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 999px;
+    background: #c8e6c9;
+    color: #2e7d32;
+    cursor: pointer;
+    font-weight: 700;
+    line-height: 24px;
+    padding: 0;
+}
+
+@media (max-width: 768px) {
+    .upload-grid {
+        grid-template-columns: 1fr;
+    }
+    .file-name {
+        max-width: 200px;
+    }
+}
+
 
 /* ==================== Botones ==================== */
 
@@ -137,7 +205,7 @@ body {
     color: var(--white);
     border: none;
     padding: 15px 40px;
-    font-size: 1.1em;
+    font-size: 1em; /* Ligeramente más pequeño */
     border-radius: 8px;
     cursor: pointer;
     margin: 10px 5px;
@@ -154,6 +222,12 @@ body {
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
+}
+
+.btn-ready {
+    background: linear-gradient(135deg, var(--success) 0%, #388e3c 100%) !important;
+    box-shadow: 0 10px 15px -3px rgba(76, 175, 80, 0.3);
+    transform: scale(1.02);
 }
 
 .btn-success {
@@ -211,6 +285,11 @@ body {
     background: #f8f9ff;
 }
 
+.section-title {
+    font-size: 1.4em;
+    margin-bottom: 20px;
+}
+
 /* ==================== Inputs ==================== */
 
 input[type="text"],
@@ -256,11 +335,15 @@ select:focus {
     display: none;
 }
 
-.loading.show {
-    display: block;
+.loading {
+    text-align: center;
+    padding: 20px; /* Reducir padding */
+    display: none; /* Oculto por defecto */
 }
 
-.spinner {
+.loading.show { display: block; }
+
+.loading .spinner {
     border: 4px solid #f3f3f3;
     border-top: 4px solid var(--primary);
     border-radius: 50%;
@@ -268,6 +351,7 @@ select:focus {
     height: 50px;
     animation: spin 1s linear infinite;
     margin: 0 auto 20px;
+    margin-top: 10px; /* Espacio entre el texto "Procesando..." y el spinner */
 }
 
 @keyframes spin {
@@ -341,15 +425,77 @@ select:focus {
     padding-top: 20px;
     border-top: 1px solid var(--border);
 }
+.actions-bottom {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+}
 
 .actions-row {
     display: flex;
     justify-content: center;
     gap: 10px;
     flex-wrap: wrap;
+    margin-top: 10px;
 }
 
+/* ==================== Modal ==================== */
+.modal {
+    display: none; /* Hidden by default */
+    position: fixed; /* Stay in place */
+    z-index: 1000; /* Sit on top */
+    left: 0;
+    top: 0;
+    width: 100%; /* Full width */
+    height: 100%; /* Full height */
+    overflow: auto; /* Enable scroll if needed */
+    background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background-color: var(--white);
+    margin: auto;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    width: 90%;
+    max-width: 500px;
+    position: relative;
+    text-align: center;
+}
+
+.modal-content h2 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    color: var(--dark);
+    font-size: 1.5em;
+}
+
+.modal-content .btn {
+    display: block; /* Botones apilados */
+    width: 80%;
+    margin: 15px auto;
+}
+
+.close-button {
+    color: var(--gray);
+    position: absolute;
+    top: 15px;
+    right: 25px;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+/* Ajuste para que “file-info” no cambie el alto percibido */
+.has-file .upload-text { display: none; }
+
 /* ==================== Responsive ==================== */
+
 
 @media (max-width: 768px) {
     .container {

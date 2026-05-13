@@ -36,7 +36,8 @@ def crear_excel_actualizado(
     resultado_conciliacion: Dict,
     mes: int,
     año: int,
-    nombre_documento: str = ""
+    nombre_documento: str = "",
+    es_excel: bool = True
 ) -> bytes:
     # 1. Determinar nombre de hoja dinámico basado en las transacciones
     # IMPORTANTE: no reasignar nombre_hoja en modo histórico si venía ya calculado.
@@ -98,8 +99,11 @@ def crear_excel_actualizado(
     cell_sheet.font = Font(bold=True, size=14)
     cell_sheet.alignment = ALINEACION_CENTRO
 
-    # Definir encabezados
+    # Definir encabezados dinámicamente según la presencia de ORDENANTE
     headers = ["FECHA", "OBSERVACIONES", "IMPORTE", "SALDO", "CONCEPTO"]
+    if es_excel: # Si el archivo original era Excel, siempre incluimos ORDENANTE
+        headers.insert(1, "ORDENANTE")
+
     for col_idx, text in enumerate(headers, 1):
         cell = hoja.cell(row=4, column=col_idx, value=text)
         cell.font = FUENTE_NEGRITA
@@ -117,36 +121,27 @@ def crear_excel_actualizado(
         
         ultima_fila += 1
         
-        # Extraer datos con el nuevo mapeo solicitado
-        fecha = mov_extracto.get("FECHA", "")
-        # El PISO ahora es el CONCEPTO principal
-        concepto_piso = mov_extracto.get("CONCEPTO", "") or "Sin asignar"
-        # El CONCEPTO original ahora es OBSERVACIONES
-        observaciones_mov = mov_extracto.get("OBSERVACIONES", "")
-        importe = mov_extracto.get("importe", 0)
-        saldo_mov = mov_extracto.get("SALDO", 0)
+        is_gasto = float(mov_extracto.get("IMPORTE", 0)) < 0
 
-        hoja.cell(row=ultima_fila, column=1, value=fecha)
-        hoja.cell(row=ultima_fila, column=2, value=observaciones_mov)
-        hoja.cell(row=ultima_fila, column=3, value=importe)
-        hoja.cell(row=ultima_fila, column=4, value=saldo_mov)
-        hoja.cell(row=ultima_fila, column=5, value=concepto_piso)
-
-        is_gasto = float(importe) < 0
-
-        for col in range(1, 6):
-            cell = hoja.cell(row=ultima_fila, column=col)
+        for col_idx, header in enumerate(headers, 1):
+            val = mov_extracto.get(header, "")
+            if header == "CONCEPTO" and (not val or str(val).lower() == "nan"):
+                val = "Sin asignar"
+            
+            cell = hoja.cell(row=ultima_fila, column=col_idx, value=val)
             cell.fill = ESTILO_BLANCO
             cell.border = BORDE_GRUESO
             
-            # Aplicar alineación según columna
-            if col in [1, 3, 4, 5]:
-                cell.alignment = ALINEACION_CENTRO
-            else:
+            # Aplicar alineación según requerimiento:
+            # Excel: ORDENANTE y OBSERVACIONES a la izquierda, resto centradas.
+            # CSV: OBSERVACIONES a la izquierda, resto centradas.
+            if header == "OBSERVACIONES" or (es_excel and header == "ORDENANTE"):
                 cell.alignment = ALINEACION_ESTANDAR
+            else:
+                cell.alignment = ALINEACION_CENTRO
             
             # Estilos de fuente (Rojo para gastos, Negrita para concepto)
-            is_col_concepto = (col == 5)
+            is_col_concepto = (header == "CONCEPTO")
             if is_gasto:
                 cell.font = FUENTE_NEGRITA_ROJA if is_col_concepto else FUENTE_ROJA
             elif is_col_concepto:

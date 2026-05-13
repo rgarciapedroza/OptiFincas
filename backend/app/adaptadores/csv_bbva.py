@@ -10,13 +10,13 @@ def leer_extracto_csv(upload_file):
     except:
         df = pd.read_csv(io.StringIO(contenido.decode("utf-8")))
 
-    df.columns = [str(c).strip() for c in df.columns]
+    df.columns = [str(c).strip().lower() for c in df.columns]
 
-    concepto = df["concepto"].astype(str) if "concepto" in df.columns else pd.Series([""] * len(df))
-    observ = df["observaciones"].astype(str) if "observaciones" in df.columns else pd.Series([""] * len(df))
+    concepto = df["concepto"].fillna("").astype(str) if "concepto" in df.columns else pd.Series("", index=df.index)
+    observ = df["observaciones"].fillna("").astype(str) if "observaciones" in df.columns else pd.Series("", index=df.index)
 
     posibles_ordenantes = ["beneficiario/ordenante", "ordenante", "beneficiario", "titular", "nombre"]
-    col_ordenante = next((c for c in df.columns if c.lower() in posibles_ordenantes), None)
+    col_ordenante = next((c for c in df.columns if c in posibles_ordenantes), None)
 
     if col_ordenante:
         ordenante = df[col_ordenante].fillna("").astype(str)

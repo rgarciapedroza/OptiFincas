@@ -9,8 +9,8 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🏦 Procesador de Extractos Bancarios</h1>
-            <p>Sube tu extracto, clasifica movimientos y descarga el resultado</p>
+<h1>Procesador de Extractos Bancarios</h1>
+<p>Sube tu extracto bancario y el registro histórico, clasifica movimientos y descarga el resultado</p>
         </div>
         
         <div id="error" class="error"></div>
@@ -18,29 +18,35 @@
 <!-- ==================== PANTALLA 1 ==================== -->
         <div id="pantalla1" class="pantalla show">
             <div class="upload-section">
-                <h3 class="section-title">📤 Subir Archivos</h3>
+<h3 class="section-title">Subir Archivos</h3>
                 
+<div class="upload-grid">
                 <!-- Extracto del mes actual -->
-                <label style="display:block; margin-bottom:5px; font-weight:600;">📅 Extracto de Este Mes</label>
-                <div class="upload-zone" id="uploadZoneExtracto">
-                    <div class="upload-icon">🏦</div>
-                    <div class="upload-text">
-                        Arrastra el Extracto Bancario (CSV) aquí<br>o haz clic para seleccionar
+                <div class="upload-col">
+                    <label class="upload-label">Extracto de este mes</label>
+                    <div class="upload-zone" id="uploadZoneExtracto">
+                        <div class="upload-icon"></div>
+                        <div class="upload-text">
+                            Arrastra el extracto bancario (CSV o Excel) aquí<br>o haz clic para seleccionar
+                        </div>
+                        <input type="file" id="fileInputExtracto" accept=".csv,.xlsx,.xls" hidden>
                     </div>
-                    <input type="file" id="fileInputExtracto" accept=".csv,.xlsx,.xls" hidden>
+                    <div class="file-info" id="fileInfoExtracto"></div>
                 </div>
-                <div class="file-info" id="fileInfoExtracto"></div>
-                
+
                 <!-- Registro de extractos mensuales -->
-                <label style="display:block; margin:20px 0 5px; font-weight:600;">📊 Registro de Extractos Mensuales</label>
-                <div class="upload-zone" id="uploadZoneRegistros">
-                    <div class="upload-icon">📋</div>
-                    <div class="upload-text">
-                        Arrastra el Registro de Extractos (CSV) aquí<br>o haz clic para seleccionar
+                <div class="upload-col">
+                    <label class="upload-label">Registro de extractos mensuales</label>
+                    <div class="upload-zone" id="uploadZoneRegistros">
+                        <div class="upload-icon"></div>
+                        <div class="upload-text">
+                            Arrastra el registro histórico aquí<br>o haz clic para seleccionar
+                        </div>
+                        <input type="file" id="fileInputRegistros" accept=".csv,.xlsx,.xls" hidden>
                     </div>
-                    <input type="file" id="fileInputRegistros" accept=".csv,.xlsx,.xls" hidden>
+                    <div class="file-info" id="fileInfoRegistros"></div>
                 </div>
-                <div class="file-info" id="fileInfoRegistros"></div>
+            </div>
                 
                 <div class="actions">
                     <button class="btn" id="processBtn" disabled>Procesar</button>
@@ -65,7 +71,7 @@
                 </div>
             </div>
             
-            <h3 class="section-title">✏️ Revisa y Corrige las clasificaciones</h3>
+<h3 class="section-title">Revisa y Corrige las clasificaciones</h3>
             <p style="margin-bottom: 15px; color: #666; font-size: 0.9em;">
                 Edita el Piso, Tipo y Categoría si es necesario
             </p>
@@ -75,6 +81,7 @@
                     <thead>
                         <tr>
                             <th>FECHA</th>
+                            <th>ORDENANTE</th>
                             <th>OBSERVACIONES</th>
                             <th>IMPORTE</th>
                             <th>SALDO</th>
@@ -85,22 +92,27 @@
                 </table>
             </div>
             
-            <div class="actions">
-                <button class="btn btn-secondary" id="btnAtras">← Atrás</button>
-                <button class="btn btn-info" id="btnDescargarMensual">Solo Extracto Mensual</button>
-                <button class="btn btn-success" id="btnDescargarHistorico">Actualizar Histórico (Excel)</button>
+            <div class="actions" id="actionButtons">
+                <button class="btn btn-secondary" id="btnAtras">Atrás</button>
+                <button class="btn btn-info" id="btnDescargarMensual">Descargar Extracto Mensual</button>
+                <button class="btn btn-success" id="btnDescargarHistorico">Descargar histórico actualizado</button>
+            </div>
+            
+            <div class="loading" id="actionButtonsLoading">
+                <div class="spinner"></div>
+                <p>Procesando...</p>
             </div>
         </div>
         
         <!-- ==================== PANTALLA 3 ==================== -->
         <div id="pantalla3" class="pantalla">
-            <div class="text-center p-20">
-                <div class="upload-icon">✅</div>
-                <h3>¡Completado!</h3>
+<div class="text-center p-20">
+                <div class="upload-icon"></div>
+<h3>Proceso completado</h3>
                 <p style="margin: 20px 0; color: #666;">
                     Los movimientos se han clasificado y descargado.
                 </p>
-                <button class="btn btn-secondary" id="btnReiniciar">🔄 Procesar Otro</button>
+<button class="btn btn-secondary" id="btnReiniciar">Procesar otro</button>
             </div>
         </div>
         
@@ -113,7 +125,7 @@
     <!-- Modal para detalles de asignación histórica -->
     <div id="modalInfo" class="error" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000; max-width: 500px; box-shadow: 0 5px 30px rgba(0,0,0,0.5); display: none; background: white;">
         <div style="padding: 20px;">
-            <h3 style="margin-top: 0; color: var(--primary-dark);">ℹ️ Detalle de Asignación</h3>
+<h3 style="margin-top: 0; color: var(--primary-dark);">Detalle de asignación</h3>
             <hr>
             <div id="modalBody" style="margin: 15px 0; font-size: 0.9em; color: #444; line-height: 1.4;"></div>
             <button class="btn btn-secondary" onclick="document.getElementById('modalInfo').style.display='none'" style="padding: 8px 20px; font-size: 0.9em;">Cerrar</button>

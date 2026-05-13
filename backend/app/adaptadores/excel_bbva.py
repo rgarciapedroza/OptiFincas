@@ -23,8 +23,8 @@ def leer_extracto_excel(upload_file):
     ]
     col_ordenante = next((c for c in df.columns if c in posibles_ordenantes), None)
 
-    concepto = df.get("concepto", "").astype(str)
-    observ = df.get("observaciones", "").astype(str)
+    concepto = df["concepto"].fillna("").astype(str) if "concepto" in df.columns else pd.Series("", index=df.index)
+    observ = df["observaciones"].fillna("").astype(str) if "observaciones" in df.columns else pd.Series("", index=df.index)
 
     if col_ordenante:
         ordenante = df[col_ordenante].fillna("").astype(str)
