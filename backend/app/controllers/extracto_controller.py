@@ -130,7 +130,10 @@ async def confirmar_controller(movimientos_actualizados: list[dict], modo: str =
         "observación": "OBSERVACIONES",
         "importe": "IMPORTE", 
         "saldo": "SALDO", 
-        "concepto": "CONCEPTO"
+        "concepto": "CONCEPTO",
+        "piso": "CONCEPTO",
+        "categoria": "categoria",
+        "tipo": "tipo"
     }
     
     # Normalización agresiva de columnas basadas en el mapeo
@@ -186,6 +189,17 @@ async def confirmar_controller(movimientos_actualizados: list[dict], modo: str =
 
     # Reindexar el DataFrame para aplicar el orden de las columnas
     df_movimientos = df_movimientos.reindex(columns=final_cols_order)
+
+    # DEBUG: Ver exactamente qué datos vamos a enviar al frontend (confirmar/descarga)
+    try:
+        print("\n[DEBUG CONFIRMAR] Columnas df_movimientos:", list(df_movimientos.columns))
+        sample = df_movimientos.head(5).to_dict(orient="records")
+        print("[DEBUG CONFIRMAR] Sample movimientos (head=5):")
+        for i, mov in enumerate(sample):
+            print(f"  #{i+1}: FECHA={mov.get('FECHA')!r} | CONCEPTO={mov.get('CONCEPTO')!r} | IMPORTE={mov.get('IMPORTE')!r} | SALDO={mov.get('SALDO')!r}")
+    except Exception as e:
+        print("[DEBUG CONFIRMAR] Error imprimiendo debug:", str(e))
+
     
     # Determinar nombre de hoja (MES AÑO en MAYUSCULAS) basado en los datos
     hoja_nombre = obtener_nombre_hoja(_mes, _año).upper()

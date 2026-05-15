@@ -11,29 +11,26 @@ Sistema completo para procesar extractos bancarios con las siguientes caracterí
 
 ## Arquitectura
 
+El sistema se compone de dos partes principales:
+
+1.  **Backend (Python FastAPI):**
+    *   Ubicación: `backend/`
+    *   Tecnología: Python con el framework FastAPI.
+    *   Funcionalidad: Procesa los archivos de extractos bancarios, aplica lógica de Machine Learning y expresiones regulares para la clasificación de movimientos y detección de pisos, y expone una API RESTful para el frontend.
+
+2.  **Frontend (Angular):**
+    *   Ubicación: `frontend/`
+    *   Tecnología: Angular (TypeScript) con Node.js para el entorno de desarrollo y gestión de dependencias.
+    *   Funcionalidad: Proporciona la interfaz de usuario para subir archivos, visualizar y editar los movimientos clasificados, y descargar los resultados.
+
+La comunicación entre el Frontend y el Backend se realiza a través de la API REST.
+
 ```
 OptiFincas/
-├── backend/
-│   ├── app/
-│   │   ├── main.py           # API FastAPI principal
-│   │   ├── models.py        # Modelos SQLAlchemy
-│   │   ├── schemas.py     # Schemas Pydantic
-│   │   ├── ml/
-│   │   │   └── clasificador_ml.py  # Clasificador ML + Regex
-│   │   └── procesamiento/
-│   │       └── clasificador.py  # Clasificador base
-│   └── requirements.txt
-├── frontend/
-│   ├── index.html      # Página principal
-│   ├── styles.css     # Estilos
-│   ├── app.js        # App principal
-│   ├── pantalla1.js # Subir archivos
-│   ├── pantalla2.js # Editar tabla
-│   ├── pantalla3.js # Descargas
-│   └── utils/
-│       ├── api.js    # Cliente API
-│       └── tipos.js # Tipos
-└── TODO.md
+├── backend/        # Contiene la aplicación FastAPI (Python)
+├── frontend/       # Contiene la aplicación Angular (TypeScript/Node.js)
+├── iniciar_proyecto.py # Script para iniciar ambos servidores en desarrollo
+└── README.md
 ```
 
 ## Cómo Funciona
@@ -82,31 +79,18 @@ Categorías por defecto:
 
 ## Ejecutar el Sistema
 
-### 1. Instalar dependencias
+Para iniciar el sistema completo (Backend y Frontend) en modo desarrollo:
 
-```bash
-cd backend
-pip install -r requirements.txt
-```
-
-### 2. Iniciar el servidor
-
-```bash
-cd backend
-python -m uvicorn app.main:app --reload --port 8000
-```
-
-### 3. Abrir el frontend
-
-Abre el archivo `frontend/index.html` en el navegador:
-
-```bash
-# En Windows
-start frontend/index.html
-
-# O directamente en el navegador
-http://127.0.0.1:8000
-```
+1.  **Abre una terminal** en la carpeta raíz del proyecto (`OptiFincas/`).
+2.  **Ejecuta el script de inicio:**
+    ```bash
+    python iniciar_proyecto.py
+    ```
+    Este script se encargará de:
+    *   Verificar e instalar las dependencias de Python y Node.js.
+    *   Iniciar el servidor Backend de FastAPI en `http://127.0.0.1:8000`.
+    *   Iniciar el servidor de desarrollo de Angular en `http://localhost:4200`.
+    *   Abrir automáticamente tu navegador en la URL del Frontend.
 
 ## API Endpoints
 

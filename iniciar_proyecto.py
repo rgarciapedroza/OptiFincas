@@ -5,13 +5,10 @@ Script para inicializar el proyecto completo
 
 Usage:
     python iniciar_proyecto.py
-
-Esto abrirá:
-1. El servidor backend en http://127.0.0.1:8000
-2. El frontend en tu navegador
 """
 
 import os
+import platform
 import sys
 import webbrowser
 import subprocess
@@ -21,7 +18,7 @@ import signal
 # Rutas
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BACKEND_DIR = os.path.join(BASE_DIR, "backend")
-FRONTEND_HTML = os.path.join(BASE_DIR, "frontend", "index.html")
+FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
 
 # Colores para la terminal
 class Colores:
@@ -143,16 +140,33 @@ def start_backend():
     return process
 
 
-def open_frontend():
-    """Abre el frontend en el navegador"""
-    print_info("Abriendo frontend en el navegador...")
+def start_frontend():
+    """Inicia el servidor de desarrollo de Angular (Node)"""
+    print_info("Iniciando servidor de desarrollo de Angular...")
     
-    # Convertir a ruta absoluta
-    abs_path = os.path.abspath(FRONTEND_HTML)
+    # Determinar comando npm según el SO
+    npm_cmd = "npm.cmd" if platform.system() == "Windows" else "npm"
     
-    # Abrir con el navegador
-    webbrowser.open(f"file://{abs_path}")
-    print_success("Frontend abierto")
+    try:
+        process = subprocess.Popen(
+            [npm_cmd, "start"],
+            cwd=FRONTEND_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            shell=True if platform.system() == "Windows" else False
+        )
+        
+        print_info("  URL: http://localhost:4200")
+        time.sleep(5) # Dar tiempo a que Node empiece a compilar
+        
+        # Abrir navegador
+        webbrowser.open("http://localhost:4200")
+        return process
+    except Exception as e:
+        print_error(f"No se pudo iniciar Angular: {e}")
+        return None
 
 
 def main():
@@ -161,6 +175,11 @@ def main():
     print("  🏦 INICIANDO PROCESADOR DE EXTRACTOS")
     print("="*50 + "\n")
     
+    # 0. Verificar Node.js
+    if subprocess.run(["node", "--version"], capture_output=True).returncode != 0:
+        print_error("Node.js no está instalado o no está en el PATH")
+        return
+
     # 1. Verificar/instalar dependencias
     install_requirements()
     
@@ -174,31 +193,32 @@ def main():
         print(f"  {sys.executable} -m uvicorn app.main:app --reload")
         return
     
-    # 3. Abrir frontend
-    time.sleep(2)
-    open_frontend()
+    # 3. Iniciar frontend (Angular/Node)
+    frontend_process = start_frontend()
     
     print("\n" + "="*50)
     print("  ✅ SISTEMA INICIADO")
     print("="*50)
-    print("\n  Frontend: Abre el archivo frontend/index.html")
+    print("\n  Frontend: http://localhost:4200")
     print("  Backend:  http://127.0.0.1:8000")
     print("  API Docs: http://127.0.0.1:8000/docs")
-    print("\n  Presiona Ctrl+C para detener el servidor")
+    print("\n  Presiona Ctrl+C para detener ambos servidores")
     print("="*50 + "\n")
     
     try:
-        # Mantener el proceso alive
         while True:
             time.sleep(1)
             if backend_process.poll() is not None:
-                print_error("El servidor se detuvo")
+                print_error("El backend se detuvo")
+                break
+            if frontend_process and frontend_process.poll() is not None:
+                print_error("El frontend se detuvo")
                 break
     except KeyboardInterrupt:
-        print_info("\nDeteniendo servidor...")
+        print_info("\nDeteniendo servidores...")
         backend_process.terminate()
-        backend_process.wait()
-        print_success("Servidor detenido")
+        if frontend_process: frontend_process.terminate()
+        print_success("Sistema detenido correctamente")
 
 
 if __name__ == "__main__":

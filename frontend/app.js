@@ -115,9 +115,13 @@ function handleFileSelectExtracto(file) {
     if (fileInfoExtracto && uploadZoneExtracto) {
         uploadZoneExtracto.classList.add('has-file');
         fileInfoExtracto.innerHTML = `
-            <div class="file-item-pill">
-                <span class="file-name">${file.name}</span>
-                <button class="remove-file-btn" type="button" onclick="event.stopPropagation(); removeFile('extracto')">x</button>
+            <div class="file-upload-badge">
+                <div class="file-icon">📊</div>
+                <div class="file-details">
+                    <span class="file-name">${file.name}</span>
+                    <span class="file-status">Listo para procesar</span>
+                </div>
+                <button class="remove-file-btn" type="button" onclick="event.stopPropagation(); removeFile('extracto')">×</button>
             </div>
         `;
         fileInfoExtracto.style.display = 'flex';
@@ -133,9 +137,13 @@ function handleFileSelectRegistros(file) {
     if (fileInfoRegistros && uploadZoneRegistros) {
         uploadZoneRegistros.classList.add('has-file');
         fileInfoRegistros.innerHTML = `
-            <div class="file-item-pill">
-                <span class="file-name">${file.name}</span>
-                <button class="remove-file-btn" onclick="event.stopPropagation(); removeFile('registros')">x</button>
+            <div class="file-upload-badge">
+                <div class="file-icon">📗</div>
+                <div class="file-details">
+                    <span class="file-name">${file.name}</span>
+                    <span class="file-status">Referencia cargada</span>
+                </div>
+                <button class="remove-file-btn" onclick="event.stopPropagation(); removeFile('registros')">×</button>
             </div>
         `;
         fileInfoRegistros.style.display = 'flex';

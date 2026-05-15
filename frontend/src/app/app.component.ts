@@ -1,0 +1,227 @@
+import { Component } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+
+@Component({
+  selector: 'app-root',
+  templateUrl: './app.component.html',
+  styles: [`
+    .app-layout { display: flex; height: 100vh; font-family: 'Inter', 'Segoe UI', sans-serif; background: #f0f2f5; }
+    .sidebar { width: 260px; background: linear-gradient(180deg, #2c3e50 0%, #1a252f 100%); color: white; padding: 0; display: flex; flex-direction: column; box-shadow: 4px 0 10px rgba(0,0,0,0.1); }
+    .sidebar-header { padding: 25px; background: #1a252f; text-align: center; }
+    .sidebar-header h2 { margin: 0; font-size: 1.5rem; color: #3498db; }
+    .sidebar nav { flex: 1; padding: 20px 0; }
+    .sidebar-btn { width: 100%; padding: 15px 25px; background: none; border: none; color: #bdc3c7; text-align: left; cursor: pointer; transition: all 0.3s; font-size: 1rem; border-left: 4px solid transparent; }
+    .sidebar-btn:hover { background: #34495e; color: white; }
+    .sidebar-btn.active { background: #34495e; color: white; border-left-color: #3498db; }
+    .main-content { flex: 1; overflow-y: auto; padding: 40px; }
+    
+    /* Tarjetas y Contenedores */
+    .card-container { background: white; border-radius: 16px; padding: 30px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid #e1e8ed; max-width: 900px; margin: 0 auto; }
+    .section-title { color: #2c3e50; margin-bottom: 25px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+    
+    .success-card { background: white; padding: 40px; border-radius: 8px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+    .success-icon { font-size: 50px; color: #2ecc71; margin-bottom: 20px; }
+    .reference-box { background: #e8f4fd; padding: 15px; border-radius: 4px; margin: 20px 0; border: 1px dashed #3498db; }
+
+    /* Zonas de Carga (Upload Zones) */
+    .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-bottom: 30px; }
+    .upload-zone { 
+      border: 2px dashed #cbd5e0; border-radius: 20px; padding: 50px 20px; 
+      text-align: center; transition: all 0.3s ease; background: white; cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      position: relative; overflow: hidden;
+      box-shadow: inset 0 0 0 6px transparent;
+    }
+    .upload-zone:hover { border-color: #3498db; background: #f7fbff; transform: translateY(-5px); box-shadow: 0 12px 20px rgba(0,0,0,0.05); }
+    .upload-zone.dragover { border-color: #2ecc71; background: #fafff5; }
+    .upload-zone.has-file { border-style: solid; border-color: #2ecc71; background: #f0fff4; animation: fadeIn 0.5s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+    
+    .upload-icon { font-size: 54px; color: #a0aec0; margin-bottom: 15px; transition: all 0.3s; }
+    .upload-zone:hover .upload-icon { color: #3498db; }
+    .upload-text b { color: #4a5568; display: block; margin-bottom: 5px; }
+    .upload-text span { color: #a0aec0; font-size: 0.9rem; }
+    
+    /* Badges de Archivo */
+    .file-upload-badge {
+      display: flex; align-items: center; background: white; border-radius: 12px; 
+      padding: 15px; width: 90%; border: 1px solid #e2e8f0;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05); animation: slideIn 0.3s ease-out;
+    }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    
+    .file-icon { font-size: 24px; margin-right: 12px; }
+    .file-details { flex: 1; text-align: left; overflow: hidden; }
+    .file-name { display: block; font-weight: 600; color: #2c3e50; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .file-status { display: block; font-size: 11px; color: #38a169; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .remove-file-btn { background: #fff5f5; border: none; width: 30px; height: 30px; border-radius: 50%; color: #e53e3e; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+    .remove-file-btn:hover { background: #feb2b2; color: #c53030; }
+
+    /* Botón Procesar */
+    .btn-container { display: flex; justify-content: center; margin-top: 30px; width: 100%; }
+    .btn-primary { 
+      background: #3498db; color: white; border: none; padding: 16px 40px; border-radius: 12px;
+      font-size: 1.1rem; font-weight: 600; cursor: pointer; transition: all 0.3s;
+      box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+    }
+    .btn-primary:hover:not(:disabled) { background: #2980b9; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4); }
+    .btn-primary:disabled { background: #cbd5e0; cursor: not-allowed; box-shadow: none; transform: none; }
+
+    /* Contenedor de Acciones (Descarga y Navegación) */
+    .actions { display: flex; justify-content: center; gap: 20px; margin-top: 30px; width: 100%; }
+
+    /* Spinner de Carga */
+    .loading-overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+      background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(4px);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999;
+    }
+    .spinner {
+      width: 50px; height: 50px; border: 5px solid #e2e8f0; border-top: 5px solid #3498db;
+      border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+  `]
+})
+export class AppComponent {
+  funcionalidadActiva = 1;
+  pantallaActual = 1;
+  loading = false;
+  selectedFileExtracto: File | null = null;
+  selectedFileRegistros: File | null = null;
+  movimientos: any[] = [];
+  resumen = { total_ingresos: 0, total_gastos: 0, saldo_neto: 0 };
+  error = '';
+  archivoReferencia: { nombre: string, blob: Blob } | null = null;
+
+  constructor(private http: HttpClient) {}
+
+  // isCsv se mantiene igual, ya que depende del nombre del archivo seleccionado
+  get isCsv(): boolean {
+    return this.selectedFileExtracto?.name.toLowerCase().endsWith('.csv') || false;
+  }
+
+  // Función robusta para obtener valores usando alias comunes de bancos
+  getVal(obj: any, key: string): any {
+    if (!obj) return null;
+    const target = key.toLowerCase();
+    const aliases: any = {
+      fecha: ['fecha', 'f_operacion', 'f_valor', 'date', 'periodo', 'proceso', 'operacion', 'valor'],
+      observaciones: ['observaciones', 'descrip', 'detalle', 'referencia', 'texto', 'concepto'],
+      importe: ['importe', 'valor', 'cantidad', 'monto', 'amount', 'eur'],
+      saldo: ['saldo', 'balance'],
+      ordenante: ['ordenante', 'beneficiario', 'titular', 'nombre', 'benef'],
+      concepto: ['concepto']
+    };
+    const searchTerms = aliases[target] || [target];
+    const keys = Object.keys(obj);
+    for (const term of searchTerms) {
+      const foundKey = keys.find(k => k.toLowerCase().includes(term));
+      if (foundKey) return obj[foundKey];
+    }
+    return null;
+  }
+
+  // Asegura que el valor sea numérico para el pipe de Angular
+  asNumber(val: any): number {
+    if (typeof val === 'number') return val;
+    if (val === undefined || val === null || String(val).trim() === '') return 0;
+    const str = String(val).trim().replace(/\./g, '').replace(',', '.');
+    const num = parseFloat(str) || 0;
+    return Number(num.toFixed(2));
+  }
+
+  onFileSelected(event: any, type: 'extracto' | 'registros') {
+    const file = event.target.files[0];
+    if (type === 'extracto') this.selectedFileExtracto = file;
+    else this.selectedFileRegistros = file;
+  }
+
+  async procesar() {
+    if (!this.selectedFileExtracto || !this.selectedFileRegistros) return;
+    
+    this.loading = true;
+    const formData = new FormData();
+    formData.append('extracto', this.selectedFileExtracto);
+    formData.append('registros', this.selectedFileRegistros);
+
+    this.http.post<any>('/api/procesar-dos-archivos', formData).subscribe({
+next: (data) => {
+        console.log('>>> [FRONTEND] DATOS QUE LLEGAN DEL BACKEND:', data);
+        this.movimientos = data.movimientos_clasificados;
+        this.resumen = data.resumen_general;
+
+        // Debug: verificar si el backend está marcando históricos y trayendo pisos en CONCEPTO
+        try {
+          const hist = (this.movimientos || []).filter(m => m && m.es_historico);
+          console.log('[DEBUG] movimientos_clasificados=', this.movimientos?.length || 0);
+          console.log('[DEBUG] historicos encontrados=', hist.length);
+          console.log('[DEBUG] historicos muestra=', hist.slice(0, 5).map(m => ({ piso: m?.piso, CONCEPTO: m?.CONCEPTO, metodo_piso: m?.metodo_piso })));
+          // accesible desde consola
+          (window as any).__hist = hist;
+
+        } catch (e) {
+          console.warn('[DEBUG] error en debug console logs', e);
+        }
+
+        this.pantallaActual = 2;
+        this.loading = false;
+      },
+      error: (err) => {
+        this.error = 'Error al procesar archivos';
+        this.loading = false;
+      }
+    });
+  }
+
+  descargar(modo: string) {
+    this.loading = true;
+    // Mapeamos los movimientos editados antes de enviar
+    const datosAEnviar = this.movimientos.map(m => ({
+      FECHA: m.FECHA, // Ya viene procesado del backend
+      ORDENANTE: m.ORDENANTE, // Ya viene procesado del backend
+      OBSERVACIONES: m.OBSERVACIONES, // Ya viene procesado del backend
+      IMPORTE: m.IMPORTE, // Ya viene procesado del backend
+      SALDO: m.SALDO, // Ya viene procesado del backend
+      CONCEPTO: m.CONCEPTO // Este es el campo editable por el usuario
+    }));
+    console.log('>>> [FRONTEND] ENVIANDO DATOS AL BACKEND (confirmar):', datosAEnviar);
+
+    this.http.post<any>(`/api/confirmar?modo=${modo}`, datosAEnviar).subscribe({
+      next: (data) => {
+        console.log('>>> [FRONTEND] RESPUESTA DE CONFIRMACIÓN RECIBIDA:', data);
+        const byteCharacters = atob(data.excel_contenido);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const blob = new Blob([new Uint8Array(byteNumbers)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = data.nombre_archivo;
+        a.click();
+
+        // Guardamos referencia del archivo para la Funcionalidad 2
+        this.archivoReferencia = { nombre: data.nombre_archivo, blob: blob };
+        this.pantallaActual = 3;
+        this.loading = false;
+      },
+      error: () => {
+        this.error = 'Error en la descarga';
+        this.loading = false;
+      }
+    });
+  }
+
+  irAFuncionalidad2() {
+    this.funcionalidadActiva = 2;
+  }
+
+  reiniciarProceso() {
+    this.pantallaActual = 1;
+    this.movimientos = [];
+    this.selectedFileExtracto = null;
+    this.selectedFileRegistros = null;
+  }
+}
