@@ -1,6 +1,15 @@
 import { Component } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 
+interface Community {
+  id: number;
+  address: string;
+  cleaningHours: number;
+  cleaningDaysPerWeek: number;
+  latitude: number;
+  longitude: number;
+}
+
 @Component({
   selector: 'app-root',
   templateUrl: './app.component.html',
@@ -15,6 +24,8 @@ import { HttpClient } from '@angular/common/http';
     .sidebar-btn.active { background: #34495e; color: white; border-left-color: #3498db; }
     .main-content { flex: 1; overflow-y: auto; padding: 40px; }
     
+    .container { width: 100%; max-width: 1200px; margin: 0 auto; }
+    
     /* Tarjetas y Contenedores */
     .card-container { background: white; border-radius: 16px; padding: 30px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid #e1e8ed; max-width: 900px; margin: 0 auto; }
     .section-title { color: #2c3e50; margin-bottom: 25px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
@@ -22,6 +33,26 @@ import { HttpClient } from '@angular/common/http';
     .success-card { background: white; padding: 40px; border-radius: 8px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
     .success-icon { font-size: 50px; color: #2ecc71; margin-bottom: 20px; }
     .reference-box { background: #e8f4fd; padding: 15px; border-radius: 4px; margin: 20px 0; border: 1px dashed #3498db; }
+
+    /* Estilos de Botones y Tablas */
+    .btn { padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; transition: all 0.2s; }
+    .btn-success { background: #2ecc71; color: white; }
+    .btn-info { background: #3498db; color: white; }
+    .btn-secondary { background: #95a5a6; color: white; }
+    
+    .movimientos-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    .movimientos-table th { background: #f8f9fa; padding: 12px; text-align: left; border-bottom: 2px solid #dee2e6; }
+    .movimientos-table td { padding: 12px; border-bottom: 1px solid #dee2e6; }
+    
+    .input-concepto-edit { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+    .summary-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 30px; }
+    .summary-cards .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); font-weight: bold; text-align: center; }
+
+    .error { 
+      background: #fff5f5; color: #c53030; padding: 15px; border-radius: 8px; 
+      margin-bottom: 20px; border: 1px solid #feb2b2; display: none;
+    }
+    .error.show { display: block; }
 
     /* Zonas de Carga (Upload Zones) */
     .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-bottom: 30px; }
@@ -81,6 +112,25 @@ import { HttpClient } from '@angular/common/http';
       border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;
     }
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+    /* Tabla de Optimización */
+    .info-section { background: #f8fafc; border-left: 4px solid #3498db; padding: 15px; margin-bottom: 20px; border-radius: 0 8px 8px 0; font-size: 0.9rem; color: #475569; }
+    .info-section ul { margin: 5px 0 0 20px; padding: 0; }
+    .form-group-opt { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 150px; }
+    .form-group-opt label { font-size: 0.8rem; font-weight: 600; color: #64748b; text-transform: uppercase; }
+    .help-tooltip { cursor: help; color: #3498db; font-size: 0.8rem; margin-left: 5px; }
+    .legend { display: flex; gap: 20px; justify-content: center; margin-top: 15px; font-size: 0.85rem; color: #64748b; }
+    .legend-item { display: flex; align-items: center; gap: 5px; }
+
+    .optimization-table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+    .optimization-table th { background: #2c3e50; color: white; padding: 12px; text-align: center; font-size: 0.9rem; }
+    .optimization-table td { border: 1px solid #e1e8ed; padding: 12px; vertical-align: top; width: 18%; }
+    .optimization-table .emp-col { background: #f8f9fa; font-weight: bold; width: 10%; vertical-align: middle; color: #2c3e50; }
+    .task-preview { font-size: 0.8rem; background: #ebf5ff; padding: 8px; border-radius: 6px; margin-bottom: 8px; border-left: 3px solid #3498db; text-align: left; }
+    .task-preview b { display: block; color: #2c3e50; margin-bottom: 2px; }
+    .task-preview .time { color: #555; font-size: 0.75rem; display: block; margin-bottom: 4px; }
+    .hours-badge { font-size: 0.7rem; background: #34495e; padding: 2px 6px; border-radius: 10px; color: white; float: right; }
+    .no-tasks { color: #bdc3c7; font-size: 0.8rem; font-style: italic; text-align: center; padding: 10px; }
   `]
 })
 export class AppComponent {
@@ -93,6 +143,13 @@ export class AppComponent {
   resumen = { total_ingresos: 0, total_gastos: 0, saldo_neto: 0 };
   error = '';
   archivoReferencia: { nombre: string, blob: Blob } | null = null;
+
+  // Funcionalidad 3: Optimización de Rutas
+  numEmployees: number = 2;
+  communities: Community[] = [];
+  nextCommunityId: number = 1;
+  optimizationResult: any = null;
+  diasSemana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 
   constructor(private http: HttpClient) {}
 
@@ -216,6 +273,121 @@ next: (data) => {
 
   irAFuncionalidad2() {
     this.funcionalidadActiva = 2;
+  }
+
+  irAFuncionalidad3() {
+    this.funcionalidadActiva = 3;
+  }
+
+  importarExcelComunidades(event: any) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    this.loading = true;
+    const formData = new FormData();
+    formData.append('file', file);
+
+    this.http.post<any>('/api/optimizacion/importar-comunidades', formData).subscribe({
+      next: (data) => {
+        // Añadimos las nuevas comunidades a la lista actual
+        if (data.comunidades && data.comunidades.length > 0) {
+          // Evitar duplicados por dirección (insensible a mayúsculas)
+          const existingAddresses = new Set(this.communities.map(c => c.address.toLowerCase()));
+          const filtradas = data.comunidades.filter((c: any) => !existingAddresses.has(c.address.toLowerCase()));
+
+          if (filtradas.length === 0) {
+            alert('Todas las comunidades del archivo ya existen en la lista.');
+            this.loading = false;
+            return;
+          }
+
+          // Ajustar IDs para evitar duplicados de ID
+          const startingId = this.communities.length > 0 ? Math.max(...this.communities.map(c => c.id)) + 1 : 1;
+          const nuevas = filtradas.map((c: any, index: number) => ({ ...c, id: startingId + index }));
+          
+          this.communities = [...this.communities, ...nuevas];
+          this.nextCommunityId = startingId + nuevas.length;
+
+          const omitidas = data.comunidades.length - filtradas.length;
+          if (omitidas > 0) {
+            alert(`Se han importado ${filtradas.length} comunidades. Se omitieron ${omitidas} por estar repetidas.`);
+          } else {
+            alert(`Se han importado ${filtradas.length} comunidades correctamente.`);
+          }
+        } else {
+          alert('No se encontraron comunidades en el archivo.');
+        }
+        this.loading = false;
+      },
+      error: (err) => {
+        const msg = err.error?.detail || err.message;
+        this.error = 'Error al importar comunidades: ' + msg;
+        alert(this.error);
+        this.loading = false;
+      }
+    });
+  }
+
+  removeCommunity(id: number) {
+    this.communities = this.communities.filter(c => c.id !== id);
+  }
+
+  clearAllCommunities() {
+    if (confirm('¿Estás seguro de que quieres borrar todas las comunidades?')) {
+      this.communities = [];
+    }
+  }
+
+  calcularOptimizacion() {
+    if (this.communities.length === 0) {
+      this.error = 'Debe añadir al menos una comunidad para optimizar.';
+      return;
+    }
+    this.loading = true;
+    this.error = '';
+
+    const payload = {
+      numEmployees: this.numEmployees,
+      communities: this.communities.map(c => ({
+        address: c.address,
+        cleaningHours: c.cleaningHours,
+        cleaningDaysPerWeek: c.cleaningDaysPerWeek,
+        latitude: c.latitude,
+        longitude: c.longitude
+      }))
+    };
+
+    this.http.post<any>('/api/optimizacion/calcular', payload).subscribe({
+      next: (data) => {
+        this.optimizationResult = data;
+        this.loading = false;
+      },
+      error: (err) => {
+        this.error = 'Error al calcular la optimización: ' + (err.error?.detail || err.message);
+        this.loading = false;
+      }
+    });
+  }
+
+  hasNoAsignadas(): boolean {
+    if (!this.optimizationResult || !this.optimizationResult.no_asignadas) return false;
+    return Object.values(this.optimizationResult.no_asignadas).some((arr: any) => arr.length > 0);
+  }
+
+  descargarExcelOptimizacion() {
+    if (!this.optimizationResult) return;
+    
+    const byteCharacters = atob(this.optimizationResult.excel_archivo);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const blob = new Blob([new Uint8Array(byteNumbers)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = this.optimizationResult.nombre_archivo;
+    a.click();
   }
 
   reiniciarProceso() {

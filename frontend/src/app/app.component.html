@@ -11,6 +11,9 @@
       <button class="sidebar-btn" [class.active]="funcionalidadActiva === 2" (click)="funcionalidadActiva = 2">
         ⚙️ Funcionalidad 2
       </button>
+      <button class="sidebar-btn" [class.active]="funcionalidadActiva === 3" (click)="funcionalidadActiva = 3">
+        🗺️ Optimización Rutas
+      </button>
     </nav>
   </aside>
 
@@ -136,6 +139,118 @@
           Trabajando con referencia de: <strong>{{ archivoReferencia.nombre }}</strong>
         </p>
         <p *ngIf="!archivoReferencia">No se ha cargado ningún archivo de referencia todavía.</p>
+      </div>
+    </div>
+
+    <!-- FUNCIONALIDAD 3: OPTIMIZACIÓN DE RUTAS -->
+    <div *ngIf="funcionalidadActiva === 3" class="container">
+      <div class="card-container">
+        <h2 class="section-title">🗺️ Optimizador de Rutas y Horarios</h2>
+
+        <div class="info-section">
+          <strong>ℹ️ ¿Cómo funciona este planificador?</strong>
+          <ul>
+            <li><b>Ubicación:</b> Introduce la dirección o nombre de la finca.</li>
+            <li><b>Horas:</b> Tiempo estimado de trabajo <i>dentro</i> de la comunidad.</li>
+            <li><b>Días/Sem:</b> Frecuencia semanal (se reparten automáticamente de Lunes a Viernes).</li>
+            <li><b>Logística:</b> Turnos de 07:00 a 15:00. El tiempo de viaje se calcula en <b>tiempo real por carretera</b> 
+              mediante el servicio OSRM basado en las coordenadas exactas.</li>
+          </ul>
+        </div>
+        
+        <div class="upload-grid" style="grid-template-columns: 1fr; gap: 15px;">
+          <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+              <h3 style="font-size: 1rem; margin: 0; color: #2c3e50;">Carga de Comunidades</h3>
+              <div style="display: flex; gap: 10px;">
+                <button class="btn btn-secondary" style="font-size: 0.8rem;" (click)="clearAllCommunities()">🗑️ Limpiar Todo</button>
+                <button class="btn btn-info" style="font-size: 0.8rem;" (click)="commExcelInput.click()">📁 Importar desde Excel</button>
+              </div>
+              <input #commExcelInput type="file" style="display:none" (change)="importarExcelComunidades($event)" accept=".xlsx, .xls">
+            </div>
+          </div>
+        </div>
+
+        <div *ngIf="communities.length > 0" class="mb-4">
+          <table class="movimientos-table" style="font-size: 0.9rem;">
+            <thead>
+              <tr>
+                <th>COMUNIDAD / UBICACIÓN</th>
+                <th style="text-align: center;">DURACIÓN</th>
+                <th style="text-align: center;">FRECUENCIA</th>
+                <th style="text-align: center;">LATITUD</th>
+                <th style="text-align: center;">LONGITUD</th>
+                <th style="text-align: center;">ACCIONES</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let c of communities">
+                <td>{{ c.address }}</td>
+                <td style="text-align: center;">{{ c.cleaningHours }} h/visita</td>
+                <td style="text-align: center;">{{ c.cleaningDaysPerWeek }} días/sem</td>
+                <td style="text-align: center;">{{ c.latitude | number:'1.4-4' }}</td>
+                <td style="text-align: center;">{{ c.longitude | number:'1.4-4' }}</td>
+                <td style="text-align: center;"><button class="remove-file-btn" style="margin: 0 auto;" (click)="removeCommunity(c.id)">🗑️</button></td>
+              </tr>
+            </tbody>
+          </table>
+          
+          <div class="btn-container">
+            <button class="btn-primary" (click)="calcularOptimizacion()">Generar Planificación Óptima</button>
+          </div>
+        </div>
+
+        <!-- TABLA DE VISUALIZACIÓN DE RESULTADOS -->
+        <div *ngIf="optimizationResult" class="mt-5" style="animation: fadeIn 0.5s ease;">
+          <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
+          <h3 class="section-title">📅 Vista Previa del Horario</h3>
+          
+          <div class="legend">
+            <div class="legend-item"><span style="color: #3498db;">●</span> Azul: Tareas asignadas</div>
+            <div class="legend-item">⏱️ Tiempo de viaje real por carretera (Servicio OSRM)</div>
+          </div>
+
+          <!-- Alerta de comunidades no asignadas -->
+          <div *ngIf="hasNoAsignadas()" class="info-section" style="border-left-color: #e74c3c; background: #fff5f5; color: #c53030; margin-top: 15px;">
+            <strong>⚠️ Algunas comunidades no se han podido asignar por superar el límite de 8h/día (incluyendo viajes):</strong>
+            <div *ngFor="let item of optimizationResult.no_asignadas | keyvalue">
+              <div *ngIf="item.value.length > 0">
+                <small><b>{{ item.key }}:</b> {{ item.value.join(', ') }}</small>
+              </div>
+            </div>
+          </div>
+
+          <table class="optimization-table">
+            <thead>
+              <tr>
+                <th>Trabajadora</th>
+                <th *ngFor="let dia of diasSemana">{{ dia }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let emp of optimizationResult.horarios | keyvalue">
+                <td class="emp-col">{{ emp.key }}</td>
+                <td *ngFor="let dia of diasSemana">
+                  <div *ngFor="let task of emp.value[dia]" class="task-preview">
+                    <span class="hours-badge">{{ task.horas }}h</span>
+                    <span class="time">{{ task.inicio }} - {{ task.fin }}</span>
+                    <b>{{ task.comunidad }}</b>
+                  </div>
+                  <div *ngIf="emp.value[dia].length === 0" class="no-tasks">
+                    Sin tareas asignadas
+                  </div>
+                  <div *ngIf="optimizationResult.resumen[emp.key][dia] > 0" style="margin-top: 5px; font-size: 0.7rem; color: #7f8c8d; text-align: right;">
+                    Total: {{ optimizationResult.resumen[emp.key][dia] }}h
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="actions">
+            <button class="btn btn-success" (click)="descargarExcelOptimizacion()">📥 Descargar Excel de Rutas</button>
+          </div>
+        </div>
       </div>
     </div>
 

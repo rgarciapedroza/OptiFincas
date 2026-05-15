@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from backend.app.api.rutas import router as api_router
+from backend.app.api.optimizacion import router as optimizacion_router
 import os
 
 app = FastAPI(title="API Procesador de Extractos")
@@ -16,6 +17,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api")
+app.include_router(optimizacion_router, prefix="/api/optimizacion")
 
 # --- Servir archivos estáticos de Angular (tras hacer npm run build) ---
 # Calculamos la ruta absoluta a la carpeta 'dist' del frontend

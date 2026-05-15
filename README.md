@@ -55,6 +55,14 @@ OptiFincas/
 - Descarga el CSV clasificado
 - Descarga el Excel completo con resumen
 
+**Pantalla 3: Optimización de Rutas y Horarios**
+- Introduce el número de empleadas (actualmente 2).
+- Añade las comunidades a visitar, especificando:
+  - Dirección
+  - Horas de limpieza necesarias
+  - Días a la semana que requiere limpieza
+- Haz clic en "Calcular Ruta Óptima" para obtener el horario y la ruta más eficiente.
+
 ### Detección de Piso
 
 El sistema detecta automáticamente patrones como:
@@ -101,6 +109,7 @@ Para iniciar el sistema completo (Backend y Frontend) en modo desarrollo:
 | `/api/procesar` | POST | Procesar movimientos |
 | `/api/confirmar` | POST | Confirmar y descargar CSV |
 | `/api/descargar-excel` | POST | Descargar Excel completo |
+| `/api/optimizacion/calcular` | POST | Calcula la ruta y el horario óptimo para las empleadas |
 
 ## Estructura del CSV de Salida
 
