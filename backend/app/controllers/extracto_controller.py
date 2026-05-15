@@ -6,14 +6,14 @@ import pandas as pd
 from datetime import datetime
 from fastapi import UploadFile, HTTPException
 from fastapi.responses import StreamingResponse
-from backend.app.ml.clasificador_ml import ClasificadorML
+from backend.app.ml.clasificador_ml import crear_clasificador
 from backend.app.servicios.procesar_movimientos import procesar_extracto_y_registros
 from backend.app.servicios.procesar_extracto import detectar_columnas, limpiar_importe
 from backend.app.servicios.resumen import calcular_resumen_categorias_con_tipo
 from backend.app.procesamiento.generar_excel import crear_excel_actualizado
 from backend.app.procesamiento.procesar_excel_contable import obtener_nombre_hoja
 
-clasificador = ClasificadorML()
+clasificador = crear_clasificador()
 _movimientos_procesados = []
 _registros_contenido = None
 _registros_filename = "Registros.xlsx"
@@ -115,6 +115,18 @@ async def confirmar_controller(movimientos_actualizados: list[dict], modo: str =
     global _movimientos_procesados, _registros_contenido, _registros_filename, _extracto_filename
 
     _movimientos_procesados = movimientos_actualizados
+
+    # --- APRENDIZAJE INCREMENTAL ---
+    # Guardamos las correcciones del usuario como nuevos ejemplos para el futuro
+    for mov in movimientos_actualizados:
+        clasificador.add_ejemplo(
+            concepto=mov.get("concepto_original", mov.get("OBSERVACIONES", "")),
+            importe=mov.get("IMPORTE", 0),
+            tipo=mov.get("tipo", "gasto"),
+            categoria=mov.get("categoria", "Gasto Varios"),
+            piso=mov.get("CONCEPTO") if mov.get("tipo") == "ingreso" else None
+        )
+    clasificador.guardar_estado()
 
     # Crear un DataFrame de Pandas para asegurar el orden de las columnas
     df_movimientos = pd.DataFrame(movimientos_actualizados)
