@@ -1,0 +1,11 @@
+# Entorno virtual de Python
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+
+# Dependencias de Node y builds de Angular
+node_modules/
+dist/
+.angular/

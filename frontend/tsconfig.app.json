@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist/out-tsc",
+    "types": [] 
+  },
+  "files": [
+    "src/main.ts" // Verifica que este archivo esté en frontend/src/main.ts
+  ],
+  "include": [
+    "src/**/*.ts" 
+  ],
+  "exclude": [
+    "src/**/*.spec.ts"
+  ]
+}

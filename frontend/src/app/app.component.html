@@ -1,0 +1,147 @@
+<div class="app-layout">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <h2>OptiFincas</h2>
+    </div>
+    <nav>
+      <button class="sidebar-btn" [class.active]="funcionalidadActiva === 1" (click)="funcionalidadActiva = 1">
+        📊 Clasificador
+      </button>
+      <button class="sidebar-btn" [class.active]="funcionalidadActiva === 2" (click)="funcionalidadActiva = 2">
+        ⚙️ Funcionalidad 2
+      </button>
+    </nav>
+  </aside>
+
+  <!-- CONTENIDO PRINCIPAL -->
+  <main class="main-content">
+    <div *ngIf="error" class="error show">{{ error }}</div>
+
+    <!-- FUNCIONALIDAD 1: CLASIFICADOR -->
+    <div *ngIf="funcionalidadActiva === 1" class="container">
+
+      <!-- PANTALLA 1: UPLOAD -->
+      <div *ngIf="pantallaActual === 1" class="pantalla show card-container">
+        <h2 class="section-title">📂 Carga de Documentos</h2>
+        <div class="upload-grid">
+          <!-- Zona Extracto -->
+          <div class="upload-zone" [class.has-file]="selectedFileExtracto" (click)="extInput.click()">
+            <div class="upload-icon" *ngIf="!selectedFileExtracto">📊</div>
+            <div class="upload-text" *ngIf="!selectedFileExtracto">
+              <b>Extracto Bancario</b>
+              <span>Haz clic o arrastra el archivo aquí</span>
+            </div>
+            
+            <div class="file-upload-badge" *ngIf="selectedFileExtracto" (click)="$event.stopPropagation()">
+              <div class="file-icon">📄</div>
+              <div class="file-details">
+                <span class="file-name">{{ selectedFileExtracto.name }}</span>
+                <span class="file-status">Listo para procesar</span>
+              </div>
+              <button class="remove-file-btn" (click)="selectedFileExtracto = null">×</button>
+            </div>
+            <input #extInput type="file" style="display:none" (change)="onFileSelected($event, 'extracto')">
+          </div>
+
+          <!-- Zona Histórico -->
+          <div class="upload-zone" [class.has-file]="selectedFileRegistros" (click)="regInput.click()">
+            <div class="upload-icon" *ngIf="!selectedFileRegistros">📂</div>
+            <div class="upload-text" *ngIf="!selectedFileRegistros">
+              <b>Registros Históricos</b>
+              <span>Selecciona el Excel de referencia</span>
+            </div>
+
+            <div class="file-upload-badge" *ngIf="selectedFileRegistros" (click)="$event.stopPropagation()">
+              <div class="file-icon">📗</div>
+              <div class="file-details">
+                <span class="file-name">{{ selectedFileRegistros.name }}</span>
+                <span class="file-status">Referencia cargada</span>
+              </div>
+              <button class="remove-file-btn" (click)="selectedFileRegistros = null">×</button>
+            </div>
+            <input #regInput type="file" style="display:none" (change)="onFileSelected($event, 'registros')">
+          </div>
+        </div>
+        <div class="btn-container">
+          <button class="btn-primary" [disabled]="!selectedFileExtracto || !selectedFileRegistros" (click)="procesar()">
+            Comenzar Clasificación
+          </button>
+        </div>
+      </div>
+
+      <!-- PANTALLA 2: REVISIÓN -->
+      <div *ngIf="pantallaActual === 2" class="pantalla show">
+        <div class="summary-cards">
+          <div class="card">Ingresos: {{ resumen.total_ingresos | number:'1.2-2' }}€</div>
+          <div class="card">Gastos: {{ resumen.total_gastos | number:'1.2-2' }}€</div>
+          <div class="card">Saldo: {{ resumen.saldo_neto | number:'1.2-2' }}€</div>
+        </div>
+
+        <table class="movimientos-table">
+          <thead>
+            <tr>
+              <th>FECHA</th>
+              <th *ngIf="!isCsv">ORDENANTE </th>
+              <th>OBSERVACIONES</th>
+              <th style="text-align: right;">IMPORTE</th>
+              <th style="text-align: right;">SALDO</th>
+              <th>CONCEPTO</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let mov of movimientos">
+              <td>{{ mov.FECHA }}</td>
+              <td *ngIf="!isCsv">{{ mov.ORDENANTE }}</td>
+              <td style="font-size: 0.9em; max-width: 300px;">{{ mov.OBSERVACIONES }}</td>
+              <td [style.color]="mov.IMPORTE > 0 ? '#27ae60' : '#e74c3c'" style="text-align: right; font-weight: bold;">
+                {{ mov.IMPORTE | number:'1.2-2' }}€
+              </td>
+              <td style="text-align: right; color: #7f8c8d;">{{ mov.SALDO | number:'1.2-2' }}€</td>
+              <td>
+                <span *ngIf="mov.es_historico" style="color: #3498db; margin-right: 5px;">●</span>
+                <input [(ngModel)]="mov.CONCEPTO" class="input-concepto-edit">
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="actions">
+          <button class="btn" (click)="descargar('mensual')">Descargar Mensual</button>
+          <button class="btn btn-success" (click)="descargar('historico')">Actualizar Histórico</button>
+        </div>
+      </div>
+
+      <!-- PANTALLA 3: ÉXITO Y TRANSICIÓN -->
+      <div *ngIf="pantallaActual === 3" class="success-card">
+        <div class="success-icon">✓</div>
+        <h2>¡Archivo generado con éxito!</h2>
+        <p>El extracto procesado se ha descargado en tu equipo.</p>
+        <div class="reference-box" *ngIf="archivoReferencia">
+          <p>Referencia guardada: <strong>{{ archivoReferencia.nombre }}</strong></p>
+        </div>
+        <div class="actions">
+          <button class="btn btn-info" (click)="irAFuncionalidad2()">Continuar a Funcionalidad 2</button>
+          <button class="btn btn-secondary" (click)="reiniciarProceso()">Procesar otro extracto</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- FUNCIONALIDAD 2: PLACEHOLDER -->
+    <div *ngIf="funcionalidadActiva === 2" class="container">
+      <h1>Funcionalidad 2</h1>
+      <div class="success-card">
+        <h3>Módulo en desarrollo</h3>
+        <p *ngIf="archivoReferencia">
+          Trabajando con referencia de: <strong>{{ archivoReferencia.nombre }}</strong>
+        </p>
+        <p *ngIf="!archivoReferencia">No se ha cargado ningún archivo de referencia todavía.</p>
+      </div>
+    </div>
+
+    <div *ngIf="loading" class="loading-overlay">
+      <div class="spinner"></div>
+      <p style="color: #2c3e50; font-weight: 600;">Procesando documentos...</p>
+    </div>
+  </main>
+</div>
