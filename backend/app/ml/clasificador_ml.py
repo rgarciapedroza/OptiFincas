@@ -180,9 +180,13 @@ class ClasificadorML:
         concepto_lower = concepto.lower()
         piso = self.detectar_piso(concepto_lower)
         
+        # 1. Determinar el tipo de forma ESTRICTAMENTE NUMÉRICA desde el principio
+        mejor_tipo = "ingreso" if importe >= 0 else "gasto"
+        
         mejor_coincidencia = None
         mejor_confianza = 0.0
         
+        #Búsqueda de palabras clave
         for palabra, categoria in self.palabras_categoria.items():
             if palabra in concepto_lower:
                 confianza = min(0.9, 0.5 + (len(palabra) / 20))
@@ -190,13 +194,16 @@ class ClasificadorML:
                 if confianza > mejor_confianza:
                     mejor_confianza = confianza
                     mejor_coincidencia = categoria
+
+        # similitud difusa
         for palabra, categoria in self.palabras_categoria.items():
             sim = SequenceMatcher(None, palabra, concepto_lower).ratio()
-            if sim > 0.65:  # umbral ajustable
+            if sim > 0.65:  
                 mejor_coincidencia = categoria
                 mejor_confianza = sim
                 break
 
+        #Reglas estáticas por defecto
         if mejor_coincidencia is None:
             for categoria, info in self.reglas.items():
                 for palabra in info["palabras"]:
@@ -209,23 +216,14 @@ class ClasificadorML:
                             break
         
         if mejor_coincidencia is None:
-            if importe > 0:
-                mejor_coincidencia = "Ingreso Varios"
-                mejor_tipo = "ingreso"
+            if mejor_tipo == "ingreso":
+                mejor_coincidencia = "INGRESOS SIN IDENTIFICAR"
             else:
-                mejor_coincidencia = "Gasto Varios"
-                mejor_tipo = "gasto"
+                mejor_coincidencia = "GASTOS VARIOS"
             mejor_confianza = 0.3
-        else:
-            mejor_tipo = self.reglas.get(mejor_coincidencia, {}).get("tipo", "gasto")
-        
-        if importe < 0 and mejor_tipo == "ingreso":
-            mejor_tipo = "gasto"
-        if importe > 0 and mejor_tipo == "gasto":
-            mejor_tipo = "ingreso"
         
         return {
-            "categoria": mejor_coincidencia or "Gasto Varios",
+            "categoria": mejor_coincidencia,
             "tipo": mejor_tipo,
             "confianza": mejor_confianza,
             "piso": piso,

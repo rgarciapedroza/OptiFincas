@@ -46,7 +46,7 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
         # Intentamos obtener la fecha. normalizar_fecha devuelve None si encuentra guiones ("-") o nulos.
         fecha_final = normalizar_fecha(row.get(columnas["fecha"]))
         
-        # Lógica de fallback: Si la fecha principal no es válida y detectamos "FECHA PROCESO" (común en BBVA), la usamos.
+        # Si la fecha principal no es válida y detectamos "FECHA PROCESO" 
         if not fecha_final and es_csv and col_fecha_proceso_csv:
             fecha_final = normalizar_fecha(row.get(col_fecha_proceso_csv))
 
@@ -132,7 +132,7 @@ def completar_pisos(movimientos_sin_piso, excel_registros, es_csv: bool):
                 "motivo": "Coincidencia encontrada por nombre del ordenante en el histórico."
             }
 
-        # Asegurar que el piso recuperado se asigne a la columna visible CONCEPTO
+        # Asegurar que el piso recuperado se asigne a  CONCEPTO
         if m.get("piso"):
             m["CONCEPTO"] = m["piso"]
         

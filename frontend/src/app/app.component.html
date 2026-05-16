@@ -6,13 +6,13 @@
     </div>
     <nav>
       <button class="sidebar-btn" [class.active]="funcionalidadActiva === 1" (click)="funcionalidadActiva = 1">
-        📊 Clasificador
+        Clasificador
       </button>
       <button class="sidebar-btn" [class.active]="funcionalidadActiva === 2" (click)="funcionalidadActiva = 2">
-        ⚙️ Funcionalidad 2
+        Configuración
       </button>
       <button class="sidebar-btn" [class.active]="funcionalidadActiva === 3" (click)="funcionalidadActiva = 3">
-        🗺️ Optimización Rutas
+        Optimización de Rutas
       </button>
     </nav>
   </aside>
@@ -26,18 +26,17 @@
 
       <!-- PANTALLA 1: UPLOAD -->
       <div *ngIf="pantallaActual === 1" class="pantalla show card-container">
-        <h2 class="section-title">📂 Carga de Documentos</h2>
+        <h2 class="section-title">Carga de Documentos</h2>
         <div class="upload-grid">
           <!-- Zona Extracto -->
           <div class="upload-zone" [class.has-file]="selectedFileExtracto" (click)="extInput.click()">
-            <div class="upload-icon" *ngIf="!selectedFileExtracto">📊</div>
+            <div class="upload-icon" *ngIf="!selectedFileExtracto">↑</div>
             <div class="upload-text" *ngIf="!selectedFileExtracto">
               <b>Extracto Bancario</b>
               <span>Haz clic o arrastra el archivo aquí</span>
             </div>
             
             <div class="file-upload-badge" *ngIf="selectedFileExtracto" (click)="$event.stopPropagation()">
-              <div class="file-icon">📄</div>
               <div class="file-details">
                 <span class="file-name">{{ selectedFileExtracto.name }}</span>
                 <span class="file-status">Listo para procesar</span>
@@ -49,14 +48,13 @@
 
           <!-- Zona Histórico -->
           <div class="upload-zone" [class.has-file]="selectedFileRegistros" (click)="regInput.click()">
-            <div class="upload-icon" *ngIf="!selectedFileRegistros">📂</div>
+            <div class="upload-icon" *ngIf="!selectedFileRegistros">↑</div>
             <div class="upload-text" *ngIf="!selectedFileRegistros">
               <b>Registros Históricos</b>
               <span>Selecciona el Excel de referencia</span>
             </div>
 
             <div class="file-upload-badge" *ngIf="selectedFileRegistros" (click)="$event.stopPropagation()">
-              <div class="file-icon">📗</div>
               <div class="file-details">
                 <span class="file-name">{{ selectedFileRegistros.name }}</span>
                 <span class="file-status">Referencia cargada</span>
@@ -117,7 +115,7 @@
 
       <!-- PANTALLA 3: ÉXITO Y TRANSICIÓN -->
       <div *ngIf="pantallaActual === 3" class="success-card">
-        <div class="success-icon">✓</div>
+        <div class="success-icon">L</div>
         <h2>¡Archivo generado con éxito!</h2>
         <p>El extracto procesado se ha descargado en tu equipo.</p>
         <div class="reference-box" *ngIf="archivoReferencia">
@@ -145,15 +143,15 @@
     <!-- FUNCIONALIDAD 3: OPTIMIZACIÓN DE RUTAS -->
     <div *ngIf="funcionalidadActiva === 3" class="container">
       <div class="card-container">
-        <h2 class="section-title">🗺️ Optimizador de Rutas y Horarios</h2>
+        <h2 class="section-title">Optimización de Rutas y Horarios</h2>
 
         <div class="info-section">
-          <strong>ℹ️ ¿Cómo funciona este planificador?</strong>
+          <strong>Instrucciones del planificador</strong>
           <ul>
             <li><b>Ubicación:</b> Introduce la dirección o nombre de la finca.</li>
             <li><b>Horas:</b> Tiempo estimado de trabajo <i>dentro</i> de la comunidad.</li>
             <li><b>Días/Sem:</b> Frecuencia semanal (se reparten automáticamente de Lunes a Viernes).</li>
-            <li><b>Logística:</b> Turnos de 07:00 a 15:00. El tiempo de viaje se calcula en <b>tiempo real por carretera</b> 
+            <li><b>Logística:</b> Turnos de 07:00 a 15:00. El tiempo de viaje se calcula en tiempo real por carretera 
               mediante el servicio OSRM basado en las coordenadas exactas.</li>
           </ul>
         </div>
@@ -163,8 +161,8 @@
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
               <h3 style="font-size: 1rem; margin: 0; color: #2c3e50;">Carga de Comunidades</h3>
               <div style="display: flex; gap: 10px;">
-                <button class="btn btn-secondary" style="font-size: 0.8rem;" (click)="clearAllCommunities()">🗑️ Limpiar Todo</button>
-                <button class="btn btn-info" style="font-size: 0.8rem;" (click)="commExcelInput.click()">📁 Importar desde Excel</button>
+                <button class="btn btn-secondary" style="font-size: 0.8rem;" (click)="clearAllCommunities()">Limpiar Todo</button>
+                <button class="btn btn-info" style="font-size: 0.8rem;" (click)="commExcelInput.click()">Importar Excel</button>
               </div>
               <input #commExcelInput type="file" style="display:none" (change)="importarExcelComunidades($event)" accept=".xlsx, .xls">
             </div>
@@ -190,7 +188,7 @@
                 <td style="text-align: center;">{{ c.cleaningDaysPerWeek }} días/sem</td>
                 <td style="text-align: center;">{{ c.latitude | number:'1.4-4' }}</td>
                 <td style="text-align: center;">{{ c.longitude | number:'1.4-4' }}</td>
-                <td style="text-align: center;"><button class="remove-file-btn" style="margin: 0 auto;" (click)="removeCommunity(c.id)">🗑️</button></td>
+                <td style="text-align: center;"><button class="remove-file-btn" style="margin: 0 auto;" (click)="removeCommunity(c.id)">×</button></td>
               </tr>
             </tbody>
           </table>
@@ -203,16 +201,16 @@
         <!-- TABLA DE VISUALIZACIÓN DE RESULTADOS -->
         <div *ngIf="optimizationResult" class="mt-5" style="animation: fadeIn 0.5s ease;">
           <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
-          <h3 class="section-title">📅 Vista Previa del Horario</h3>
+          <h3 class="section-title">Vista Previa del Horario</h3>
           
           <div class="legend">
             <div class="legend-item"><span style="color: #3498db;">●</span> Azul: Tareas asignadas</div>
-            <div class="legend-item">⏱️ Tiempo de viaje real por carretera (Servicio OSRM)</div>
+            <div class="legend-item">Tiempo de viaje real por carretera (Servicio OSRM)</div>
           </div>
 
           <!-- Alerta de comunidades no asignadas -->
           <div *ngIf="hasNoAsignadas()" class="info-section" style="border-left-color: #e74c3c; background: #fff5f5; color: #c53030; margin-top: 15px;">
-            <strong>⚠️ Algunas comunidades no se han podido asignar por superar el límite de 8h/día (incluyendo viajes):</strong>
+            <strong>Aviso: Algunas comunidades no se han podido asignar por superar el límite de 8h/día (incluyendo viajes):</strong>
             <div *ngFor="let item of optimizationResult.no_asignadas | keyvalue">
               <div *ngIf="item.value.length > 0">
                 <small><b>{{ item.key }}:</b> {{ item.value.join(', ') }}</small>
@@ -248,7 +246,7 @@
           </table>
 
           <div class="actions">
-            <button class="btn btn-success" (click)="descargarExcelOptimizacion()">📥 Descargar Excel de Rutas</button>
+            <button class="btn btn-success" (click)="descargarExcelOptimizacion()">Descargar Excel de Rutas</button>
           </div>
         </div>
       </div>
