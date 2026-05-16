@@ -70,7 +70,7 @@ class ClasificadorMovimientos:
                     }
         
         if importe > 0:
-            return {"categoria": "Ingreso Otros", "tipo": "ingreso", "confianza": 0.5}
+            return {"categoria": "Ingresos desconocidos", "tipo": "ingreso", "confianza": 0.5}
         else:
             return {"categoria": "Gasto Otros", "tipo": "gasto", "confianza": 0.5}
     
