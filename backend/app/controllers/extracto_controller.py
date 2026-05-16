@@ -87,11 +87,11 @@ async def entrenar_controller(extracto: UploadFile, excel_contable: UploadFile):
 async def procesar_dos_archivos_controller(extracto: UploadFile, registros: UploadFile):
     global _movimientos_procesados, _registros_contenido, _registros_filename, _extracto_filename
 
-    # Guardar contenido de registros para uso posterior en descargas históricas
+    # Para cuando lo descargue luego
     _registros_contenido = await registros.read()
     _registros_filename = registros.filename
     registros.file.seek(0)
-    _extracto_filename = extracto.filename # Guardar el nombre del archivo de extracto
+    _extracto_filename = extracto.filename
 
     resultado = procesar_extracto_y_registros(extracto, registros, clasificador)
     

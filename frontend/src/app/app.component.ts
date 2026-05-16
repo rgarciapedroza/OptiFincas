@@ -30,8 +30,12 @@ interface Community {
     .card-container { background: white; border-radius: 16px; padding: 30px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid #e1e8ed; max-width: 900px; margin: 0 auto; }
     .section-title { color: #2c3e50; margin-bottom: 25px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
     
-    .success-card { background: white; padding: 40px; border-radius: 8px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-    .success-icon { font-size: 50px; color: #2ecc71; margin-bottom: 20px; }
+    .success-card { background: white; padding: 40px; border-radius: 16px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
+    .success-icon { 
+      width: 60px; height: 60px; border-radius: 50%; background: #f0fff4; 
+      color: #2ecc71; font-size: 32px; line-height: 60px; margin: 0 auto 20px;
+      border: 2px solid #2ecc71; display: flex; align-items: center; justify-content: center;
+    }
     .reference-box { background: #e8f4fd; padding: 15px; border-radius: 4px; margin: 20px 0; border: 1px dashed #3498db; }
 
     /* Estilos de Botones y Tablas */
@@ -208,12 +212,11 @@ next: (data) => {
         this.movimientos = data.movimientos_clasificados;
         this.resumen = data.resumen_general;
 
-        // Debug: verificar si el backend está marcando históricos y trayendo pisos en CONCEPTO
         try {
           const hist = (this.movimientos || []).filter(m => m && m.es_historico);
-          console.log('[DEBUG] movimientos_clasificados=', this.movimientos?.length || 0);
-          console.log('[DEBUG] historicos encontrados=', hist.length);
-          console.log('[DEBUG] historicos muestra=', hist.slice(0, 5).map(m => ({ piso: m?.piso, CONCEPTO: m?.CONCEPTO, metodo_piso: m?.metodo_piso })));
+          console.log('movimientos_clasificados=', this.movimientos?.length || 0);
+          console.log(' historicos encontrados=', hist.length);
+          console.log(' historicos muestra=', hist.slice(0, 5).map(m => ({ piso: m?.piso, CONCEPTO: m?.CONCEPTO, metodo_piso: m?.metodo_piso })));
           // accesible desde consola
           (window as any).__hist = hist;
 
