@@ -6,12 +6,12 @@ import pandas as pd
 from datetime import datetime
 from fastapi import UploadFile, HTTPException
 from fastapi.responses import StreamingResponse
-from backend.app.ml.clasificador_ml import crear_clasificador
-from backend.app.servicios.procesar_movimientos import procesar_extracto_y_registros
-from backend.app.servicios.procesar_extracto import detectar_columnas, limpiar_importe
-from backend.app.servicios.resumen import calcular_resumen_categorias_con_tipo
-from backend.app.procesamiento.generar_excel import crear_excel_actualizado
-from backend.app.procesamiento.procesar_excel_contable import obtener_nombre_hoja
+from app.ml.clasificador_ml import crear_clasificador
+from app.servicios.procesar_movimientos import procesar_extracto_y_registros
+from app.servicios.procesar_extracto import detectar_columnas, limpiar_importe
+from app.servicios.resumen import calcular_resumen_categorias_con_tipo
+from app.procesamiento.generar_excel import crear_excel_actualizado
+from app.procesamiento.procesar_excel_contable import obtener_nombre_hoja
 
 clasificador = crear_clasificador()
 _movimientos_procesados = []

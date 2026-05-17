@@ -1,6 +1,6 @@
 import pandas as pd
 import io
-from backend.app.procesamiento.buscar_pisos import detectar_fila_cabecera
+from  app.procesamiento.buscar_pisos import detectar_fila_cabecera
 
 def leer_extracto_excel(upload_file):
     contenido = upload_file.file.read()

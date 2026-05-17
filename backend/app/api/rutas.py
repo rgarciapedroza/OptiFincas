@@ -1,5 +1,5 @@
 from fastapi import APIRouter, UploadFile, File
-from backend.app.controllers.extracto_controller import procesar_dos_archivos_controller, entrenar_controller, confirmar_controller, descargar_controller, descargar_excel_controller, opciones_controller
+from app.controllers.extracto_controller import procesar_dos_archivos_controller, entrenar_controller, confirmar_controller, descargar_controller, descargar_excel_controller, opciones_controller
 
 router = APIRouter()
 

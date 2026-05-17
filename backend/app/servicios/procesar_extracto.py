@@ -3,8 +3,8 @@ import io
 import re
 from fastapi import UploadFile, HTTPException
 from typing import Dict
-from backend.app.adaptadores.csv_bbva import leer_extracto_csv
-from backend.app.adaptadores.excel_bbva import leer_extracto_excel
+from app.adaptadores.csv_bbva import leer_extracto_csv
+from app.adaptadores.excel_bbva import leer_extracto_excel
 
 
 def detectar_columnas(df: pd.DataFrame) -> Dict[str, str]:
