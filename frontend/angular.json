@@ -24,6 +24,12 @@
           },
           "configurations": {
             "production": {
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.prod.ts"
+                }
+              ],
               "budgets": [{"type": "initial", "maximumWarning": "500kb", "maximumError": "1mb"}],
               "outputHashing": "all"
             }
@@ -31,7 +37,10 @@
         },
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
-          "options": { "proxyConfig": "proxy.conf.json" }
+          "options": {
+            "browserTarget": "optifincas-app:build",
+            "proxyConfig": "proxy.conf.json"
+          }
         }
       }
     }

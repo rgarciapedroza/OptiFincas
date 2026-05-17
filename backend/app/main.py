@@ -2,8 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from backend.app.api.rutas import router as api_router
-from backend.app.api.optimizacion import router as optimizacion_router
+from app.api.rutas import router as api_router
+from app.api.optimizacion import router as optimizacion_router
 import os
 
 app = FastAPI(title="API Procesador de Extractos")
