@@ -1,5 +1,6 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { SupabaseService } from './supabase.service';
 
 interface Community {
   id: number;
@@ -135,9 +136,14 @@ interface Community {
     .task-preview .time { color: #555; font-size: 0.75rem; display: block; margin-bottom: 4px; }
     .hours-badge { font-size: 0.7rem; background: #34495e; padding: 2px 6px; border-radius: 10px; color: white; float: right; }
     .no-tasks { color: #bdc3c7; font-size: 0.8rem; font-style: italic; text-align: center; padding: 10px; }
+    
+    .logout-section { padding: 20px; border-top: 1px solid rgba(255,255,255,0.1); margin-top: auto; }
+    .btn-logout { width: 100%; padding: 10px; background: #e74c3c; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }
   `]
 })
-export class AppComponent {
+export class AppComponent implements OnInit {
+  session: any = null;
+  loadingSession = true;
   funcionalidadActiva = 1;
   pantallaActual = 1;
   loading = false;
@@ -155,7 +161,19 @@ export class AppComponent {
   optimizationResult: any = null;
   diasSemana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient, private supabase: SupabaseService) {}
+
+  async ngOnInit() {
+    this.session = await this.supabase.getSession();
+    const session = await this.supabase.getSession();
+    this.session = session;
+    this.loadingSession = false;
+
+    this.supabase.authChanges((_, session) => {
+      this.session = session;
+      this.loadingSession = false;
+    });
+  }
 
   // isCsv se mantiene igual, ya que depende del nombre del archivo seleccionado
   get isCsv(): boolean {
@@ -398,5 +416,9 @@ next: (data) => {
     this.movimientos = [];
     this.selectedFileExtracto = null;
     this.selectedFileRegistros = null;
+  }
+
+  async logout() {
+    await this.supabase.signOut();
   }
 }

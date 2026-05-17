@@ -1,7 +1,7 @@
 from typing import List, Dict, Tuple, Iterable
 import re
 import pandas as pd
-from backend.app.procesamiento.buscar_pisos import detectar_fila_cabecera, similar
+from app.procesamiento.buscar_pisos import detectar_fila_cabecera, similar
 
 
 def extraer_nombres_desde_concepto(concepto: str) -> List[str]:

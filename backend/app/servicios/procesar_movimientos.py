@@ -1,7 +1,7 @@
 from typing import Dict, List
 import pandas as pd
 from fastapi import UploadFile
-from backend.app.servicios.procesar_extracto import (
+from  app.servicios.procesar_extracto import (
     cargar_extracto_a_df,
     cargar_registros_a_excel,
     detectar_columnas,
@@ -9,9 +9,9 @@ from backend.app.servicios.procesar_extracto import (
     normalizar_fecha,
     buscar_piso_regex_en_fila,
 )
-from backend.app.procesamiento.buscar_pisos import buscar_pisos_en_historico
-from backend.app.servicios.buscar_piso_ordenante import aplicar_busqueda_por_ordenante
-from backend.app.servicios.resumen import calcular_resumen_categorias
+from  app.procesamiento.buscar_pisos import buscar_pisos_en_historico
+from  app.servicios.buscar_piso_ordenante import aplicar_busqueda_por_ordenante
+from  app.servicios.resumen import calcular_resumen_categorias
 
 def buscar_columna_ordenante(df):
     posibles_nombres = ["BENEFICIARIO/ORDENANTE", "ORDENANTE", "BENEFICIARIO", "NOMBRE"]
