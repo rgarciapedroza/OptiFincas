@@ -760,7 +760,7 @@ next: (data) => {
 
   async borrarCensoCompleto() {
     if (!this.comunidadSeleccionada) return;
-    const confirmacion = confirm('¿Estás seguro de que deseas eliminar TODOS los propietarios de esta comunidad? Esta acción no se puede deshacer.');
+    const confirmacion = confirm('¡Atención! Si continúas, se eliminarán permanentemente todos los propietarios de esta comunidad y el listado quedará completamente vacío. ¿Estás seguro de que deseas proceder?');
     
     if (confirmacion) {
       this.loading = true;
