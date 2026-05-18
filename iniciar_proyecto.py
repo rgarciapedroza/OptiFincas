@@ -48,33 +48,49 @@ def print_error(msg):
 def check_dependencies():
     """Verifica que las dependencias estén instaladas"""
     print_info("Verificando dependencias...")
+
+    # Mapeo de nombre de paquete pip a nombre de importación en Python
+    packages = {
+        'fastapi': 'fastapi',
+        'uvicorn': 'uvicorn',
+        'pandas': 'pandas',
+        'openpyxl': 'openpyxl',
+        'scikit-learn': 'sklearn',
+        'supabase': 'supabase',
+        'cryptography': 'cryptography',
+        'python-dotenv': 'dotenv'
+    }
     
-    required = ['fastapi', 'uvicorn', 'pandas', 'openpyxl', 'scikit-learn']
     missing = []
     
-    for package in required:
+    for package, import_name in packages.items():
         try:
-            __import__(package.replace('-', '_'))
+            globals()[import_name] = __import__(import_name)
         except ImportError:
-            missing.append(package)
+            missing.append((package, import_name))
     
-    if missing:
-        print_warning(f"Dependencias faltantes: {', '.join(missing)}")
+    if missing: # Si hay dependencias faltantes, intentar instalarlas
+        print_warning(f"Dependencias faltantes: {', '.join([m[0] for m in missing])}")
         print_info("Instalando...")
         
         # Intentar instalar
         result = subprocess.run(
-            [sys.executable, "-m", "pip", "install"] + missing,
+            [sys.executable, "-m", "pip", "install"] + [m[0] for m in missing],
             cwd=BACKEND_DIR,
-            capture_output=True,
-            text=True
+            stdout=sys.stdout, # Mostrar la salida de pip install
+            stderr=sys.stderr, # Mostrar errores de pip install
         )
         
         if result.returncode == 0:
-            print_success("Dependencias instaladas")
+            # Verificar de nuevo tras instalar
+            for _, import_name in missing:
+                try: __import__(import_name)
+                except: 
+                    print_error(f"Fallo crítico: No se pudo cargar {import_name} tras instalar.")
+                    return False
+            print_success("Dependencias instaladas y verificadas")
             return True
         else:
-            print_error(f"Error instalando: {result.stderr}")
             return False
     
     print_success("Dependencias OK")
@@ -84,7 +100,7 @@ def check_dependencies():
 def install_requirements():
     """Instala los requirements.txt"""
     requirements_file = os.path.join(BACKEND_DIR, "requirements.txt")
-    
+
     if not os.path.exists(requirements_file):
         print_warning("No encontrado requirements.txt, usando pip install básico")
         return True
@@ -94,8 +110,8 @@ def install_requirements():
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"],
         cwd=BACKEND_DIR,
-        capture_output=True,
-        text=True
+        stdout=sys.stdout, # Mostrar la salida de pip install
+        stderr=sys.stderr, # Mostrar errores de pip install
     )
     
     if result.returncode == 0:
@@ -111,7 +127,7 @@ def start_backend():
     print_info("Iniciando servidor backend...")
     print_info("  URL: http://127.0.0.1:8000")
     print_info("  API Docs: http://127.0.0.1:8000/docs")
-    
+
     # Cambiar al directorio backend
     os.chdir(BACKEND_DIR)
     
@@ -120,8 +136,8 @@ def start_backend():
         [sys.executable, "-m", "uvicorn", "app.main:app", 
          "--host", "127.0.0.1", "--port", "8000", "--reload"],
         cwd=BACKEND_DIR,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stdout=sys.stdout, # Mostrar la salida de Uvicorn
+        stderr=sys.stderr, # Mostrar errores de Uvicorn
         text=True,
         bufsize=1
     )
@@ -129,11 +145,11 @@ def start_backend():
     # Esperar a que el servidor arranque
     time.sleep(3)
     
-    # Verificar si arrancó
+    # Verificar si el proceso terminó. 
+    # Nota: Con --reload uvicorn a veces sigue vivo aunque la app no cargue, 
+    # revisa los logs de la terminal para ver errores de ModuleNotFoundError.
     if process.poll() is not None:
-        # El proceso terminó, error
-        output, _ = process.communicate()
-        print_error(f"Error iniciando: {output}")
+        print_error("El servidor backend falló al iniciar. Revisa los errores anteriores.")
         return None
     
     print_success("Servidor backend iniciado")
@@ -143,16 +159,25 @@ def start_backend():
 def start_frontend():
     """Inicia el servidor de desarrollo de Angular (Node)"""
     print_info("Iniciando servidor de desarrollo de Angular...")
-    
+
     # Determinar comando npm según el SO
     npm_cmd = "npm.cmd" if platform.system() == "Windows" else "npm"
     
+    # Asegurar instalación de dependencias de seguridad del frontend (crypto-js)
+    print_info("Verificando dependencias de frontend (crypto-js)...")
+    subprocess.run(
+        [npm_cmd, "install", "crypto-js", "@types/crypto-js"],
+        cwd=FRONTEND_DIR,
+        stdout=sys.stdout, # Mostrar la salida de npm install
+        stderr=sys.stderr, # Mostrar errores de npm install
+    )
+
     try:
         process = subprocess.Popen(
             [npm_cmd, "start"],
             cwd=FRONTEND_DIR,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stdout=sys.stdout, # Mostrar la salida de Angular CLI
+            stderr=sys.stderr, # Mostrar errores de Angular CLI
             text=True,
             bufsize=1,
             shell=True if platform.system() == "Windows" else False
@@ -174,15 +199,16 @@ def main():
     print("\n" + "="*50)
     print("  🏦 INICIANDO PROCESADOR DE EXTRACTOS")
     print("="*50 + "\n")
-    
+
     # 0. Verificar Node.js
     if subprocess.run(["node", "--version"], capture_output=True).returncode != 0:
         print_error("Node.js no está instalado o no está en el PATH")
         return
 
     # 1. Verificar/instalar dependencias
+    check_dependencies()
     install_requirements()
-    
+
     # 2. Iniciar backend
     backend_process = start_backend()
     
@@ -192,7 +218,7 @@ def main():
         print(f"  cd {BACKEND_DIR}")
         print(f"  {sys.executable} -m uvicorn app.main:app --reload")
         return
-    
+
     # 3. Iniciar frontend (Angular/Node)
     frontend_process = start_frontend()
     

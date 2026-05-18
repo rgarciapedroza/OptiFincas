@@ -215,7 +215,7 @@
         </div>
 
         <!-- PESTAÑAS DEL DASHBOARD -->
-        <div class="summary-cards" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 20px; gap: 10px;">
+        <div class="summary-cards" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 20px; gap: 10px;">
           <div class="card" [class.active-tab]="seccionDashboard === 'propietarios'" (click)="setSeccion('propietarios')" style="cursor: pointer; padding: 15px;">
             <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
             Propietarios
@@ -228,7 +228,7 @@
             <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
             Finanzas
           </div>
-          <div class="card" [class.active-tab]="seccionDashboard === 'limpieza'" (click)="setSeccion('limpieza')" style="cursor: pointer; padding: 15px;">
+          <div class="card" *ngIf="comunidadSeleccionada?.servicios?.toLowerCase()?.includes('limpieza')" [class.active-tab]="seccionDashboard === 'limpieza'" (click)="setSeccion('limpieza')" style="cursor: pointer; padding: 15px;">
             <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path><path d="m5 3 1 1"></path><path d="m19 3-1 1"></path><path d="m5 21 1-1"></path><path d="m19 21-1-1"></path></svg>
             Limpieza
           </div>
@@ -251,7 +251,9 @@
                 <th>CÓDIGO</th>
                 <th>PROPIETARIO</th>
                 <th>EMAIL</th>
-                <th>TELÉFONO</th>
+                <th>TELÉFONO 1</th>
+                <th>TELÉFONO 2</th>
+                <th>OBSERVACIONES</th>
               </tr>
             </thead>
             <tbody>
@@ -259,10 +261,12 @@
                 <td style="font-weight: bold;">{{ p.codigo }}</td>
                 <td>{{ p.propietario || '-' }}</td>
                 <td>{{ p.email || '-' }}</td>
-                <td>{{ p.telefono || '-' }}</td>
+                <td>{{ p.telefono1 || '-' }}</td>
+                <td>{{ p.telefono2 || '-' }}</td>
+                <td>{{ p.observaciones || '-' }}</td>
               </tr>
               <tr *ngIf="pisos.length === 0">
-                <td colspan="4" class="no-tasks">No hay propietarios registrados para esta comunidad.</td>
+                <td colspan="6" class="no-tasks">No hay propietarios registrados para esta comunidad.</td>
               </tr>
             </tbody>
           </table>
