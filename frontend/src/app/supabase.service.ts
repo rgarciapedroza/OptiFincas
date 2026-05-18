@@ -70,10 +70,13 @@ export class SupabaseService {
     const formData = new FormData();
     formData.append('file', file);
     
+    const { data: { session } } = await this.supabase.auth.getSession();
+    if (!session) throw new Error("No hay sesión activa");
+
     const response = await fetch(`/api/comunidades/${communityId}/importar-movimientos`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${await this.supabase.auth.getSession().then(s => s.data.session?.access_token)}`,
+        'Authorization': `Bearer ${session.access_token}`,
       },
       body: formData
     });
@@ -83,10 +86,14 @@ export class SupabaseService {
   async importarCenso(communityId: number | string, file: File) {
     const formData = new FormData();
     formData.append('file', file);
+
+    const { data: { session } } = await this.supabase.auth.getSession();
+    if (!session) throw new Error("No hay sesión activa");
+
     const response = await fetch(`/api/comunidades/${communityId}/importar-censo`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${await this.supabase.auth.getSession().then(s => s.data.session?.access_token)}`,
+        'Authorization': `Bearer ${session.access_token}`,
       },
       body: formData
     });

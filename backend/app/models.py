@@ -71,10 +71,12 @@ class Piso(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     community_id = Column(Integer, ForeignKey("comunidades.id", ondelete="CASCADE"), nullable=False)
-    codigo = Column(String(10), nullable=False)  # Ej: "2J", "1A", "BAJO"
-    propietario = Column(String(200), nullable=True)
-    telefono = Column(String(20), nullable=True)
-    email = Column(String(100), nullable=True)
+    codigo = Column(String(50), nullable=False)  # Aumentado para mayor flexibilidad
+    # Usamos Text para los campos encriptados ya que las cadenas resultantes son largas
+    propietario = Column(Text, nullable=True)
+    telefono1 = Column(Text, nullable=True) # Nuevo campo para Teléfono_1
+    telefono2 = Column(Text, nullable=True) # Nuevo campo para Teléfono_2
+    email = Column(Text, nullable=True)
     observaciones = Column(Text, nullable=True)
     
     # El user_id permite que un vecino se loguee y vea este piso
