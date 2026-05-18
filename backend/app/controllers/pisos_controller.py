@@ -12,31 +12,37 @@ from cryptography.hazmat.backends import default_backend
 ENCRYPT_KEY = b'OptiFincasSecretKey2024_Security' 
 ENCRYPT_IV = b'OptiFincas_IV_16' # Vector de inicialización (16 bytes)
 
-def encriptar_dato(texto: str, cipher: Cipher) -> str:
+def encriptar_dato(texto: str, cipher: Cipher) -> str | None:
     """Encripta un texto usando AES-256-CBC."""
-    if not texto or str(texto).lower() == "none":
-        print(f"DEBUG: encriptar_dato recibió None o cadena vacía/none para encriptar. Retornando None.")
+    if not texto or str(texto).lower() in ["none", "nan", ""]:
         return None
-    
-    # Padding para que el bloque sea múltiplo de 128 bits
     padder = padding.PKCS7(128).padder()
     datos_padded = padder.update(texto.encode('utf-8')) + padder.finalize()
-    
     encryptor = cipher.encryptor()
     ct = encryptor.update(datos_padded) + encryptor.finalize()
-    
     return base64.b64encode(ct).decode('utf-8')
 
-def importar_censo_pisos_controller(community_id: int, file: UploadFile):
+def desencriptar_dato(texto_encriptado: str | None, cipher: Cipher) -> str:
+    """Desencripta un texto usando AES-256-CBC."""
+    if not texto_encriptado:
+        return ""
+    try:
+        ct = base64.b64decode(texto_encriptado)
+        decryptor = cipher.decryptor()
+        datos_padded = decryptor.update(ct) + decryptor.finalize()
+        unpadder = padding.PKCS7(128).unpadder()
+        return (unpadder.update(datos_padded) + unpadder.finalize()).decode('utf-8')
+    except Exception as e:
+        return texto_encriptado # Retornar el original si falla la desencriptación
+
+def importar_censo_pisos_controller(community_id: int, file: UploadFile, user_id: str = None):
     """
     Importa el censo de propietarios (pisos) desde un Excel.
-    Al quitar 'async', FastAPI ejecuta esto en un threadpool, evitando el 504 Gateway Timeout.
     """
     if not file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="Solo se admiten archivos Excel")
 
     try:
-        # Lectura síncrona del archivo
         contenido = file.file.read()
         df = pd.read_excel(io.BytesIO(contenido))
         
@@ -46,13 +52,14 @@ def importar_censo_pisos_controller(community_id: int, file: UploadFile):
         print(f"DEBUG: Columnas normalizadas en DataFrame: {df.columns.tolist()}")
 
         # Mapeo de columnas basado en la nueva estructura
-        col_piso = next((c for c in df.columns if "piso" in c or "codigo" in c or "código" in c), None)
-        col_nombre = next((c for c in df.columns if "nombre" in c and "propietario" not in c), None) # 'nombre'
-        col_apellidos = next((c for c in df.columns if "apellido" in c), None) # 'apellidos'
-        col_email = next((c for c in df.columns if "email" in c or "correo" in c), None) # 'email'
-        col_tel1 = next((c for c in df.columns if "teléfono_1" in c or "telefono_1" in c), None) # 'teléfono_1'
-        col_tel2 = next((c for c in df.columns if "teléfono_2" in c or "telefono_2" in c), None) # 'teléfono_2'
-        col_obs = next((c for c in df.columns if "observaciones" in c or "obs" in c), None) # 'observaciones'
+        col_piso = next((c for c in df.columns if "piso" in c or "codigo" in c), None)
+        col_nombre = next((c for c in df.columns if c == "nombre"), None)
+        col_apellidos = next((c for c in df.columns if "apellido" in c), None)
+        col_email = next((c for c in df.columns if "email" in c or "correo" in c), None)
+        col_tel1 = next((c for c in df.columns if "1" in c and ("tel" in c or "movil" in c)), None)
+        col_tel2 = next((c for c in df.columns if "2" in c and ("tel" in c or "movil" in c)), None)
+        col_obs = next((c for c in df.columns if "observaciones" in c or "obs" in c), None)
+        
         col_prop_combined = next((c for c in df.columns if "propietario" in c), None)
         col_tel_gen = next((c for c in df.columns if "telefono" in c or "teléfono" in c), None)
         print(f"DEBUG: Columnas detectadas - Piso: {col_piso}, Nombre: {col_nombre}, Apellidos: {col_apellidos}, Email: {col_email}, Tel1: {col_tel1}, Tel2: {col_tel2}, Obs: {col_obs}")
@@ -62,14 +69,6 @@ def importar_censo_pisos_controller(community_id: int, file: UploadFile):
 
         # Pre-creamos el objeto Cipher una sola vez para ganar velocidad
         cipher = Cipher(algorithms.AES(ENCRYPT_KEY), modes.CBC(ENCRYPT_IV), backend=default_backend())
-
-        # 1. Limpiar censo anterior de esta comunidad para evitar que aparezcan datos antiguos
-        try:
-            supabase_client.table("pisos").delete().eq("community_id", community_id).execute()
-            print(f"Censo antiguo de la comunidad {community_id} eliminado para nueva carga.")
-        except Exception as e:
-            # Si falla la limpieza, notificamos pero intentamos seguir
-            print(f"Aviso al limpiar censo anterior: {e}")
 
         def limpiar_valor(val):
             if pd.isna(val):
@@ -125,6 +124,7 @@ def importar_censo_pisos_controller(community_id: int, file: UploadFile):
                 "telefono1": encrypted_tel1,
                 "telefono2": encrypted_tel2,
                 "observaciones": encrypted_obs,
+                "user_id": user_id,
                 "activo": True
             })
 
@@ -145,3 +145,92 @@ def importar_censo_pisos_controller(community_id: int, file: UploadFile):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error procesando censo: {str(e)}")
+
+
+# --- Nuevas funciones CRUD para Pisos ---
+
+def get_piso_controller(piso_id: int):
+    """Obtiene un piso por su ID y desencripta los datos sensibles."""
+    response = supabase_client.table("pisos").select("*").eq("id", piso_id).single().execute()
+    if not response.data:
+        raise HTTPException(status_code=404, detail="Piso no encontrado")
+
+    cipher = Cipher(algorithms.AES(ENCRYPT_KEY), modes.CBC(ENCRYPT_IV), backend=default_backend())
+    piso = response.data
+    piso["propietario"] = desencriptar_dato(piso["propietario"], cipher)
+    piso["email"] = desencriptar_dato(piso["email"], cipher)
+    piso["telefono1"] = desencriptar_dato(piso["telefono1"], cipher)
+    piso["telefono2"] = desencriptar_dato(piso["telefono2"], cipher)
+    piso["observaciones"] = desencriptar_dato(piso["observaciones"], cipher)
+    return piso
+
+def create_piso_controller(piso_data: dict, user_id: str = None):
+    """Crea un nuevo piso, encriptando los datos sensibles."""
+    cipher = Cipher(algorithms.AES(ENCRYPT_KEY), modes.CBC(ENCRYPT_IV), backend=default_backend())
+    if user_id: piso_data["user_id"] = user_id
+    
+    for field in ["propietario", "email", "telefono1", "telefono2", "observaciones"]:
+        if field in piso_data and piso_data[field]:
+            piso_data[field] = encriptar_dato(piso_data[field], cipher)
+
+    response = supabase_client.table("pisos").insert(piso_data).execute()
+    if response.data:
+        return response.data[0]
+    raise HTTPException(status_code=500, detail="Error al crear el piso")
+
+def update_piso_controller(piso_id: int, piso_data: dict, user_id: str = None):
+    """Actualiza un piso existente."""
+    cipher = Cipher(algorithms.AES(ENCRYPT_KEY), modes.CBC(ENCRYPT_IV), backend=default_backend())
+    
+    updates = {}
+    for field in ["propietario", "email", "telefono1", "telefono2", "observaciones"]:
+        if field in piso_data:
+            updates[field] = encriptar_dato(str(piso_data[field]), cipher) if piso_data[field] else None
+            
+    if "codigo" in piso_data:
+        updates["codigo"] = str(piso_data["codigo"]).upper()
+
+    # Primero verificamos si el piso existe y a quién pertenece
+    existing = supabase_client.table("pisos").select("user_id").eq("id", piso_id).single().execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Piso no encontrado")
+    
+    # Si el piso tiene un user_id y no coincide con el actual, prohibido
+    if existing.data.get("user_id") and existing.data["user_id"] != user_id:
+         raise HTTPException(status_code=403, detail="No tienes permiso para editar este piso")
+
+    # Si el registro no tiene user_id (dato huérfano), lo asignamos al usuario que lo edita
+    if not existing.data.get("user_id") and user_id:
+        updates["user_id"] = user_id
+
+    query = supabase_client.table("pisos").update(updates).eq("id", piso_id)
+    response = query.execute()
+
+    if response.data:
+        updated = response.data[0]
+        for field in ["propietario", "email", "telefono1", "telefono2", "observaciones"]:
+            updated[field] = desencriptar_dato(updated.get(field), cipher)
+        return updated
+    raise HTTPException(status_code=403, detail="No tienes permiso para editar este piso")
+
+def delete_piso_controller(piso_id: int, user_id: str = None):
+    """Elimina un piso por su ID verificado por user_id."""
+    # Verificación similar para permitir borrar si no tiene dueño o es el dueño
+    existing = supabase_client.table("pisos").select("user_id").eq("id", piso_id).single().execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Piso no encontrado")
+        
+    if existing.data.get("user_id") and existing.data["user_id"] != user_id:
+         raise HTTPException(status_code=403, detail="No tienes permiso para eliminar este piso")
+
+    query = supabase_client.table("pisos").delete().eq("id", piso_id)
+    response = query.execute()
+
+    if response.data:
+        return {"status": "success", "message": "Piso eliminado correctamente"}
+    raise HTTPException(status_code=403, detail="No tienes permiso para eliminar este piso o no existe")
+
+def borrar_censo_comunidad_controller(community_id: int):
+    """Elimina todos los pisos de una comunidad específica."""
+    response = supabase_client.table("pisos").delete().eq("community_id", community_id).execute()
+    return {"status": "success", "message": f"Se han eliminado {len(response.data)} registros del censo."}

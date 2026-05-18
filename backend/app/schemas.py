@@ -93,6 +93,11 @@ class PisoCreate(PisoBase):
     pass
 
 
+class PisoUpdate(PisoBase):
+    """Schema for updating a piso (all fields optional)"""
+    community_id: Optional[int] = None
+    codigo: Optional[str] = None
+
 class PisoResponse(PisoBase):
     """Schema for piso response"""
     id: int

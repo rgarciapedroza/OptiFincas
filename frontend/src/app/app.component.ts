@@ -21,6 +21,17 @@ interface MovimientoBancario {
   created_at: string;
 }
 
+interface Piso {
+  id?: number;
+  community_id: number;
+  codigo: string;
+  propietario?: string;
+  telefono1?: string;
+  telefono2?: string;
+  email?: string;
+  observaciones?: string;
+}
+
 interface Community {
   id: number;
   address: string;
@@ -192,6 +203,48 @@ interface Community {
     
     .logout-section { padding: 20px; border-top: 1px solid rgba(255,255,255,0.1); margin-top: auto; }
     .btn-logout { width: 100%; padding: 10px; background: #e74c3c; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; }
+
+    /* Estilos para el Modal de Edición de Piso */
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center; z-index: 1000;
+      animation: fadeIn 0.2s ease-out;
+    }
+    .modal-card {
+      background: white; width: 90%; max-width: 600px; border-radius: 16px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      overflow: hidden; animation: slideUp 0.3s ease-out;
+    }
+    .modal-header {
+      padding: 20px 25px; border-bottom: 1px solid #e5e7eb;
+      display: flex; justify-content: space-between; align-items: center;
+      background: #f9fafb;
+    }
+    .modal-header h3 { margin: 0; font-size: 1.1rem; font-weight: 700; color: #111827; }
+    .modal-body { padding: 32px; max-height: 75vh; overflow-y: auto; }
+    .modal-footer {
+      padding: 20px 30px; border-top: 1px solid #e5e7eb;
+      display: flex; justify-content: flex-end; gap: 12px; background: #f9fafb;
+    }
+    .form-grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px 20px; }
+    .form-group { margin-bottom: 0; }
+    .form-group label { 
+      display: flex; align-items: center; gap: 8px;
+      font-size: 0.85rem; font-weight: 600; color: #4b5563; margin-bottom: 8px; 
+    }
+    .form-group label svg { color: #6366f1; opacity: 0.8; }
+    .form-group input, .form-group textarea {
+      width: 100%; padding: 12px 16px; border: 1px solid #d1d5db; border-radius: 10px;
+      font-size: 0.95rem; transition: all 0.2s ease; background: #fcfcfd; color: #1f2937;
+      box-sizing: border-box; display: block;
+    }
+    .form-group input:focus, .form-group textarea:focus { 
+      outline: none; border-color: #6366f1; background: white;
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+    }
+    .form-group textarea { resize: none; }
+    @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
   `]
 })
 export class AppComponent implements OnInit {
@@ -202,14 +255,17 @@ export class AppComponent implements OnInit {
   
   // Estado del Dashboard de Comunidad
   comunidadSeleccionada: any = null;
+  editandoPisoId: number | null = null;
+  pisoForm: Piso = { community_id: 0, codigo: '' };
   seccionDashboard: 'propietarios' | 'extractos' | 'finanzas' | 'limpieza' = 'propietarios';
+  mostrarModalEdicionPiso: boolean = false; // Controla la visibilidad del modal
 
   loading = false;
   selectedFileExtracto: File | null = null;
   selectedFileRegistros: File | null = null;
   movimientos: any[] = [];
   pisos: any[] = [];
-  resumen = { total_ingresos: 0, total_gastos: 0, saldo_neto: 0 };
+  resumen = { total_ingresos: 0, total_gastos: 0, saldo_neto: 0 }; // TODO: Esto es para la funcionalidad 1, no para el dashboard
   error = '';
   archivoReferencia: { nombre: string, blob: Blob } | null = null;
 
@@ -697,6 +753,106 @@ next: (data) => {
       }
     } catch (e) {
       alert('Error de conexión con el servidor');
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  async borrarCensoCompleto() {
+    if (!this.comunidadSeleccionada) return;
+    const confirmacion = confirm('¿Estás seguro de que deseas eliminar TODOS los propietarios de esta comunidad? Esta acción no se puede deshacer.');
+    
+    if (confirmacion) {
+      this.loading = true;
+      try {
+        const res = await this.supabase.borrarCensoComunidad(this.comunidadSeleccionada.id);
+        alert(res.message);
+        await this.cargarPisos(this.comunidadSeleccionada.id);
+      } catch (e) {
+        alert('Error al vaciar el censo');
+      } finally {
+        this.loading = false;
+      }
+    }
+  }
+  // --- GESTIÓN DE PISOS (CRUD) ---
+  prepararNuevoPiso(): void {
+    this.editandoPisoId = null;
+    this.pisoForm = { community_id: this.comunidadSeleccionada.id, codigo: '' };
+    this.mostrarModalEdicionPiso = true; // Abre el modal
+  }
+
+  prepararEdicionPiso(piso: any): void {
+    console.log('[DEBUG] Editando piso:', piso);
+    this.editandoPisoId = piso.id || null;
+    this.pisoForm = JSON.parse(JSON.stringify(piso)); // Clonación profunda para evitar referencias
+    this.mostrarModalEdicionPiso = true; // Abre el modal
+  }
+
+  cancelarEdicionPiso(): void {
+    this.editandoPisoId = null;
+    this.pisoForm = { community_id: this.comunidadSeleccionada.id, codigo: '' };
+    this.mostrarModalEdicionPiso = false; // Cierra el modal
+  }
+
+  async guardarPiso() {
+    if (!this.comunidadSeleccionada) {
+      alert('No hay comunidad seleccionada.');
+      return;
+    }
+    if (!this.pisoForm.codigo) {
+      alert('El código del piso es obligatorio.');
+      return;
+    }
+
+    this.loading = true;
+    try {
+      let res: any;
+      this.pisoForm.community_id = this.comunidadSeleccionada.id;
+
+      // Limpiamos campos internos de depuración antes de enviar al backend
+      const { _propietario_raw, _email_raw, _telefono1_raw, _telefono2_raw, _observaciones_raw, id, created_at, user_id, ...datosParaGuardar } = this.pisoForm as any;
+
+      if (this.editandoPisoId) {
+        // MODO ACTUALIZACIÓN
+        res = await this.supabase.updatePiso(this.editandoPisoId, datosParaGuardar);
+      } else {
+        // MODO CREACIÓN
+        res = await this.supabase.createPiso(datosParaGuardar);
+      }
+
+      if (res && (res.id || res.status === 'success')) {
+        alert(`Piso ${this.editandoPisoId ? 'actualizado' : 'creado'} con éxito.`);
+        this.cancelarEdicionPiso();
+        this.mostrarModalEdicionPiso = false; // Cierra el modal al guardar
+        await this.cargarPisos(this.comunidadSeleccionada.id);
+      } else {
+        throw new Error(res.detail || 'Error al guardar el piso.');
+      }
+    } catch (err: any) {
+      console.error('Error al guardar piso:', err);
+      alert('Error al guardar el piso: ' + (err.message || 'No tienes permisos o el piso ya existe.'));
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  async eliminarPiso(pisoId: number) {
+    if (!confirm('¿Estás seguro de que deseas eliminar este piso? Esta acción no se puede deshacer.')) return;
+
+    this.loading = true;
+    try {
+      const res = await this.supabase.deletePiso(pisoId);
+      // En delete, si no hay error y el mensaje es de éxito
+      if (res && (res.status === 'success' || !res.error)) {
+        alert(res.message || 'Piso eliminado correctamente');
+        await this.cargarPisos(this.comunidadSeleccionada.id);
+      } else {
+        throw new Error(res.detail || 'Error al eliminar el piso.');
+      }
+    } catch (err: any) {
+      console.error('Error al eliminar piso:', err);
+      alert('Error al eliminar el piso: ' + (err.message || 'No tienes permisos para realizar esta acción.'));
     } finally {
       this.loading = false;
     }
