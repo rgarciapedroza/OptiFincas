@@ -109,6 +109,109 @@ export class SupabaseService {
     return { data, error };
   }
 
+  async borrarCensoComunidad(communityId: number) {
+    const { data: { session } } = await this.supabase.auth.getSession();
+    if (!session) throw new Error("No hay sesión activa");
+
+    const response = await fetch(`/api/comunidades/${communityId}/censo`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    });
+    return response.json();
+  }
+
+  async getPiso(pisoId: number) {
+    const { data: { session } } = await this.supabase.auth.getSession();
+    if (!session) throw new Error("No hay sesión activa");
+
+    const response = await fetch(`/api/pisos/${pisoId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    });
+    return response.json();
+  }
+
+  async createPiso(piso: any) {
+    const { data: { session } } = await this.supabase.auth.getSession();
+    if (!session) throw new Error("No hay sesión activa");
+
+    const response = await fetch(`/api/pisos`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(piso),
+    });
+    
+    if (!response.ok) {
+      let errorMessage = 'Error al crear el piso';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch (e) {
+        // Si no es JSON (error fatal 500), obtenemos el texto bruto
+        errorMessage = await response.text() || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+    return response.json().catch(() => ({ status: 'success' }));
+  }
+
+  async updatePiso(pisoId: number, piso: any) {
+    const { data: { session } } = await this.supabase.auth.getSession();
+    if (!session) throw new Error("No hay sesión activa");
+
+    const response = await fetch(`/api/pisos/${pisoId}`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(piso),
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'Error al actualizar el piso';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch (e) {
+        errorMessage = await response.text() || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+    return response.json().catch(() => ({ status: 'success' }));
+  }
+
+  async deletePiso(pisoId: number) {
+    const { data: { session } } = await this.supabase.auth.getSession();
+    if (!session) throw new Error("No hay sesión activa");
+
+    const response = await fetch(`/api/pisos/${pisoId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'Error al eliminar el piso';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorMessage;
+      } catch (e) {
+        errorMessage = await response.text() || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+    return response.json().catch(() => ({ status: 'success' }));
+  }
+
   async getMovimientosBancarios(communityId: number | string) {
     const { data, error } = await this.supabase
       .from('movimientos')
