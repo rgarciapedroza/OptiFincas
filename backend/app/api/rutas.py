@@ -1,6 +1,7 @@
 from fastapi import APIRouter, UploadFile, File
 from app.controllers.extracto_controller import procesar_dos_archivos_controller, entrenar_controller, confirmar_controller, descargar_controller, descargar_excel_controller, opciones_controller
 
+from app.api.movimientos_bancarios_rutas import router as movimientos_bancarios_router
 router = APIRouter()
 
 @router.get("/")
@@ -30,3 +31,5 @@ async def descargar(movimientos_actualizados: list[dict], formato: str = "csv"):
 @router.post("/descargar-excel")
 async def descargar_excel(movimientos_actualizados: list[dict]):
     return await descargar_excel_controller(movimientos_actualizados)
+
+router.include_router(movimientos_bancarios_router, prefix="/comunidades")

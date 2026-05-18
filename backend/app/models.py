@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Date, Boolean, Text
+from sqlalchemy import Column, Integer, String, Float, Date, Boolean, Text, ForeignKey, DateTime, UniqueConstraint
 from sqlalchemy.orm import relationship
 from .database import Base
 from datetime import datetime
@@ -11,11 +11,20 @@ class Movimiento(Base):
     __tablename__ = "movimientos"
     
     id = Column(Integer, primary_key=True, index=True)
+    extracto_id = Column(Integer, ForeignKey("extractos_procesados.id", ondelete="CASCADE"), nullable=True)
     fecha = Column(Date, nullable=True)
     concepto = Column(String(500), nullable=False)
     concepto_original = Column(String(500), nullable=True)
     importe = Column(Float, nullable=False)
     saldo = Column(Float, nullable=True)
+    ordenante = Column(String(255), nullable=True)
+    
+    # Campos específicos del esquema de base de datos compartido
+    piso_detectado = Column(String(20), nullable=True)
+    confianza_clasificacion = Column(Float, nullable=True)
+    editado_manualmente = Column(Boolean, default=False)
+    community_id = Column(Integer, ForeignKey("comunidades.id", ondelete="CASCADE"), nullable=True)
+    user_id = Column(String(255), nullable=True) # UUID de Supabase
     
     # Clasificación
     piso = Column(String(10), nullable=True)  # Piso identificado (ej: "2J")
@@ -36,6 +45,23 @@ class Movimiento(Base):
     def __repr__(self):
         return f"<Movimiento {self.id}: {self.concepto} - {self.importe}>"
 
+class ExtractoProcesado(Base):
+    """
+    Modelo para registrar la subida de un archivo de extracto
+    """
+    __tablename__ = "extractos_procesados"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    comunidad_id = Column(Integer, ForeignKey("comunidades.id", ondelete="CASCADE"), nullable=False)
+    nombre_archivo = Column(String(255), nullable=False)
+    fecha_subida = Column(DateTime, default=datetime.utcnow)
+    mes_contable = Column(Integer, nullable=True)
+    anio_contable = Column(Integer, nullable=True)
+    user_id = Column(String(255), nullable=True)
+
+    def __repr__(self):
+        return f"<ExtractoProcesado {self.nombre_archivo}>"
+
 
 class Piso(Base):
     """
@@ -44,15 +70,24 @@ class Piso(Base):
     __tablename__ = "pisos"
     
     id = Column(Integer, primary_key=True, index=True)
-    codigo = Column(String(10), unique=True, nullable=False)  # Ej: "2J", "1A", "BAJO"
+    community_id = Column(Integer, ForeignKey("comunidades.id", ondelete="CASCADE"), nullable=False)
+    codigo = Column(String(10), nullable=False)  # Ej: "2J", "1A", "BAJO"
     propietario = Column(String(200), nullable=True)
     telefono = Column(String(20), nullable=True)
     email = Column(String(100), nullable=True)
     observaciones = Column(Text, nullable=True)
     
+    # El user_id permite que un vecino se loguee y vea este piso
+    user_id = Column(String(255), nullable=True) # ID de Supabase Auth
+    
     # Estado
     activo = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Restricción: El código de piso es único dentro de una comunidad
+    __table_args__ = (
+        UniqueConstraint('community_id', 'codigo', name='_piso_comunidad_uc'),
+    )
     
     def __repr__(self):
         return f"<Piso {self.codigo}>"
