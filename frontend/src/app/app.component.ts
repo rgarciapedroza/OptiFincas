@@ -1,6 +1,11 @@
 import { Component, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { SupabaseService } from './supabase.service';
+import * as CryptoJS from 'crypto-js';
+
+// Mismas claves que en el backend
+const ENCRYPT_KEY = CryptoJS.enc.Utf8.parse('OptiFincasSecretKey2024_Security');
+const ENCRYPT_IV = CryptoJS.enc.Utf8.parse('OptiFincas_IV_16');
 
 // Definición de interfaz para Movimientos Bancarios
 interface MovimientoBancario {
@@ -282,6 +287,24 @@ export class AppComponent implements OnInit {
     const str = String(val).trim().replace(/\./g, '').replace(',', '.');
     const num = parseFloat(str) || 0;
     return Number(num.toFixed(2));
+  }
+
+  // Función para desencriptar datos de la base de datos
+  decryptVal(ciphertext: string): string {
+    if (!ciphertext || ciphertext === '-' || ciphertext === 'nan') return '';
+    try {
+      const decrypted = CryptoJS.AES.decrypt(ciphertext, ENCRYPT_KEY, {
+        iv: ENCRYPT_IV,
+        mode: CryptoJS.mode.CBC,
+        padding: CryptoJS.pad.Pkcs7
+      });
+      const res = decrypted.toString(CryptoJS.enc.Utf8);
+      // Si no devuelve nada, es posible que el dato no estuviera encriptado (datos antiguos)
+      return res || ciphertext;
+    } catch (e) {
+      console.warn('Error desencriptando valor:', ciphertext);
+      return ciphertext; // Devolvemos el valor original si falla
+    }
   }
 
   onFileSelected(event: any, type: 'extracto' | 'registros') {
@@ -639,7 +662,24 @@ next: (data) => {
 
   async cargarPisos(communityId: number) {
     const { data, error } = await this.supabase.getPisos(communityId);
-    if (!error) this.pisos = data || [];
+    if (!error && data) {
+      console.log('[DEBUG FRONTEND] Datos de pisos recibidos de Supabase (encriptados):', data);
+      // Desencriptamos los datos antes de asignarlos al array de la tabla
+      this.pisos = data.map((p: any) => ({
+        ...p,
+        propietario: this.decryptVal(p.propietario),
+        email: this.decryptVal(p.email),
+        telefono1: this.decryptVal(p.telefono1),
+        telefono2: this.decryptVal(p.telefono2),
+        observaciones: this.decryptVal(p.observaciones),
+        // Añadir logs para depuración de desencriptación
+        _propietario_raw: p.propietario,
+        _email_raw: p.email,
+        _telefono1_raw: p.telefono1,
+        _telefono2_raw: p.telefono2,
+        _observaciones_raw: p.observaciones
+      }));
+    }
   }
 
   async onCensoFileSelected(event: any) {

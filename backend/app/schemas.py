@@ -82,7 +82,8 @@ class PisoBase(BaseModel):
     community_id: int
     codigo: str = Field(..., description="Código del piso (ej: 2J, 1A)")
     propietario: Optional[str] = None
-    telefono: Optional[str] = None
+    telefono1: Optional[str] = None
+    telefono2: Optional[str] = None
     email: Optional[str] = None
     observaciones: Optional[str] = None
 
