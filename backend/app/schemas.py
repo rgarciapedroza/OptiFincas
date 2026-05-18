@@ -79,6 +79,7 @@ class MovimientoEditable(MovimientoBase):
 
 class PisoBase(BaseModel):
     """Base schema for piso"""
+    community_id: int
     codigo: str = Field(..., description="Código del piso (ej: 2J, 1A)")
     propietario: Optional[str] = None
     telefono: Optional[str] = None

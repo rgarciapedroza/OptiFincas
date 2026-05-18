@@ -17,6 +17,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api")
+# El router de movimientos bancarios ya está incluido en api_router
 app.include_router(optimizacion_router, prefix="/api/optimizacion")
 
 # --- Servir archivos estáticos de Angular (tras hacer npm run build) ---
