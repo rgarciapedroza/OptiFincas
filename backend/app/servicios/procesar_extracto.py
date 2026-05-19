@@ -2,7 +2,7 @@ import pandas as pd
 import io
 import re
 from fastapi import UploadFile, HTTPException
-from typing import Dict
+from typing import Dict, Optional
 from app.adaptadores.csv_bbva import leer_extracto_csv
 from app.adaptadores.excel_bbva import leer_extracto_excel
 
@@ -99,6 +99,33 @@ def cargar_extracto_a_df(extracto: UploadFile) -> pd.DataFrame:
     if extension in ("xlsx", "xls"):
         return leer_extracto_excel(extracto)
     raise HTTPException(status_code=400, detail="Formato de extracto no soportado")
+
+
+def detectar_fila_cabecera(df_raw: pd.DataFrame) -> Optional[int]:
+    """Detecta la fila de cabecera buscando palabras clave."""
+    keywords = ["fecha", "importe", "saldo", "concepto", "observaciones", "ordenante"]
+    for i in range(min(df_raw.shape[0], 10)):
+        row_str = " ".join(str(x).lower() for x in df_raw.iloc[i].dropna().tolist())
+        if any(keyword in row_str for keyword in keywords):
+            return i
+    return None
+
+
+def load_df_from_excel_sheet_robust(excel_file: pd.ExcelFile, sheet_name: str) -> pd.DataFrame:
+    """Carga una hoja de Excel detectando automáticamente dónde empiezan los datos."""
+    df_raw = excel_file.parse(sheet_name, header=None)
+    header_row_idx = detectar_fila_cabecera(df_raw)
+
+    if header_row_idx is not None:
+        df = excel_file.parse(sheet_name, header=header_row_idx)
+    else:
+        df = excel_file.parse(sheet_name)
+        
+    if df.empty:
+        return pd.DataFrame()
+
+    df.columns = [str(col).strip().upper() for col in df.columns]
+    return df
 
 
 def cargar_registros_a_excel(registros: UploadFile):

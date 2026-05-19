@@ -100,6 +100,32 @@ export class SupabaseService {
     return response.json();
   }
 
+  async crearExtracto(comunidadId: number, nombreArchivo: string) {
+    const { data: { session } } = await this.supabase.auth.getSession();
+    if (!session) throw new Error("No hay sesión activa");
+
+    return await this.supabase
+      .from('extractos_procesados')
+      .insert([{
+        comunidad_id: comunidadId,
+        nombre_archivo: nombreArchivo,
+        user_id: session.user.id,
+        fecha_subida: new Date().toISOString()
+      }])
+      .select();
+  }
+
+  async insertarMovimientos(movimientos: any[]) {
+    const { data: { session } } = await this.supabase.auth.getSession();
+    if (!session) throw new Error("No hay sesión activa");
+
+    // Nota: El user_id se asignará automáticamente por el default 'auth.uid()' 
+    // definido en tu esquema SQL al insertar con la sesión activa.
+    return await this.supabase
+      .from('movimientos')
+      .insert(movimientos);
+  }
+
   async getPisos(communityId: number | string) {
     const { data, error } = await this.supabase
       .from('pisos')
@@ -220,4 +246,37 @@ export class SupabaseService {
       .order('fecha', { ascending: false });
     return { data, error };
   }
+
+  async getExtractosByCommunity(communityId: number | string) {
+    const { data, error } = await this.supabase
+      .from('extractos_procesados')
+      .select('*')
+      .eq('comunidad_id', communityId)
+      .order('anio_contable', { ascending: false })
+      .order('mes_contable', { ascending: false });
+    return { data, error };
+  }
+
+  async getMovimientosByExtracto(extractoId: number) {
+    const { data, error } = await this.supabase
+      .from('movimientos')
+      .select('*')
+      .eq('extracto_id', extractoId)
+      .order('fecha', { ascending: false });
+    return { data, error };
+  }
+
+  async eliminarExtracto(extractoId: number) {
+    const { data: { session } } = await this.supabase.auth.getSession();
+    if (!session) throw new Error("No hay sesión activa");
+
+    const response = await fetch(`/api/extractos/${extractoId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+      }
+    });
+    return response.json();
+  }
+
 }

@@ -4,7 +4,8 @@ import os
 import re
 import pandas as pd
 from datetime import datetime
-from fastapi import UploadFile, HTTPException
+from fastapi import UploadFile, HTTPException, File, Form
+from typing import Optional
 from fastapi.responses import StreamingResponse
 from app.ml.clasificador_ml import crear_clasificador
 from app.servicios.procesar_movimientos import procesar_extracto_y_registros
@@ -84,13 +85,22 @@ async def entrenar_controller(extracto: UploadFile, excel_contable: UploadFile):
         "ejemplos_entrenados": resultado.get("ejemplos_entrenados", 0)
     }
 
-async def procesar_dos_archivos_controller(extracto: UploadFile, registros: UploadFile):
+async def procesar_dos_archivos_controller(
+    extracto: UploadFile, 
+    registros: Optional[UploadFile] = File(None),
+    community_id: Optional[int] = Form(None)
+):
     global _movimientos_procesados, _registros_contenido, _registros_filename, _extracto_filename
 
-    # Para cuando lo descargue luego
-    _registros_contenido = await registros.read()
-    _registros_filename = registros.filename
-    registros.file.seek(0)
+    # Si hay archivo de registros, lo leemos. Si no, inicializamos valores por defecto.
+    if registros:
+        _registros_contenido = await registros.read()
+        _registros_filename = registros.filename
+        await registros.seek(0)
+    else:
+        _registros_contenido = None
+        _registros_filename = "Registros.xlsx"
+        
     _extracto_filename = extracto.filename
 
     resultado = procesar_extracto_y_registros(extracto, registros, clasificador)
