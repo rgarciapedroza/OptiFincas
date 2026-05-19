@@ -1,9 +1,9 @@
 import io
 import pandas as pd
-from fastapi import UploadFile, HTTPException
+from fastapi import UploadFile, HTTPException, BackgroundTasks
 from typing import List, Dict
 from app.servicios.supabase_db import supabase_client, supabase_service_role_client
-from app.servicios.procesar_extracto import limpiar_importe, normalizar_fecha, load_df_from_excel_sheet_robust, find_col_by_keywords as global_find_col_by_keywords
+from app.servicios.procesar_extracto import limpiar_importe, normalizar_fecha, load_df_from_excel_sheet_robust, detectar_columnas
 import re
 from datetime import datetime
 
@@ -32,6 +32,9 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
         "octubre": 10, "oct": 10, "noviembre": 11, "nov": 11, "diciembre": 12, "dic": 12
     }
 
+    processed_sheets_info = []
+    skipped_sheets_info = []
+
     for sheet_name in excel_file.sheet_names:
         print(f"Analizando hoja: '{sheet_name}'...")
         # Extraer mes y año del nombre de la hoja (ej: "Enero 2024")
@@ -49,38 +52,31 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
 
         # VALIDACIÓN: Si no se detecta Mes y Año, se omite la hoja por completo
         if mes_contable is None or anio_contable is None:
-            print(f"Omitiendo hoja '{sheet_name}': No cumple con el formato 'Mes Año'")
+            skipped_sheets_info.append({"name": sheet_name, "reason": "No cumple con el formato 'Mes Año' o no se pudo extraer mes/año."})
+            print(f"Omitiendo hoja '{sheet_name}': No cumple con el formato 'Mes Año' o no se pudo extraer mes/año.")
             continue
 
         try:
             # Usar la función de carga robusta para detectar la cabecera
             df = load_df_from_excel_sheet_robust(excel_file, sheet_name)
             if df.empty:
-                print(f"Omitiendo hoja '{sheet_name}': DataFrame vacío después de cargar.")
+                skipped_sheets_info.append({"name": sheet_name, "reason": "DataFrame vacío o no se detectaron columnas válidas."})
+                print(f"Omitiendo hoja '{sheet_name}': DataFrame vacío o no se detectaron columnas válidas.")
                 continue
             
             movimientos_hoja = []
-
-            # Columnas ya normalizadas a mayúsculas por load_df_from_excel_sheet_robust
-            cols_actuales = df.columns.tolist()
-
-            col_fecha = global_find_col_by_keywords(cols_actuales, ["fecha", "f.cont", "f.oper", "proceso", "date", "f.contable", "f.operacion", "f. oper"])
-            col_fecha_valor = global_find_col_by_keywords(cols_actuales, ["fecha valor", "f.valor", "fecha de valor", "f. liquidacion", "f.liq"])
-            col_obs = global_find_col_by_keywords(cols_actuales, ["observaciones", "concepto original", "detalle", "descrip", "informacion", "comentario", "texto", "concepto", "descripcion", "concepto operacion", "glosa", "apuntes"])
-            
-            # Buscamos el Importe evitando que "VALOR" coincida con "FECHA VALOR"
-            col_importe = global_find_col_by_keywords(cols_actuales, ["importe", "monto", "cantidad", "euros", "amount", "valor", "total", "cargo", "abono"], exclude_keywords=["saldo", "fecha", "f.cont", "f.oper", "proceso", "contable", "f.valor", "fecha valor", "saldo final"])
-            if not col_importe:
-                col_importe = global_find_col_by_keywords(cols_actuales, ["debe", "haber"], exclude_keywords=["saldo"]) # Si hay debe/haber, lo tratamos como importe
-
-            col_saldo = global_find_col_by_keywords(cols_actuales, ["saldo", "balance", "disponible", "saldo final", "saldo actual", "saldo contable"])
-            col_piso = global_find_col_by_keywords(cols_actuales, ["piso", "unidad", "apartamento", "vivienda", "concepto", "referencia", "localizacion", "inmueble"], exclude_keywords=["original", "observaciones", "detalle", "descripcion", "operacion"])
-            
-            # También buscar una columna genérica de "ORDENANTE" o "BENEFICIARIO"
-            col_ordenante_generico = global_find_col_by_keywords(cols_actuales, ["ordenante", "beneficiario", "titular", "nombre", "remitente", "datos", "contraparte", "pagador", "receptor"])
+            # Usar la función centralizada de detección de columnas
+            columnas = detectar_columnas(df)
+            col_fecha = columnas.get("fecha")
+            col_importe = columnas.get("importe")
+            col_obs = columnas.get("observaciones")
+            col_saldo = columnas.get("saldo")
+            col_piso = columnas.get("concepto") # 'concepto' en detectar_columnas es el 'piso'
+            col_ordenante_generico = columnas.get("ordenante")
 
             if not all([col_fecha, col_importe]):
-                print(f"Omitiendo hoja '{sheet_name}': Columnas no encontradas. Detectadas: Fecha={col_fecha}, Importe={col_importe}")
+                skipped_sheets_info.append({"name": sheet_name, "reason": f"Columnas esenciales no encontradas (Fecha='{col_fecha}', Importe='{col_importe}')."})
+                print(f"Omitiendo hoja '{sheet_name}': Columnas esenciales no encontradas. Detectadas: Fecha='{col_fecha}', Importe='{col_importe}'")
                 continue
 
             validas_en_hoja = 0
@@ -174,13 +170,17 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
                 if mov_res.data:
                     total_movimientos_importados += len(mov_res.data)
 
+            processed_sheets_info.append({"name": sheet_name, "count": validas_en_hoja})
         except Exception as e:
+            skipped_sheets_info.append({"name": sheet_name, "reason": f"Error interno: {str(e)}"})
             print(f"Error procesando hoja '{sheet_name}': {e}")
 
     return {
         "status": "success",
         "message": f"Se importaron {total_movimientos_importados} movimientos correctamente.",
-        "imported_count": total_movimientos_importados
+        "imported_count": total_movimientos_importados,
+        "processed_sheets": processed_sheets_info,
+        "skipped_sheets": skipped_sheets_info
     }
 
 
