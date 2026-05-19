@@ -8,31 +8,21 @@ from  app.servicios.procesar_extracto import (
     limpiar_importe,
     normalizar_fecha,
     buscar_piso_regex_en_fila,
+    find_col_by_keywords, # Importar el helper
 )
 from  app.procesamiento.buscar_pisos import buscar_pisos_en_historico
 from  app.servicios.buscar_piso_ordenante import aplicar_busqueda_por_ordenante
-from  app.servicios.resumen import calcular_resumen_categorias
-
-def buscar_columna_ordenante(df):
-    posibles_nombres = ["BENEFICIARIO/ORDENANTE", "ORDENANTE", "BENEFICIARIO", "NOMBRE"]
-    for col in df.columns:
-        col_clean = str(col).strip().upper()
-        if any(p in col_clean for p in posibles_nombres):
-            return col
-    return None
+from  app.servicios.resumen import calcular_resumen_categorias_con_tipo
 
 def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
     movimientos_con_piso = []
     movimientos_sin_piso = []
-    
-    col_ordenante = buscar_columna_ordenante(df_extracto)
 
-    # Si es CSV, buscamos la columna que contenga "FECHA PROCESO" explícitamente
     col_fecha_proceso_csv = None
     if es_csv:
         for col in df_extracto.columns:
             col_up = str(col).upper()
-            if any(x in col_up for x in ["PROCESO", "OPER", "VALOR"]):
+            if any(k in col_up for k in ["FECHA PROCESO", "F. PROCESO", "FECHA OPERACION", "F. OPERACION", "FECHA VALOR", "VALOR"]):
                 col_fecha_proceso_csv = col
                 break
 
@@ -191,7 +181,7 @@ def procesar_extracto_y_registros(extracto: UploadFile, registros: Optional[Uplo
     return {
         "nombre_archivo": extracto.filename,
         "movimientos_clasificados": movimientos_finales,
-        "resumen_categorias": calcular_resumen_categorias(movimientos_finales),
+        "resumen_categorias": calcular_resumen_categorias_con_tipo(movimientos_finales),
         "total_ingresos": round(total_ingresos, 2),
         "total_gastos": round(total_gastos, 2),
         "saldo_neto": round(total_ingresos - total_gastos, 2),

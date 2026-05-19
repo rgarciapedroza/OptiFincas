@@ -16,6 +16,7 @@ interface MovimientoBancario {
   importe: number;
   saldo_resultante?: number;
   ordenante?: string;
+  piso_detectado?: string;
   tipo?: string;
   categoria?: string;
   created_at: string;
@@ -806,12 +807,17 @@ next: (data) => {
   async seleccionarExtracto(extracto: any) {
     this.extractoSeleccionado = extracto;
     this.loading = true;
+    this.movimientosBancarios = []; // Limpiar movimientos anteriores inmediatamente
+    
     try {
       const { data, error } = await this.supabase.getMovimientosByExtracto(extracto.id);
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
       this.movimientosBancarios = data || [];
     } catch (error: any) {
       console.error('Error al cargar movimientos del extracto:', error);
+      this.movimientosBancarios = [];
     } finally {
       this.loading = false;
     }
