@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.api.rutas import router as api_router
 from app.api.optimizacion import router as optimizacion_router
-import os
+import os, fastapi
 
 app = FastAPI(title="API Procesador de Extractos")
 
@@ -55,6 +55,9 @@ if frontend_path and os.path.exists(os.path.join(frontend_path, "index.html")):
 
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
+        # Si la ruta empieza por api/, no devolvemos el index.html
+        if full_path.startswith("api/"):
+            raise fastapi.HTTPException(status_code=404, detail="API route not found")
         return FileResponse(os.path.join(frontend_path, "index.html"))
 else:
     print(f"⚠️  ERROR: No se encontró index.html en {frontend_dist_root} o sus subdirectorios.")
