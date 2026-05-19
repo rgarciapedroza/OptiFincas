@@ -165,12 +165,12 @@ def detectar_fila_cabecera(df_raw: pd.DataFrame) -> Optional[int]:
             # Si aún no hemos encontrado una fila con esenciales, pero esta tiene más matches generales
             max_keyword_matches = current_matches
             best_row_idx = i
-            
+
     # Final decision: a header must have at least one essential keyword,
     # or at least 2 general keywords if no essential keyword was ever found.
     if best_row_idx is not None and (best_row_has_essential or max_keyword_matches >= 2):
         return best_row_idx
-        
+
     return None
 
 
@@ -178,7 +178,7 @@ def load_df_from_excel_sheet_robust(excel_file: pd.ExcelFile, sheet_name: str) -
     """Carga una hoja de Excel detectando automáticamente dónde empiezan los datos."""
     df_raw = excel_file.parse(sheet_name, header=None)
     
-    # Intentar detectar la cabecera
+    # Intentar detectar la cabecera en el DataFrame crudo
     header_row_idx = detectar_fila_cabecera(df_raw)
 
     if header_row_idx is not None:
@@ -186,7 +186,7 @@ def load_df_from_excel_sheet_robust(excel_file: pd.ExcelFile, sheet_name: str) -
     else:
         # Si no se detecta una cabecera clara, probar con la primera fila como cabecera
         df = excel_file.parse(sheet_name, header=0)
-        
+
     if df.empty:
         return pd.DataFrame()
 

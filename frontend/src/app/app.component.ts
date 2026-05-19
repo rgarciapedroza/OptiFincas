@@ -270,6 +270,9 @@ export class AppComponent implements OnInit {
   selectedFileExtracto: File | null = null;
   selectedFileRegistros: File | null = null;
   movimientos: any[] = [];
+  // Para la navegación por años en el dashboard de movimientos
+  currentYearDashboard: number = new Date().getFullYear();
+  filteredMovimientosBancarios: MovimientoBancario[] = [];
   pisos: any[] = [];
   resumen = { total_ingresos: 0, total_gastos: 0, saldo_neto: 0 }; // TODO: Esto es para la funcionalidad 1, no para el dashboard
   error = '';
@@ -277,8 +280,10 @@ export class AppComponent implements OnInit {
 
   // Gestión de Comunidades (Persistencia)
   comunidadesDB: any[] = [];
+  importProgress: { processed: { name: string, count: number }[], skipped: { name: string, reason: string }[] } | null = null;
   nuevaComunidad = { nombre: '', direccion: '', servicios: '' };
   editandoId: string | null = null;
+  availableYears: Set<number> = new Set<number>(); // Almacena los años con extractos disponibles
   
   // Gestión de Movimientos Bancarios
   movimientosBancarios: MovimientoBancario[] = [];
@@ -759,6 +764,7 @@ next: (data) => {
       const response = await this.supabase.importarMovimientosBancarios(communityId, this.selectedMovimientosFile);
       if (response.status === 'success') {
         alert(response.message);
+        this.importProgress = { processed: response.processed_sheets || [], skipped: response.skipped_sheets || [] };
         this.selectedMovimientosFile = null;
         await this.cargarExtractos(communityId); // Recargar extractos
       } else {
@@ -780,6 +786,7 @@ next: (data) => {
         throw error;
       }
       this.movimientosBancarios = data || [];
+      this.filterMovimientosBancariosByYear(); // Filtrar por el año actual al cargar
     } catch (error: any) {
       console.error('Error al cargar movimientos bancarios:', error);
       alert('Error al cargar movimientos bancarios: ' + error.message);
@@ -789,14 +796,32 @@ next: (data) => {
     }
   }
 
+  // Extrae el nombre de la hoja (ej: "Enero 2024") del nombre del archivo guardado en el backend
+  extractSheetName(filename: string): string {
+    const match = filename?.match(/\(([^)]+)\)/);
+    if (!match) return '';
+    // Retornamos el contenido eliminando el año (4 dígitos al final) para mostrar solo el mes
+    return match[1].replace(/\s+\d{4}$/, '').trim();
+  }
+
   async cargarExtractos(communityId: number | string) {
     this.loading = true;
     try {
       const { data, error } = await this.supabase.getExtractosByCommunity(communityId);
       if (error) throw error;
-      this.extractos = data || [];
+      
+      // Obtenemos todos los movimientos de la comunidad para calcular los contadores manualmente
+      const { data: movs } = await this.supabase.getMovimientosBancarios(communityId);
+      
+      this.extractos = (data || []).map(ext => ({
+        ...ext,
+        movimientos_count: (movs || []).filter((m: any) => m.extracto_id === ext.id).length
+      }));
+
       this.extractoSeleccionado = null;
+      this.importProgress = null; // Limpiar el progreso de importación al cargar nuevos extractos
       this.movimientosBancarios = [];
+      this.availableYears = new Set(this.extractos.map(e => e.anio_contable));
     } catch (error: any) {
       console.error('Error al cargar extractos:', error);
     } finally {
@@ -815,6 +840,7 @@ next: (data) => {
         throw error;
       }
       this.movimientosBancarios = data || [];
+      this.filterMovimientosBancariosByYear(); // Filtrar por el año actual al seleccionar un extracto
     } catch (error: any) {
       console.error('Error al cargar movimientos del extracto:', error);
       this.movimientosBancarios = [];
@@ -853,6 +879,37 @@ next: (data) => {
     return meses[mes - 1] || 'Mes Desconocido';
   }
 
+  // --- Lógica de filtrado por año para el dashboard ---
+  filterMovimientosBancariosByYear(): void {
+    this.filteredMovimientosBancarios = this.movimientosBancarios.filter(mov => {
+      const movYear = new Date(mov.fecha).getFullYear();
+      return movYear === this.currentYearDashboard;
+    });
+  }
+
+  // Getter para obtener los extractos filtrados por el año actual en el dashboard
+  get filteredExtractosList() {
+    return (this.extractos || [])
+      .filter(e => e.anio_contable === this.currentYearDashboard)
+      .sort((a, b) => a.mes_contable - b.mes_contable);
+  }
+
+  navegarExtractos(delta: number): void {
+    if (!this.extractoSeleccionado) {
+      // Si no hay extracto seleccionado, las flechas cambian el año de filtrado
+      this.currentYearDashboard += delta;
+    } else {
+      // Si hay uno seleccionado, buscamos el anterior/siguiente cronológicamente
+      const sorted = [...this.extractos].sort((a, b) => (a.anio_contable * 12 + a.mes_contable) - (b.anio_contable * 12 + b.mes_contable));
+      const currentIndex = sorted.findIndex(e => e.id === this.extractoSeleccionado.id);
+      const nextIndex = currentIndex + delta;
+      if (nextIndex >= 0 && nextIndex < sorted.length) {
+        this.seleccionarExtracto(sorted[nextIndex]);
+      }
+    }
+  }
+
+  // --- Gestión de Pisos ---
   async cargarPisos(communityId: number) {
     const { data, error } = await this.supabase.getPisos(communityId);
     if (!error && data) {
