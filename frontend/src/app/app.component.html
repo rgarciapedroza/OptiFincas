@@ -406,26 +406,35 @@
             <thead>
               <tr>
                 <th>FECHA</th>
-                <th>CONCEPTO ORIGINAL</th>
+                <th>ORDENANTE</th>
+                <th>OBSERVACIONES</th>
                 <th style="text-align: right;">IMPORTE</th>
+                <th style="text-align: right;">SALDO</th>
+                <th>CONCEPTO</th>
               </tr>
             </thead>
             <tbody>
               <tr *ngFor="let mov of movimientosBancarios">
                 <td>{{ mov.fecha | date:'dd/MM/yyyy' }}</td>
-                <td style="font-size: 0.9rem;">{{ mov.concepto_original }}</td>
+                <td>{{ mov.ordenante || '-' }}</td>
+                <td style="font-size: 0.9rem;">{{ mov.concepto_original || '-' }}</td>
                 <td [style.color]="mov.importe > 0 ? '#2ecc71' : '#e74c3c'" style="text-align: right; font-weight: bold;">
                   {{ mov.importe | number:'1.2-2' }}€
                 </td>
+                <td style="text-align: right; color: #7f8c8d;">{{ mov.saldo_resultante | number:'1.2-2' }}€</td>
+                <td>{{ mov.piso_detectado || 'Sin asignar' }}</td>
               </tr>
             </tbody>
           </table>
 
           <!-- Mensajes de estado -->
-          <div *ngIf="!extractoSeleccionado && extractos.length === 0" class="no-tasks" style="padding: 40px;">
+          <div *ngIf="!extractoSeleccionado && extractos.length === 0 && !loading" class="no-tasks" style="padding: 40px;">
             No hay registros contables importados. Utilice el botón superior para subir el Excel con las hojas mensuales.
           </div>
-          <div *ngIf="extractoSeleccionado && movimientosBancarios.length === 0" class="no-tasks">
+          <div *ngIf="extractoSeleccionado && !loading && movimientosBancarios.length === 0" class="no-tasks">
+            No hay movimientos para este registro.
+          </div>
+          <div *ngIf="extractoSeleccionado && loading" class="no-tasks">
             Cargando movimientos de este registro...
           </div>
         </div>

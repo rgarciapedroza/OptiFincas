@@ -14,8 +14,10 @@ export class SupabaseService {
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: true,
-        flowType: 'pkce'
-      }
+        flowType: 'pkce',
+        storageKey: 'optifincas-auth-token',
+        lockType: 'memory'
+      } as any
     });
   }
 

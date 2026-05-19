@@ -2,8 +2,9 @@ import io
 import pandas as pd
 from fastapi import UploadFile, HTTPException
 from typing import List, Dict
-from app.servicios.supabase_db import supabase_client
-from app.servicios.procesar_extracto import limpiar_importe, normalizar_fecha, load_df_from_excel_sheet_robust
+from app.servicios.supabase_db import supabase_client, supabase_service_role_client
+from app.servicios.procesar_extracto import limpiar_importe, normalizar_fecha, load_df_from_excel_sheet_robust, find_col_by_keywords as global_find_col_by_keywords
+import re
 from datetime import datetime
 
 async def importar_movimientos_controller(community_id: str, file: UploadFile, user_id: str):
@@ -20,13 +21,19 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error al leer el archivo Excel: {e}")
 
+    # Usar el cliente de servicio para saltar políticas RLS durante la importación masiva
+    client = supabase_service_role_client if supabase_service_role_client else supabase_client
+
     total_movimientos_importados = 0
     meses_nombres = {
-        "enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6,
-        "julio": 7, "agosto": 8, "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12
+        "enero": 1, "ene": 1, "febrero": 2, "feb": 2, "marzo": 3, "mar": 3,
+        "abril": 4, "abr": 4, "mayo": 5, "may": 5, "junio": 6, "jun": 6,
+        "julio": 7, "jul": 7, "agosto": 8, "ago": 8, "septiembre": 9, "sep": 9, "setiembre": 9,
+        "octubre": 10, "oct": 10, "noviembre": 11, "nov": 11, "diciembre": 12, "dic": 12
     }
 
     for sheet_name in excel_file.sheet_names:
+        print(f"Analizando hoja: '{sheet_name}'...")
         # Extraer mes y año del nombre de la hoja (ej: "Enero 2024")
         mes_contable = None
         anio_contable = None
@@ -34,8 +41,11 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
         for p in partes:
             if p in meses_nombres:
                 mes_contable = meses_nombres[p]
-            elif p.isdigit() and len(p) == 4:
-                anio_contable = int(p)
+            elif p.isdigit():
+                if len(p) == 4:
+                    anio_contable = int(p)
+                elif len(p) == 2:
+                    anio_contable = 2000 + int(p)
 
         # VALIDACIÓN: Si no se detecta Mes y Año, se omite la hoja por completo
         if mes_contable is None or anio_contable is None:
@@ -54,21 +64,26 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
             # Columnas ya normalizadas a mayúsculas por load_df_from_excel_sheet_robust
             cols_actuales = df.columns.tolist()
 
-            # Mapeo basado en tu formato: "Fecha contable", "Fecha valor", "Observaciones", "Importe", "Saldo", "CONCEPTO"
-            col_fecha = next((c for c in cols_actuales if "FECHA CONTABLE" in c or "FECHA" == c), None)
-            col_fecha_valor = next((c for c in cols_actuales if "FECHA VALOR" in c), None) # Columna "Fecha valor"
-            col_obs = next((c for c in cols_actuales if "OBSERVACIONES" in c or "CONCEPTO ORIGINAL" in c), None)
-            col_importe = next((c for c in cols_actuales if "IMPORTE" in c), None)
-            col_saldo = next((c for c in cols_actuales if "SALDO" in c), None)
-            col_piso = next((c for c in cols_actuales if "CONCEPTO" == c or "PISO" in c), None)
+            col_fecha = global_find_col_by_keywords(cols_actuales, ["fecha", "f.cont", "f.oper", "proceso", "date", "f.contable", "f.operacion", "f. oper"])
+            col_fecha_valor = global_find_col_by_keywords(cols_actuales, ["fecha valor", "f.valor", "fecha de valor", "f. liquidacion", "f.liq"])
+            col_obs = global_find_col_by_keywords(cols_actuales, ["observaciones", "concepto original", "detalle", "descrip", "informacion", "comentario", "texto", "concepto", "descripcion", "concepto operacion", "glosa", "apuntes"])
+            
+            # Buscamos el Importe evitando que "VALOR" coincida con "FECHA VALOR"
+            col_importe = global_find_col_by_keywords(cols_actuales, ["importe", "monto", "cantidad", "euros", "amount", "valor", "total", "cargo", "abono"], exclude_keywords=["saldo", "fecha", "f.cont", "f.oper", "proceso", "contable", "f.valor", "fecha valor", "saldo final"])
+            if not col_importe:
+                col_importe = global_find_col_by_keywords(cols_actuales, ["debe", "haber"], exclude_keywords=["saldo"]) # Si hay debe/haber, lo tratamos como importe
+
+            col_saldo = global_find_col_by_keywords(cols_actuales, ["saldo", "balance", "disponible", "saldo final", "saldo actual", "saldo contable"])
+            col_piso = global_find_col_by_keywords(cols_actuales, ["piso", "unidad", "apartamento", "vivienda", "concepto", "referencia", "localizacion", "inmueble"], exclude_keywords=["original", "observaciones", "detalle", "descripcion", "operacion"])
             
             # También buscar una columna genérica de "ORDENANTE" o "BENEFICIARIO"
-            col_ordenante_generico = next((c for c in cols_actuales if "ORDENANTE" in c or "BENEFICIARIO" in c), None)
+            col_ordenante_generico = global_find_col_by_keywords(cols_actuales, ["ordenante", "beneficiario", "titular", "nombre", "remitente", "datos", "contraparte", "pagador", "receptor"])
 
             if not all([col_fecha, col_importe]):
-                print(f"Omitiendo hoja '{sheet_name}': Faltan FECHA o IMPORTE después de detección de cabecera.")
+                print(f"Omitiendo hoja '{sheet_name}': Columnas no encontradas. Detectadas: Fecha={col_fecha}, Importe={col_importe}")
                 continue
 
+            validas_en_hoja = 0
             for _, row in df.iterrows():
                 fecha_str = normalizar_fecha(row.get(col_fecha))
                 importe_limpio = limpiar_importe(row.get(col_importe))
@@ -81,13 +96,14 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
                 ordenante_final = None
 
                 # Prioridad 1: Columna 'ORDENANTE' o 'BENEFICIARIO' si existe
-                if col_ordenante_generico:
+                # Importante: 'DATOS' ahora entra aquí a través de find_col_by_keywords
+                if col_ordenante_generico and str(row.get(col_ordenante_generico, '')).strip().lower() != 'nan':
                     ordenante_final = str(row.get(col_ordenante_generico, '')).strip()[:255]
-                    if ordenante_final.lower() == 'nan' or ordenante_final == '':
-                        ordenante_final = None # Limpiar si es solo 'nan' o vacío
+                    if ordenante_final == '':
+                        ordenante_final = None
 
-                # Prioridad 2: Si no hay ordenante genérico, intentar con 'Fecha valor'
-                if not ordenante_final and col_fecha_valor:
+                # Prioridad 2: Si no hay ordenante claro, intentar con 'Fecha valor' (que a veces trae nombres)
+                if (not ordenante_final or ordenante_final == 'nan') and col_fecha_valor:
                     fecha_valor_raw = row.get(col_fecha_valor)
                     if fecha_valor_raw:
                         # Intentar parsear como fecha. Si falla, asumir que es un nombre de ordenante.
@@ -116,16 +132,27 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
                         "importe": importe_limpio,
                         "saldo_resultante": limpiar_importe(row.get(col_saldo)) if col_saldo else None,
                         "ordenante": ordenante_final, # Usar el ordenante determinado dinámicamente
-                        "piso_detectado": piso_val if piso_val != "nan" else None,
+                        "piso_detectado": piso_val[:20] if piso_val != "nan" else None,
                         "tipo": "ingreso" if importe_limpio > 0 else "gasto",
                         "user_id": user_id,
                         "editado_manualmente": True # Al venir de un registro ya clasificado
                     })
+                    validas_en_hoja += 1
 
             if movimientos_hoja:
+                print(f"Insertando {validas_en_hoja} movimientos de la hoja '{sheet_name}'...")
+                # Borramos registros previos para el mismo periodo y comunidad para evitar duplicados.
+                # Gracias al ON DELETE CASCADE configurado en la base de datos, esto eliminará 
+                # automáticamente también los movimientos antiguos vinculados a esos extractos.
+                client.table("extractos_procesados").delete() \
+                    .eq("comunidad_id", community_id) \
+                    .eq("mes_contable", mes_contable) \
+                    .eq("anio_contable", anio_contable) \
+                    .execute()
+
                 # 1. Crear un registro de extracto para esta HOJA (un "Registro" de mes/año)
                 # Solo si hay movimientos válidos para insertar
-                extracto_res = supabase_client.table("extractos_procesados").insert({
+                extracto_res = client.table("extractos_procesados").insert({
                     "comunidad_id": community_id,
                     "nombre_archivo": f"{file.filename} ({sheet_name})",
                     # Eliminamos user_id de aquí porque la tabla extractos_procesados no tiene esta columna en tu DB
@@ -141,8 +168,11 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
                 # Asignar el extracto_id a todos los movimientos de esta hoja
                 for mov in movimientos_hoja:
                     mov["extracto_id"] = extracto_id
-                supabase_client.table("movimientos").insert(movimientos_hoja).execute()
-                total_movimientos_importados += len(movimientos_hoja)
+                
+                # Verificamos que la inserción sea exitosa
+                mov_res = client.table("movimientos").insert(movimientos_hoja).execute()
+                if mov_res.data:
+                    total_movimientos_importados += len(mov_res.data)
 
         except Exception as e:
             print(f"Error procesando hoja '{sheet_name}': {e}")
