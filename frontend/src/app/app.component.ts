@@ -252,6 +252,7 @@ export class AppComponent implements OnInit {
   loadingSession = true;
   funcionalidadActiva = 1;
   pantallaActual = 1;
+  clasificadorCommunityId: number | null = null;
   
   // Estado del Dashboard de Comunidad
   comunidadSeleccionada: any = null;
@@ -259,6 +260,10 @@ export class AppComponent implements OnInit {
   pisoForm: Piso = { community_id: 0, codigo: '' };
   seccionDashboard: 'propietarios' | 'extractos' | 'finanzas' | 'limpieza' = 'propietarios';
   mostrarModalEdicionPiso: boolean = false; // Controla la visibilidad del modal
+
+  extractos: any[] = [];
+  extractoSeleccionado: any = null;
+  editandoExtractoId: number | null = null;
 
   loading = false;
   selectedFileExtracto: File | null = null;
@@ -370,12 +375,24 @@ export class AppComponent implements OnInit {
   }
 
   async procesar() {
-    if (!this.selectedFileExtracto || !this.selectedFileRegistros) return;
+    if (!this.selectedFileExtracto) return;
+
+    // Ahora validamos que o bien haya un Excel histórico o bien se haya seleccionado una comunidad
+    if (!this.selectedFileRegistros && !this.clasificadorCommunityId) {
+      alert('Seleccione un archivo de registros históricos o una comunidad para usar los datos del sistema.');
+      return;
+    }
     
     this.loading = true;
     const formData = new FormData();
     formData.append('extracto', this.selectedFileExtracto);
-    formData.append('registros', this.selectedFileRegistros);
+
+    if (this.selectedFileRegistros) {
+      formData.append('registros', this.selectedFileRegistros);
+    } else if (this.clasificadorCommunityId) {
+      // Enviamos el ID de la comunidad para que el backend pueda consultar el histórico en la BD
+      formData.append('community_id', this.clasificadorCommunityId.toString());
+    }
 
     this.http.post<any>('/api/procesar-dos-archivos', formData).subscribe({
 next: (data) => {
@@ -443,6 +460,57 @@ next: (data) => {
         this.loading = false;
       }
     });
+  }
+
+  async guardarEnBaseDeDatos() {
+    if (!this.clasificadorCommunityId) {
+      alert('Debe seleccionar una comunidad para guardar los movimientos.');
+      return;
+    }
+
+    this.loading = true;
+    try {
+      const nombreArchivo = this.selectedFileExtracto?.name || 'Extracto Clasificado';
+      
+      // 1. Registrar la cabecera del extracto en 'extractos_procesados'
+      const extractoRes = await this.supabase.crearExtracto(this.clasificadorCommunityId, nombreArchivo);
+      if (extractoRes.error) throw extractoRes.error;
+      const extractoId = extractoRes.data[0].id;
+
+      // 2. Mapear los movimientos procesados al esquema de la tabla 'movimientos'
+      const movimientosParaDB = this.movimientos.map(m => ({
+        community_id: this.clasificadorCommunityId,
+        extracto_id: extractoId,
+        fecha: this.formatDate(m.FECHA),
+        concepto_original: m.OBSERVACIONES || '',
+        importe: m.IMPORTE,
+        saldo_resultante: m.SALDO,
+        ordenante: m.ORDENANTE || '',
+        piso_detectado: m.CONCEPTO, // El concepto editado por el usuario es el identificador del piso
+        tipo: m.IMPORTE > 0 ? 'ingreso' : 'gasto',
+        editado_manualmente: true,
+        categoria: m.categoria || 'Sin Categoría',
+        confianza_clasificacion: m.confianza || 0
+      }));
+
+      // 3. Inserción masiva en Supabase
+      const insertRes = await this.supabase.insertarMovimientos(movimientosParaDB);
+      if (insertRes.error) throw insertRes.error;
+
+      alert(`Se han guardado ${movimientosParaDB.length} movimientos correctamente en el sistema.`);
+      this.pantallaActual = 3;
+    } catch (err: any) {
+      console.error('Error al persistir movimientos:', err);
+      alert('Ocurrió un error al guardar en la base de datos: ' + (err.message || 'Error desconocido'));
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  private formatDate(dateStr: string): string {
+    if (!dateStr || !dateStr.includes('/')) return dateStr;
+    const [day, month, year] = dateStr.split('/');
+    return `${year}-${month}-${day}`;
   }
 
   irAFuncionalidad2() {
@@ -657,7 +725,7 @@ next: (data) => {
     this.loading = true;
     try {
       await this.cargarPisos(com.id);
-      await this.cargarMovimientosBancarios(com.id);
+      await this.cargarExtractos(com.id);
     } finally {
       this.loading = false;
     }
@@ -681,13 +749,17 @@ next: (data) => {
       return;
     }
 
+    if (!confirm('¡Atención! Al subir el registro histórico se eliminarán los datos actuales del sistema para evitar duplicados. ¿Deseas continuar?')) {
+      return;
+    }
+
     this.cargandoMovimientos = true;
     try {
       const response = await this.supabase.importarMovimientosBancarios(communityId, this.selectedMovimientosFile);
       if (response.status === 'success') {
         alert(response.message);
         this.selectedMovimientosFile = null;
-        await this.cargarMovimientosBancarios(communityId); // Recargar movimientos
+        await this.cargarExtractos(communityId); // Recargar extractos
       } else {
         throw new Error(response.detail || 'Error desconocido al importar movimientos.');
       }
@@ -714,6 +786,65 @@ next: (data) => {
     } finally {
       this.cargandoMovimientos = false;
     }
+  }
+
+  async cargarExtractos(communityId: number | string) {
+    this.loading = true;
+    try {
+      const { data, error } = await this.supabase.getExtractosByCommunity(communityId);
+      if (error) throw error;
+      this.extractos = data || [];
+      this.extractoSeleccionado = null;
+      this.movimientosBancarios = [];
+    } catch (error: any) {
+      console.error('Error al cargar extractos:', error);
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  async seleccionarExtracto(extracto: any) {
+    this.extractoSeleccionado = extracto;
+    this.loading = true;
+    try {
+      const { data, error } = await this.supabase.getMovimientosByExtracto(extracto.id);
+      if (error) throw error;
+      this.movimientosBancarios = data || [];
+    } catch (error: any) {
+      console.error('Error al cargar movimientos del extracto:', error);
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  irAClasificadorConComunidad() {
+    this.funcionalidadActiva = 1;
+    this.pantallaActual = 1;
+    this.clasificadorCommunityId = this.comunidadSeleccionada.id;
+  }
+
+  async eliminarExtracto(ext: any) {
+    if (!confirm(`¿Estás seguro de eliminar el registro de ${this.getMesNombre(ext.mes_contable)} ${ext.anio_contable}? Se borrarán todos sus movimientos.`)) return;
+    
+    this.loading = true;
+    try {
+      const res = await this.supabase.eliminarExtracto(ext.id);
+      if (res.status === 'success') {
+        this.extractos = this.extractos.filter(e => e.id !== ext.id);
+        if (this.extractoSeleccionado?.id === ext.id) this.extractoSeleccionado = null;
+        alert(res.message);
+      }
+    } catch (e) {
+      alert('Error al eliminar el registro');
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  getMesNombre(mes: number | null): string {
+    if (!mes) return 'Registro';
+    const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+    return meses[mes - 1] || 'Mes Desconocido';
   }
 
   async cargarPisos(communityId: number) {

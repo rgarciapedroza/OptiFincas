@@ -39,6 +39,18 @@
       <!-- PANTALLA 1: UPLOAD -->
       <div *ngIf="pantallaActual === 1" class="pantalla show card-container">
         <h2 class="section-title">Carga de Documentos</h2>
+        
+        <!-- Nuevo: Selector de Comunidad de Referencia -->
+        <div class="info-section" style="margin-bottom: 25px; background: #f0f7ff; border-left-color: #3498db;">
+          <div class="form-group-opt">
+            <label style="color: #2c3e50; font-weight: 600;">Comunidad de Referencia (Opcional si usas Excel)</label>
+            <select [(ngModel)]="clasificadorCommunityId" class="input-concepto-edit" style="background: white; margin-top: 8px; width: 100%;">
+              <option [ngValue]="null">-- Seleccionar Comunidad (para usar base de datos) --</option>
+              <option *ngFor="let com of comunidadesDB" [ngValue]="com.id">{{ com.nombre }}</option>
+            </select>
+          </div>
+        </div>
+
         <div class="upload-grid">
           <!-- Zona Extracto -->
           <div class="upload-zone" [class.has-file]="selectedFileExtracto" (click)="extInput.click()">
@@ -77,7 +89,7 @@
           </div>
         </div>
         <div class="btn-container">
-          <button class="btn-primary" [disabled]="!selectedFileExtracto || !selectedFileRegistros" (click)="procesar()">
+          <button class="btn-primary" [disabled]="!selectedFileExtracto || (!selectedFileRegistros && !clasificadorCommunityId)" (click)="procesar()">
             Comenzar Clasificación
           </button>
         </div>
@@ -131,6 +143,7 @@
         <div class="actions">
           <button class="btn" (click)="descargar('mensual')">Descargar Mensual</button>
           <button class="btn btn-success" (click)="descargar('historico')">Actualizar Histórico</button>
+          <button *ngIf="clasificadorCommunityId" class="btn btn-info" (click)="guardarEnBaseDeDatos()">Guardar en Sistema</button>
         </div>
       </div>
 
@@ -182,23 +195,31 @@
 
         <!-- Listado de Comunidades -->
         <h3 class="section-title" style="font-size: 1.1rem;">Comunidades Registradas</h3>
-        <div class="community-grid">
-          <div class="community-card-clickable" *ngFor="let com of comunidadesDB" (click)="verDashboard(com)">
-            <div class="community-card-header">{{ com.nombre }}</div>
-            <div style="font-size: 0.9rem; color: #64748b; margin-bottom: 10px;">{{ com.direccion }}</div>
-            <div style="font-size: 0.85rem; color: #94a3b8; flex-grow: 1;">{{ com.servicios || 'Sin servicios' }}</div>
-            
-            <div class="community-card-actions">
-              <!-- Importante: $event.stopPropagation() para que editar/borrar no active el dashboard -->
-              <button class="btn-action btn-edit" (click)="prepararEdicion(com); $event.stopPropagation()" title="Editar">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-              </button>
-              <button class="btn-action btn-delete" (click)="eliminarComunidad(com.id); $event.stopPropagation()" title="Borrar">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-              </button>
-            </div>
-          </div>
-        </div>
+        <table class="movimientos-table" *ngIf="comunidadesDB.length > 0">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Dirección</th>
+              <th>Servicios</th>
+              <th style="text-align: center;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let com of comunidadesDB" (click)="verDashboard(com)" style="cursor: pointer;">
+              <td style="font-weight: 600;">{{ com.nombre }}</td>
+              <td>{{ com.direccion }}</td>
+              <td>{{ com.servicios || '-' }}</td>
+              <td style="text-align: center; white-space: nowrap;" (click)="$event.stopPropagation()">
+                <button class="btn-action btn-edit" (click)="prepararEdicion(com)" title="Editar">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                </button>
+                <button class="btn-action btn-delete" (click)="eliminarComunidad(com.id)" title="Borrar">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
         <div *ngIf="comunidadesDB.length === 0" class="no-tasks" style="padding: 40px;">
           No hay comunidades registradas.
         </div>
@@ -337,18 +358,51 @@
         <!-- CONTENIDO: EXTRACTOS -->
         <div *ngIf="seccionDashboard === 'extractos'" class="card-container" style="max-width: 100%;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h3 style="margin: 0; font-size: 1.1rem;">Histórico de Movimientos</h3>
-            <div>
+            <h3 style="margin: 0; font-size: 1.1rem;">{{ extractoSeleccionado ? 'Movimientos del Registro' : 'Registros Mensuales' }}</h3>
+            <div *ngIf="!extractoSeleccionado" style="display: flex; gap: 10px; align-items: center;">
+              <!-- Bloque Histórico -->
               <input type="file" (change)="onMovimientosFileSelected($event)" accept=".xlsx, .xls" #movInput style="display: none;">
               <button class="btn btn-secondary" (click)="movInput.click()" style="font-size: 0.85rem; margin-right: 10px;">
-                {{ selectedMovimientosFile ? selectedMovimientosFile.name : 'Elegir Extracto' }}
+                {{ selectedMovimientosFile ? selectedMovimientosFile.name : 'Elegir Histórico' }}
               </button>
-              <button class="btn btn-info" [disabled]="!selectedMovimientosFile || cargandoMovimientos" (click)="importarMovimientosParaComunidad(comunidadSeleccionada.id)" style="font-size: 0.85rem;">
-                Importar
+              <button *ngIf="selectedMovimientosFile" class="btn btn-info" [disabled]="cargandoMovimientos" (click)="importarMovimientosParaComunidad(comunidadSeleccionada.id)" style="font-size: 0.85rem; margin-right: 20px;">
+                Subir Registro Histórico
+              </button>
+
+              <!-- Bloque Nueva Entrada -->
+              <button class="btn btn-primary" (click)="irAClasificadorConComunidad()" style="font-size: 0.85rem;">
+                + Subir Nueva Entrada
               </button>
             </div>
+            <button *ngIf="extractoSeleccionado" class="btn btn-secondary" (click)="extractoSeleccionado = null" style="font-size: 0.85rem;">
+              ← Volver al listado
+            </button>
           </div>
-          <table class="movimientos-table">
+
+          <!-- Vista Listado de Registros (Meses/Hojas del Excel) -->
+          <table class="movimientos-table" *ngIf="!extractoSeleccionado && extractos.length > 0">
+            <thead>
+              <tr>
+                <th>Año</th>
+                <th>Mes</th>
+                <th style="text-align: center;">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let ext of extractos" (click)="seleccionarExtracto(ext)" style="cursor: pointer;">
+                <td style="font-weight: 600;">{{ ext.anio_contable }}</td>
+                <td>{{ getMesNombre(ext.mes_contable) }}</td>
+                <td style="text-align: center; white-space: nowrap;" (click)="$event.stopPropagation()">
+                  <button class="btn-action btn-delete" (click)="eliminarExtracto(ext)" title="Eliminar Registro">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- Vista Detalle de Movimientos (Se activa al pulsar en un mes) -->
+          <table class="movimientos-table" *ngIf="extractoSeleccionado">
             <thead>
               <tr>
                 <th>FECHA</th>
@@ -364,11 +418,16 @@
                   {{ mov.importe | number:'1.2-2' }}€
                 </td>
               </tr>
-              <tr *ngIf="movimientosBancarios.length === 0">
-                <td colspan="3" class="no-tasks">No hay movimientos registrados.</td>
-              </tr>
             </tbody>
           </table>
+
+          <!-- Mensajes de estado -->
+          <div *ngIf="!extractoSeleccionado && extractos.length === 0" class="no-tasks" style="padding: 40px;">
+            No hay registros contables importados. Utilice el botón superior para subir el Excel con las hojas mensuales.
+          </div>
+          <div *ngIf="extractoSeleccionado && movimientosBancarios.length === 0" class="no-tasks">
+            Cargando movimientos de este registro...
+          </div>
         </div>
 
         <!-- CONTENIDO: OTROS (PLACEHOLDERS) -->

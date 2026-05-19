@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 import pandas as pd
 from fastapi import UploadFile
 from  app.servicios.procesar_extracto import (
@@ -138,9 +138,16 @@ def completar_pisos(movimientos_sin_piso, excel_registros, es_csv: bool):
         
     return recuperados
 
-def procesar_extracto_y_registros(extracto: UploadFile, registros: UploadFile, clasificador) -> Dict:
+def procesar_extracto_y_registros(extracto: UploadFile, registros: Optional[UploadFile], clasificador) -> Dict:
     df_extracto = cargar_extracto_a_df(extracto)
-    excel_registros = cargar_registros_a_excel(registros)
+    
+    # Manejo de registros opcionales (archivo o base de datos)
+    if registros:
+        excel_registros = cargar_registros_a_excel(registros)
+    else:
+        # Si no hay histórico, usamos un DataFrame vacío para que el clasificador siga funcionando
+        excel_registros = pd.DataFrame()
+        
     columnas = detectar_columnas(df_extracto)
     
     es_csv = extracto.filename.lower().endswith(".csv")
