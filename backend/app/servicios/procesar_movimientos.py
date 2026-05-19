@@ -12,12 +12,12 @@ from  app.servicios.procesar_extracto import (
 )
 from  app.procesamiento.buscar_pisos import buscar_pisos_en_historico
 from  app.servicios.buscar_piso_ordenante import aplicar_busqueda_por_ordenante
-from  app.servicios.resumen import calcular_resumen_categorias_con_tipo
+from  app.servicios.resumen import calcular_resumen_categorias_con_tipo # Importar correctamente
 
 def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
     movimientos_con_piso = []
     movimientos_sin_piso = []
-
+    
     col_fecha_proceso_csv = None
     if es_csv:
         for col in df_extracto.columns:
@@ -25,6 +25,9 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
             if any(k in col_up for k in ["FECHA PROCESO", "F. PROCESO", "FECHA OPERACION", "F. OPERACION", "FECHA VALOR", "VALOR"]):
                 col_fecha_proceso_csv = col
                 break
+
+    # Usar el helper find_col_by_keywords para buscar la columna ordenante
+    col_ordenante = find_col_by_keywords(df_extracto.columns.tolist(), ["ordenante", "beneficiario", "nombre", "titular", "remitente", "datos", "contraparte"])
 
     def clean_str(val):
         if pd.isna(val) or val is None:
