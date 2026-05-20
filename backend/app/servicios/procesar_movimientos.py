@@ -11,7 +11,6 @@ from  app.servicios.procesar_extracto import (
     find_col_by_keywords, # Importar el helper
 )
 from  app.procesamiento.buscar_pisos import buscar_pisos_en_historico
-from  app.servicios.buscar_piso_ordenante import aplicar_busqueda_por_ordenante
 from  app.servicios.resumen import calcular_resumen_categorias_con_tipo # Importar correctamente
 
 def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
@@ -99,36 +98,23 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
     return movimientos_con_piso, movimientos_sin_piso
 
 def completar_pisos(movimientos_sin_piso, excel_registros, es_csv: bool):
-
+    print(f"\n[DEBUG completar_pisos] Recibidos {len(movimientos_sin_piso)} movimientos sin piso para buscar en histórico.")
+    if movimientos_sin_piso:
+        print(f"[DEBUG completar_pisos] Primer movimiento sin piso: {movimientos_sin_piso[0].get('concepto_original', '')} / {movimientos_sin_piso[0].get('ordenante', '')}")
     recuperados = buscar_pisos_en_historico(excel_registros, movimientos_sin_piso)
-    
-    if not es_csv:
-        recuperados = aplicar_busqueda_por_ordenante(excel_registros, recuperados)
-        
-    # Marcamos los movimientos recuperados del histórico para la UI
+    print(f"[DEBUG completar_pisos] buscar_pisos_en_historico devolvió {len(recuperados)} movimientos. (Pisos asignados: {sum(1 for m in recuperados if m.get('piso'))})")
+    if any(m.get('piso') for m in recuperados):
+        print(f"[DEBUG completar_pisos] Movimientos con piso asignado: {[m.get('piso') for m in recuperados if m.get('piso')]}")
+
     for m in recuperados:
-        m["es_historico"] = True
-        
-        # Guardamos el motivo de la asignación para el modal
-        if es_csv:
-            m["detalle_historico"] = {
-                "piso_encontrado": m.get("piso", "N/A"),
-                "observacion_historica": m.get("observacion_historica", "N/A"),
-                "concepto_original": m.get("concepto_original", "N/A"),
-                "motivo": "Coincidencia encontrada en registros históricos."
-            }
-        else:
+        if m.get("piso"):
+            m["es_historico"] = True
+            m["CONCEPTO"] = m["piso"]
             m["detalle_historico"] = {
                 "piso_asignado": m.get("piso", "N/A"),
-                "ordenante_actual": m.get("ORDENANTE") or m.get("ordenante") or "N/A",
-                "ordenante_identificado": m.get("ordenante_historico") or "N/A",
-                "motivo": "Coincidencia encontrada por nombre del ordenante en el histórico."
+                "metodo_usado": m.get("metodo_piso", "N/A"),
+                "motivo": "Coincidencia encontrada en registros históricos."
             }
-
-        # Asegurar que el piso recuperado se asigne a  CONCEPTO
-        if m.get("piso"):
-            m["CONCEPTO"] = m["piso"]
-        
     return recuperados
 
 def procesar_extracto_y_registros(extracto: UploadFile, registros: Optional[UploadFile], clasificador, db_historico: Optional[pd.DataFrame] = None) -> Dict:

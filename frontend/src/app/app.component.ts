@@ -113,11 +113,18 @@ interface Community {
     .movimientos-table th { background: #f9fafb; padding: 12px; text-align: left; border-bottom: 1px solid #e5e7eb; color: #4b5563; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
     .movimientos-table td { padding: 14px 12px; border-bottom: 1px solid #f3f4f6; color: #1f2937; }
     
-    .input-concepto-edit { width: 100%; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 0.9rem; }
+    .input-concepto-edit { width: 100%; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 0.9rem; box-sizing: border-box; }
     .summary-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 30px; }
     .summary-cards .card { background: white; padding: 20px; border-radius: 12px; border: 1px solid #e5e7eb; font-weight: 500; text-align: center; color: #4b5563; }
     .summary-cards .val { display: block; font-size: 1.25rem; font-weight: 700; color: #111827; margin-top: 5px; }
-
+    
+    .card-ingreso { border-top: 4px solid #2ecc71 !important; background: #f0fdf4 !important; }
+    .card-ingreso .val { color: #2ecc71 !important; }
+    .card-gasto { border-top: 4px solid #e74c3c !important; background: #fef2f2 !important; }
+    .card-gasto .val { color: #e74c3c !important; }
+    .card-neto { border-top: 4px solid #6366f1 !important; background: #f5f3ff !important; }
+    .card-neto .val { color: #6366f1 !important; }
+    
     .error { 
       background: #fef2f2; color: #991b1b; padding: 15px; border-radius: 8px; 
       margin-bottom: 20px; border: 1px solid #fee2e2; display: none;
