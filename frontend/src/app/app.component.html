@@ -81,15 +81,15 @@
       <!-- PANTALLA 2: REVISIÓN -->
       <div *ngIf="pantallaActual === 2" class="pantalla show">
         <div class="summary-cards">
-          <div class="card">
+          <div class="card card-ingreso">
             <small>INGRESOS</small>
             <span class="val">{{ resumen.total_ingresos | number:'1.2-2' }}€</span>
           </div>
-          <div class="card">
+          <div class="card card-gasto">
             <small>GASTOS</small>
             <span class="val">{{ resumen.total_gastos | number:'1.2-2' }}€</span>
           </div>
-          <div class="card">
+          <div class="card card-neto">
             <small>NETO</small>
             <span class="val">{{ resumen.saldo_neto | number:'1.2-2' }}€</span>
           </div>
@@ -115,9 +115,11 @@
                 {{ mov.IMPORTE | number:'1.2-2' }}€
               </td>
               <td style="text-align: right; color: #7f8c8d;">{{ mov.SALDO | number:'1.2-2' }}€</td>
-              <td style="text-align: center;">
-                <svg *ngIf="mov.es_historico" width="12" height="12" style="margin-right: 5px;" viewBox="0 0 24 24" fill="#6366f1"><circle cx="12" cy="12" r="10"/></svg>
-                <input [(ngModel)]="mov.CONCEPTO" class="input-concepto-edit" style="text-align: center;">
+              <td style="text-align: center; min-width: 160px;">
+                <div style="display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;">
+                  <svg *ngIf="mov.es_historico" width="12" height="12" viewBox="0 0 24 24" fill="#6366f1" style="flex-shrink: 0;"><circle cx="12" cy="12" r="10"/></svg>
+                  <input [(ngModel)]="mov.CONCEPTO" class="input-concepto-edit" style="text-align: center;">
+                </div>
               </td>
             </tr>
           </tbody>
