@@ -8,10 +8,10 @@ from fastapi import UploadFile, HTTPException, File, Form
 from typing import Optional
 from fastapi.responses import StreamingResponse
 from app.ml.clasificador_ml import crear_clasificador
-from app.servicios.procesar_movimientos import procesar_extracto_y_registros
+from app.servicios.procesar_movimientos import procesar_extracto_y_registros # Importar correctamente
 from app.servicios.procesar_extracto import detectar_columnas, limpiar_importe
 from app.servicios.resumen import calcular_resumen_categorias_con_tipo
-from app.servicios.supabase_db import supabase_client
+from app.servicios.supabase_db import supabase_client, supabase_service_role_client # Importar supabase_service_role_client
 from app.procesamiento.generar_excel import crear_excel_actualizado
 from app.procesamiento.procesar_excel_contable import obtener_nombre_hoja
 
@@ -105,12 +105,17 @@ async def procesar_extracto_db_controller(
             _registros_filename = f"{comm_res.data[0]['nombre']}.xlsx"
 
         # Cargamos movimientos previos para usarlos como base de conocimiento
-        response = supabase_client.table("movimientos").select("concepto_original,importe,piso_detectado,ordenante").eq("community_id", community_id).execute()
+        response = supabase_service_role_client.table("movimientos").select("concepto_original,importe,piso_detectado,ordenante,fecha").eq("community_id", community_id).order("fecha", desc=True).execute()
         if response.data:
+            print(f"[DEBUG extracto_controller] Cargados {len(response.data)} movimientos históricos de la base de datos para la comunidad {community_id}")
             df_historico = pd.DataFrame(response.data)
+            print(f"[DEBUG extracto_controller] df_historico head antes de renombrar:\n{df_historico.head().to_string()}")
             # Renombramos columnas para que coincidan con la lógica de búsqueda de pisos
             df_historico = df_historico.rename(columns={"concepto_original": "concepto", "piso_detectado": "piso"})
             df_historico.columns = [c.lower() for c in df_historico.columns]
+            print(f"[DEBUG extracto_controller] df_historico head después de renombrar y lower:\n{df_historico.head().to_string()}")
+        else:
+            print(f"[DEBUG extracto_controller] No se encontraron movimientos históricos para la comunidad {community_id}.")
 
     resultado = procesar_extracto_y_registros(extracto, None, clasificador, db_historico=df_historico)
     
