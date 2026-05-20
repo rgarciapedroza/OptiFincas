@@ -268,7 +268,6 @@ export class AppComponent implements OnInit {
 
   loading = false;
   selectedFileExtracto: File | null = null;
-  selectedFileRegistros: File | null = null;
   movimientos: any[] = [];
   // Para la navegación por años en el dashboard de movimientos
   currentYearDashboard: number = new Date().getFullYear();
@@ -377,7 +376,6 @@ export class AppComponent implements OnInit {
   onFileSelected(event: any, type: 'extracto' | 'registros') {
     const file = event.target.files[0];
     if (type === 'extracto') this.selectedFileExtracto = file;
-    else this.selectedFileRegistros = file;
   }
 
   async procesar() {
@@ -392,14 +390,12 @@ export class AppComponent implements OnInit {
     const formData = new FormData();
     formData.append('extracto', this.selectedFileExtracto);
 
-    if (this.selectedFileRegistros) {
-      formData.append('registros', this.selectedFileRegistros);
-    } else if (this.clasificadorCommunityId) {
+    if (this.clasificadorCommunityId) {
       // Enviamos el ID de la comunidad para que el backend pueda consultar el histórico en la BD
       formData.append('community_id', this.clasificadorCommunityId.toString());
     }
 
-    this.http.post<any>('/api/procesar-dos-archivos', formData).subscribe({
+    this.http.post<any>('/api/procesar-extracto-db', formData).subscribe({
 next: (data) => {
         console.log('>>> [FRONTEND] DATOS QUE LLEGAN DEL BACKEND:', data);
         this.movimientos = data.movimientos_clasificados;
@@ -641,7 +637,6 @@ next: (data) => {
     this.pantallaActual = 1;
     this.movimientos = [];
     this.selectedFileExtracto = null;
-    this.selectedFileRegistros = null;
   }
 
   async logout() {
