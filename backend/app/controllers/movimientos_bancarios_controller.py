@@ -211,6 +211,22 @@ async def get_movimientos_by_community_controller(community_id: str, user_id: st
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al obtener movimientos: {e}")
 
+async def get_extractos_by_community_controller(community_id: str, user_id: str):
+    """
+    Obtiene todos los extractos procesados asociados a una comunidad específica.
+    """
+    try:
+        response = supabase_client.table("extractos_procesados") \
+            .select("*") \
+            .eq("comunidad_id", community_id) \
+            .order("anio_contable", desc=True) \
+            .order("mes_contable", desc=True) \
+            .execute()
+
+        return response.data if response.data else []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al obtener extractos: {e}")
+
 async def eliminar_extracto_controller(extracto_id: int):
     """
     Elimina un extracto y todos sus movimientos asociados.

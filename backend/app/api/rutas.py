@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, UploadFile, File, Form
 from typing import List, Dict, Optional
-from app.controllers.movimientos_bancarios_controller import importar_movimientos_controller, get_movimientos_by_community_controller, eliminar_extracto_controller
+from app.controllers.movimientos_bancarios_controller import importar_movimientos_controller, get_movimientos_by_community_controller, eliminar_extracto_controller, get_extractos_by_community_controller
 from app.controllers.pisos_controller import importar_censo_pisos_controller, get_piso_controller, create_piso_controller, update_piso_controller, delete_piso_controller, borrar_censo_comunidad_controller
-from app.controllers.extracto_controller import procesar_dos_archivos_controller, confirmar_controller, descargar_controller, descargar_excel_controller, entrenar_controller, opciones_controller
+from app.controllers.extracto_controller import procesar_extracto_db_controller, confirmar_controller, descargar_controller, descargar_excel_controller, entrenar_controller, opciones_controller
 from app.servicios.auth_supabase import get_current_user
 
 router = APIRouter()
@@ -91,15 +91,23 @@ async def delete_piso_route(
     """Elimina un piso por su ID."""
     return delete_piso_controller(piso_id, user_id)
 
-# --- Rutas para el Clasificador (Funcionalidad 1) ---
-@router.post("/procesar-dos-archivos")
-async def procesar_dos_archivos_route(
-    extracto: UploadFile = File(...),
-    registros: Optional[UploadFile] = File(None),
-    community_id: Optional[int] = Form(None)
+# --- Rutas para Extractos Procesados ---
+@router.get("/comunidades/{community_id}/extractos")
+async def get_extractos_by_community_route(
+    community_id: str,
+    user_id: str = Depends(get_current_user)
 ):
-    """Procesa dos archivos (extracto y registros) para clasificación."""
-    return await procesar_dos_archivos_controller(extracto, registros, community_id)
+    """Obtiene todos los extractos procesados de una comunidad específica."""
+    return await get_extractos_by_community_controller(community_id, user_id)
+
+# --- Rutas para el Clasificador (Funcionalidad 1) ---
+@router.post("/procesar-extracto-db")
+async def procesar_extracto_db_route(
+    extracto: UploadFile = File(...),
+    community_id: int = Form(...)
+):
+    """Procesa un extracto bancario utilizando datos históricos de la base de datos para clasificación."""
+    return await procesar_extracto_db_controller(extracto, community_id)
 
 @router.post("/confirmar")
 async def confirmar_route(

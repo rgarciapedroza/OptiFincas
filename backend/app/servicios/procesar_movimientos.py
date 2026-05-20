@@ -131,15 +131,16 @@ def completar_pisos(movimientos_sin_piso, excel_registros, es_csv: bool):
         
     return recuperados
 
-def procesar_extracto_y_registros(extracto: UploadFile, registros: Optional[UploadFile], clasificador) -> Dict:
+def procesar_extracto_y_registros(extracto: UploadFile, registros: Optional[UploadFile], clasificador, db_historico: Optional[pd.DataFrame] = None) -> Dict:
     df_extracto = cargar_extracto_a_df(extracto)
     
     # Manejo de registros opcionales (archivo o base de datos)
-    if registros:
+    if db_historico is not None:
+        excel_registros = {"DB": db_historico}
+    elif registros:
         excel_registros = cargar_registros_a_excel(registros)
     else:
-        # Si no hay histórico, usamos un DataFrame vacío para que el clasificador siga funcionando
-        excel_registros = pd.DataFrame()
+        excel_registros = {}
         
     columnas = detectar_columnas(df_extracto)
     

@@ -11,6 +11,7 @@ from app.ml.clasificador_ml import crear_clasificador
 from app.servicios.procesar_movimientos import procesar_extracto_y_registros
 from app.servicios.procesar_extracto import detectar_columnas, limpiar_importe
 from app.servicios.resumen import calcular_resumen_categorias_con_tipo
+from app.servicios.supabase_db import supabase_client
 from app.procesamiento.generar_excel import crear_excel_actualizado
 from app.procesamiento.procesar_excel_contable import obtener_nombre_hoja
 
@@ -85,25 +86,33 @@ async def entrenar_controller(extracto: UploadFile, excel_contable: UploadFile):
         "ejemplos_entrenados": resultado.get("ejemplos_entrenados", 0)
     }
 
-async def procesar_dos_archivos_controller(
+async def procesar_extracto_db_controller(
     extracto: UploadFile, 
-    registros: Optional[UploadFile] = File(None),
-    community_id: Optional[int] = Form(None)
+    community_id: int = Form(...)
 ):
     global _movimientos_procesados, _registros_contenido, _registros_filename, _extracto_filename
 
-    # Si hay archivo de registros, lo leemos. Si no, inicializamos valores por defecto.
-    if registros:
-        _registros_contenido = await registros.read()
-        _registros_filename = registros.filename
-        await registros.seek(0)
-    else:
-        _registros_contenido = None
-        _registros_filename = "Registros.xlsx"
-        
     _extracto_filename = extracto.filename
+    df_historico = None
+    _registros_filename = "Registros.xlsx"
+    _registros_contenido = None
 
-    resultado = procesar_extracto_y_registros(extracto, registros, clasificador)
+    # Si se proporciona community_id, cargamos el histórico directamente desde la base de datos
+    if community_id:
+        # Consultamos el nombre de la comunidad para nombrar el archivo de salida
+        comm_res = supabase_client.table("comunidades").select("nombre").eq("id", community_id).execute()
+        if comm_res.data and len(comm_res.data) > 0:
+            _registros_filename = f"{comm_res.data[0]['nombre']}.xlsx"
+
+        # Cargamos movimientos previos para usarlos como base de conocimiento
+        response = supabase_client.table("movimientos").select("concepto_original,importe,piso_detectado,ordenante").eq("community_id", community_id).execute()
+        if response.data:
+            df_historico = pd.DataFrame(response.data)
+            # Renombramos columnas para que coincidan con la lógica de búsqueda de pisos
+            df_historico = df_historico.rename(columns={"concepto_original": "concepto", "piso_detectado": "piso"})
+            df_historico.columns = [c.lower() for c in df_historico.columns]
+
+    resultado = procesar_extracto_y_registros(extracto, None, clasificador, db_historico=df_historico)
     
     es_excel = extracto.filename.lower().endswith((".xlsx", ".xls"))
     _movimientos_procesados = resultado["movimientos_clasificados"]
