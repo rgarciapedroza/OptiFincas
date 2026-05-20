@@ -11,40 +11,25 @@ from app.procesamiento.buscar_pisos import find_col_by_keywords
 
 def detectar_columnas(df: pd.DataFrame) -> Dict[str, str]:
     cols = list(df.columns)
-    resultado = {
-        "fecha": None,
-        "fecha_valor": None,
-        "concepto": None,
-        "observaciones": None,
-        "importe": None,
-        "saldo": None,
-        "ordenante": None
+    
+    # Detectamos las columnas usando el helper find_col_by_keywords de forma directa
+    f_col = find_col_by_keywords(cols, ["fecha", "f.cont", "f.oper", "proceso", "date", "f.contable", "f.operacion", "f. oper", "fecha contable", "fecha de operacion", "fecha de valor", "f. mov", "f.movimiento", "movimiento"])
+    fv_col = find_col_by_keywords(cols, ["fecha valor", "f.valor", "fecha de valor", "f.val", "f. valor"])
+
+    # Si se detectó la misma columna para fecha y fecha_valor, priorizamos fecha
+    if f_col == fv_col:
+        fv_col = None
+
+    return {
+        "fecha": f_col,
+        "fecha_valor": fv_col,
+        "concepto": find_col_by_keywords(cols, ["concepto", "piso", "unidad", "apartamento", "vivienda"]),
+        "observaciones": find_col_by_keywords(cols, ["observaciones", "observ", "detalle", "informacion", "comentario", "texto"]),
+        "ordenante": find_col_by_keywords(cols, ["ordenante", "beneficiario", "titular", "nombre", "benef"]),
+        "importe": find_col_by_keywords(cols, ["importe", "monto", "cantidad", "euros", "amount", "valor"], exclude_keywords=["saldo", "fecha", "f.cont", "f.oper", "proceso", "contable", "f.valor"]),
+        "saldo": find_col_by_keywords(cols, ["saldo", "balance", "disponible"]),
+        "texto_mezclado": find_col_by_keywords(cols, ["concepto original", "detalle operacion", "informacion adicional", "descripcion", "detalle completo"])
     }
-
-    for col in cols:
-        # Usar el helper find_col_by_keywords para todas las detecciones
-        if resultado["fecha"] is None: # Ampliamos palabras clave para fecha
-            resultado["fecha"] = find_col_by_keywords(cols, ["fecha", "f.cont", "f.oper", "proceso", "date", "f.contable", "f.operacion", "f. oper", "fecha contable", "fecha de operacion", "fecha de valor"])
-
-        if resultado["fecha_valor"] is None: # Ampliamos palabras clave para fecha_valor
-            resultado["fecha_valor"] = find_col_by_keywords(cols, ["fecha valor", "f.valor", "fecha de valor"])
-
-        if resultado["concepto"] is None: # Ampliamos palabras clave para concepto
-            resultado["concepto"] = find_col_by_keywords(cols, ["concepto", "piso", "unidad", "apartamento", "vivienda"])
-
-        if resultado["observaciones"] is None: # Ampliamos palabras clave para observaciones
-            resultado["observaciones"] = find_col_by_keywords(cols, ["observaciones", "observ", "detalle", "informacion", "descripcion", "comentario", "texto", "concepto original", "detalle operacion"])
-
-        if resultado["ordenante"] is None: # Ampliamos palabras clave para ordenante
-            resultado["ordenante"] = find_col_by_keywords(cols, ["ordenante", "beneficiario", "titular", "nombre", "benef"])
-
-        if resultado["importe"] is None: # Ampliamos palabras clave para importe, con exclusiones
-            resultado["importe"] = find_col_by_keywords(cols, ["importe", "monto", "cantidad", "euros", "amount", "valor"], exclude_keywords=["saldo", "fecha", "f.cont", "f.oper", "proceso", "contable", "f.valor"])
-
-        if resultado["saldo"] is None: # Ampliamos palabras clave para saldo
-            resultado["saldo"] = find_col_by_keywords(cols, ["saldo", "balance", "disponible"])
-
-    return resultado
 
 
 def limpiar_importe(valor) -> float:
@@ -61,19 +46,23 @@ def limpiar_importe(valor) -> float:
 
 
 def normalizar_fecha(fecha) -> str:
-    if fecha is None:
+    if fecha is None or (isinstance(fecha, float) and pd.isna(fecha)):
         return None
+
+    # Si ya es un objeto datetime (común en Excel leído por pandas)
+    if hasattr(fecha, 'strftime'):
+        return fecha.strftime("%d/%m/%Y")
 
     # Si viene como solo guiones ("-", "--", "—", etc.), no es una fecha válida
     texto = str(fecha).strip()
-    if not texto or all(ch in "-–—_ ." for ch in texto):
+    if not texto or all(ch in "-–—_ ." for ch in texto) or texto.lower() == "nan":
         return None
 
     try:
-        return pd.to_datetime(fecha, dayfirst=True).strftime("%d/%m/%Y")
+        return pd.to_datetime(fecha, dayfirst=True, errors='coerce').strftime("%d/%m/%Y")
     except:
         try:
-            return pd.to_datetime(texto, dayfirst=True).strftime("%d/%m/%Y")
+            return pd.to_datetime(texto, dayfirst=True, errors='coerce').strftime("%d/%m/%Y")
         except:
             return None
 

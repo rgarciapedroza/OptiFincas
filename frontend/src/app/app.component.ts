@@ -510,7 +510,8 @@ next: (data) => {
       OBSERVACIONES: m.OBSERVACIONES, // Ya viene procesado del backend
       IMPORTE: m.IMPORTE, // Ya viene procesado del backend
       SALDO: m.SALDO, // Ya viene procesado del backend
-      CONCEPTO: m.CONCEPTO // Este es el campo editable por el usuario
+      CONCEPTO: m.CONCEPTO, // Este es el campo editable por el usuario
+      concepto_original: m.concepto_original // Devolvemos el texto mezclado para entrenamiento ML
     }));
     console.log('>>> [FRONTEND] ENVIANDO DATOS AL BACKEND (confirmar):', datosAEnviar);
 
@@ -576,7 +577,7 @@ next: (data) => {
         community_id: this.clasificadorCommunityId,
         extracto_id: extractoId,
         fecha: this.formatDate(m.FECHA), // Fecha ya viene en formato DD/MM/YYYY del backend
-        concepto_original: this.encryptVal(m.concepto_original || m.OBSERVACIONES || ''), // ENCRIPTAR al guardar
+        concepto_original: this.encryptVal(m.OBSERVACIONES || ''), 
         importe: m.IMPORTE,
         saldo_resultante: m.SALDO,
         ordenante: this.encryptVal(m.ORDENANTE || m.ordenante || ''), // ENCRIPTAR al guardar
