@@ -7,18 +7,43 @@ import * as CryptoJS from 'crypto-js';
 const ENCRYPT_KEY = CryptoJS.enc.Utf8.parse('OptiFincasSecretKey2024_Security');
 const ENCRYPT_IV = CryptoJS.enc.Utf8.parse('OptiFincas_IV_16');
 
+// Definición de interfaz para Detalle Histórico
+interface DetalleHistorico {
+  campo_coincidencia_historico?: string;
+  mes_historico?: number;
+  anio_historico?: number;
+  valor_coincidencia_historico?: string; // New: The actual content that matched
+  concepto_historico_original?: string; // New: Original concept from historical record
+  ordenante_historico?: string; // New: Ordenante from historical record
+  ordenante_actual?: string;
+  ordenante_identificado?: string;
+  piso_asignado?: string;
+  concepto_original?: string;
+  observacion_historica?: string;
+  piso_encontrado?: string;
+  motivo?: string;
+}
+
 // Definición de interfaz para Movimientos Bancarios
 interface MovimientoBancario {
   id: string;
   community_id: string;
+  extracto_id?: any;
   fecha: string;
   concepto_original: string;
   importe: number;
   saldo_resultante?: number;
   ordenante?: string;
+  piso?: string;
   piso_detectado?: string;
   tipo?: string;
   categoria?: string;
+  // Propiedades adicionales para la lógica de histórico
+  es_historico?: boolean;
+  detalle_historico?: DetalleHistorico;
+  CONCEPTO?: string; // Added for type safety based on previous errors
+  metodo_piso?: string;
+  confianza_clasificacion?: number;
   created_at: string;
 }
 
@@ -252,6 +277,7 @@ interface Community {
       box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
     }
     .form-group textarea { resize: none; }
+    
     @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
   `]
 })
@@ -293,6 +319,11 @@ export class AppComponent implements OnInit {
   
   // Gestión de Movimientos Bancarios
   movimientosBancarios: MovimientoBancario[] = [];
+
+  historicalTooltipContent: string = '';
+  showHistoricalTooltip: boolean = false;
+  currentExtractoMes: number | null = null; // Para almacenar el mes del extracto actual
+  currentExtractoAnio: number | null = null; // Para almacenar el año del extracto actual
 
   // Funcionalidad 3: Optimización de Rutas
   numEmployees: number = 2;
@@ -380,6 +411,44 @@ export class AppComponent implements OnInit {
     }
   }
 
+  // Función para convertir el formato de piso visual (ej. "2º J") a su formato raw (ej. "2J")
+  unformatPiso(formattedPiso: string): string {
+    if (!formattedPiso || formattedPiso.toLowerCase().includes('desconocido') || formattedPiso.toLowerCase().includes('identificar') || formattedPiso.toLowerCase().includes('asignar')) return '';
+    const match = formattedPiso.match(/^(\d+)º\s*([A-Z])$/i);
+    if (match) {
+      return `${match[1]}${match[2]}`.toUpperCase();
+    }
+    return formattedPiso.toUpperCase().replace(/[^A-Z0-9]/g, ''); // Fallback para limpiar y poner en mayúsculas
+  }
+
+  // Formatear piso para la vista de dashboard
+  formatearPiso(piso: string | undefined): string { 
+    if (!piso || piso.trim() === '' || piso.toLowerCase() === 'nan' || piso.toLowerCase() === 'none' || piso.toLowerCase().includes('desconocido') || piso.toLowerCase().includes('identificar')) return 'piso sin identificar';
+    const trimmed = piso.trim();
+    const upper = trimmed.toUpperCase();
+    const match = upper.match(/^(\d+)([A-Z])$/);
+    if (match) {
+      return `${match[1]}º ${match[2]}`;
+    }
+    return upper;
+  }
+
+  // Función para encriptar datos antes de enviarlos a la base de datos
+  encryptVal(plaintext: string): string {
+    if (!plaintext) return '';
+    try {
+      const encrypted = CryptoJS.AES.encrypt(plaintext, ENCRYPT_KEY, {
+        iv: ENCRYPT_IV,
+        mode: CryptoJS.mode.CBC,
+        padding: CryptoJS.pad.Pkcs7
+      });
+      return encrypted.toString();
+    } catch (e) {
+      console.error('Error encriptando valor:', plaintext, e);
+      return plaintext; // Devolvemos el valor original si falla
+    }
+  }
+
   onFileSelected(event: any, type: 'extracto' | 'registros') {
     const file = event.target.files[0];
     if (type === 'extracto') this.selectedFileExtracto = file;
@@ -406,6 +475,8 @@ export class AppComponent implements OnInit {
 next: (data) => {
         console.log('>>> [FRONTEND] DATOS QUE LLEGAN DEL BACKEND:', data);
         this.movimientos = data.movimientos_clasificados;
+        this.currentExtractoMes = data.mes_extracto; // Capturar el mes del extracto
+        this.currentExtractoAnio = data.anio_extracto; // Capturar el año del extracto
         this.resumen = data.resumen_general;
 
         try {
@@ -481,29 +552,49 @@ next: (data) => {
       const nombreArchivo = this.selectedFileExtracto?.name || 'Extracto Clasificado';
       
       // 1. Registrar la cabecera del extracto en 'extractos_procesados'
-      const extractoRes = await this.supabase.crearExtracto(this.clasificadorCommunityId, nombreArchivo);
+      const extractoRes = await this.supabase.crearExtracto(
+        this.clasificadorCommunityId,
+        nombreArchivo,
+        this.currentExtractoMes,
+        this.currentExtractoAnio
+      );
       if (extractoRes.error) throw extractoRes.error;
       const extractoId = extractoRes.data[0].id;
+
+      // Primero, actualizamos las propiedades subyacentes (piso o categoria)
+      // basándonos en lo que el usuario ha editado en el campo CONCEPTO de la UI.
+      this.movimientos.forEach(m => {
+        if (m.IMPORTE > 0) { // Es un ingreso: CONCEPTO en UI es el piso formateado
+          m.piso = this.unformatPiso(m.CONCEPTO || ''); // Convertir de "2º J" a "2J"
+        } else { // Es un gasto: CONCEPTO en UI es la categoría
+          m.categoria = m.CONCEPTO || 'Sin Categoría';
+        }
+      });
 
       // 2. Mapear los movimientos procesados al esquema de la tabla 'movimientos'
       const movimientosParaDB = this.movimientos.map(m => ({
         community_id: this.clasificadorCommunityId,
         extracto_id: extractoId,
-        fecha: this.formatDate(m.FECHA),
-        concepto_original: m.OBSERVACIONES || '',
+        fecha: this.formatDate(m.FECHA), // Fecha ya viene en formato DD/MM/YYYY del backend
+        concepto_original: this.encryptVal(m.concepto_original || m.OBSERVACIONES || ''), // ENCRIPTAR al guardar
         importe: m.IMPORTE,
         saldo_resultante: m.SALDO,
-        ordenante: m.ORDENANTE || '',
-        piso_detectado: m.CONCEPTO, // El concepto editado por el usuario es el identificador del piso
+        ordenante: this.encryptVal(m.ORDENANTE || m.ordenante || ''), // ENCRIPTAR al guardar
+        piso_detectado: (m.piso && m.piso.trim() !== '') ? m.piso.substring(0, 20) : 'piso sin identificar', // Asegurar que se guarda el texto
         tipo: m.IMPORTE > 0 ? 'ingreso' : 'gasto',
         editado_manualmente: true,
-        categoria: m.categoria || 'Sin Categoría',
+        categoria: (m.categoria || 'Sin Categoría').substring(0, 50), // Truncar para evitar error DB
         confianza_clasificacion: m.confianza || 0
       }));
 
       // 3. Inserción masiva en Supabase
       const insertRes = await this.supabase.insertarMovimientos(movimientosParaDB);
       if (insertRes.error) throw insertRes.error;
+
+
+      // Opcional: Si quieres que además de guardar en la DB se descargue el archivo automáticamente
+      // al pulsar "Guardar Archivo", podrías descomentar la siguiente línea:
+      // this.descargar('mensual');
 
       alert(`Se han guardado ${movimientosParaDB.length} movimientos correctamente en el sistema.`);
       this.pantallaActual = 3;
@@ -521,12 +612,86 @@ next: (data) => {
     return `${year}-${month}-${day}`;
   }
 
+  finalizarYVerComunidad() {
+    if (this.clasificadorCommunityId) {
+      const comId = this.clasificadorCommunityId;
+      const com = this.comunidadesDB.find(c => c.id === comId);
+      
+      this.funcionalidadActiva = 2;
+      if (com) {
+        if (this.currentExtractoAnio) {
+          this.currentYearDashboard = this.currentExtractoAnio;
+        }
+        this.verDashboard(com, 'extractos');
+      } else {
+        this.cargarComunidades();
+      }
+    } else {
+      this.cambiarFuncionalidad(2);
+    }
+    this.reiniciarProceso();
+  }
+
   irAFuncionalidad2() {
     this.funcionalidadActiva = 2;
   }
 
   irAFuncionalidad3() {
     this.funcionalidadActiva = 3;
+  }
+
+  // Lógica para mostrar el modal con detalles del histórico
+  showHistoricalDetails(event: MouseEvent, mov: MovimientoBancario) {
+    if (mov.es_historico && mov.detalle_historico) {
+      event.stopPropagation();
+
+      const piso = mov.piso || mov.piso_detectado || mov.CONCEPTO;
+      const valor = mov.detalle_historico.valor_coincidencia_historico || 'Contenido no recuperado';
+      const mes = mov.detalle_historico.mes_historico ? this.getMesNombre(mov.detalle_historico.mes_historico) : null;
+      const anio = mov.detalle_historico.anio_historico;
+
+      let content = `
+      <div class="modal-header" style="padding: 25px 35px; border-bottom: 1px solid #e5e7eb; background: #f9fafb;">
+        <h3 style="margin: 0; font-size: 1.2rem; font-weight: 700; color: #111827;">Coincidencia Detectada en Historial</h3>
+      </div>
+      <div class="modal-body" style="padding: 45px; line-height: 1.6;">
+        <div style="margin-bottom: 40px; text-align: center;">
+          <label style="display: block; font-size: 0.8rem; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 15px; letter-spacing: 0.05em;">Piso Identificado</label>
+          <div style="color: #6366f1; font-size: 2.2rem; font-weight: 800; background: #f5f3ff; padding: 15px 40px; border-radius: 16px; border: 2px solid #e0e7ff; display: inline-block; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);">
+            ${piso}
+          </div>
+        </div>
+
+        <div style="background: #f8fafc; padding: 35px; border-radius: 18px; border: 1px solid #edf2f7; margin-bottom: 35px;">
+          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #4a5568; text-transform: uppercase; margin-bottom: 12px; letter-spacing: 0.025em;">Contenido original que provocó la coincidencia:</label>
+          <div style="padding: 25px; background: white; border: 1px solid #e2e8f0; border-radius: 12px; font-family: 'Inter', sans-serif; color: #111827; font-size: 1.4rem; font-weight: 600; border-left: 8px solid #6366f1; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
+            "${valor}"
+          </div>
+          <p style="margin-top: 20px; font-size: 0.95rem; color: #4b5563; font-style: italic;">
+            Este movimiento actual ha sido vinculado al piso <b>${piso}</b> tras encontrar una coincidencia con la información guardada en registros anteriores.
+          </p>
+        </div>
+
+        ${mes && anio ? `
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; padding-top: 30px; border-top: 1px solid #f1f5f9;">
+          <div>
+            <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #6b7280; text-transform: uppercase; margin-bottom: 6px;">Mes de Origen</label>
+            <span style="font-weight: 600; color: #1f2937; font-size: 1.1rem;">${mes}</span>
+          </div>
+          <div>
+            <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #6b7280; text-transform: uppercase; margin-bottom: 6px;">Año de Origen</label>
+            <span style="font-weight: 600; color: #1f2937; font-size: 1.1rem;">${anio}</span>
+          </div>
+        </div>` : ''}
+      </div>`;
+
+      this.historicalTooltipContent = content;
+      this.showHistoricalTooltip = true;
+    }
+  }
+
+  hideHistoricalDetails() {
+    this.showHistoricalTooltip = false;
   }
 
   importarExcelComunidades(event: any) {
@@ -726,9 +891,9 @@ next: (data) => {
   }
 
   // Navegación al Dashboard
-  async verDashboard(com: any) {
+  async verDashboard(com: any, seccion: 'propietarios' | 'extractos' | 'finanzas' | 'limpieza' = 'propietarios') {
     this.comunidadSeleccionada = com;
-    this.seccionDashboard = 'propietarios';
+    this.seccionDashboard = seccion;
     this.loading = true;
     try {
       await this.cargarPisos(com.id);
@@ -811,18 +976,23 @@ next: (data) => {
       const { data, error } = await this.supabase.getExtractosByCommunity(communityId);
       if (error) throw error;
       
-      // Obtenemos todos los movimientos de la comunidad para calcular los contadores manualmente
-      const { data: movs } = await this.supabase.getMovimientosBancarios(communityId);
-      
       this.extractos = (data || []).map(ext => ({
         ...ext,
-        movimientos_count: (movs || []).filter((m: any) => m.extracto_id === ext.id).length
+        // El conteo de movimientos ahora viene directamente de la respuesta de Supabase
+        movimientos_count: ext.movimientos[0]?.count || 0
       }));
 
       this.extractoSeleccionado = null;
       this.importProgress = null; // Limpiar el progreso de importación al cargar nuevos extractos
       this.movimientosBancarios = [];
       this.availableYears = new Set(this.extractos.map(e => e.anio_contable));
+
+      // Siempre posicionar el dashboard en el año más reciente con datos disponibles
+      if (this.availableYears.size > 0) {
+        const years = Array.from(this.availableYears).sort((a, b) => b - a);
+        this.currentYearDashboard = years[0];
+      }
+
     } catch (error: any) {
       console.error('Error al cargar extractos:', error);
     } finally {
@@ -840,11 +1010,67 @@ next: (data) => {
       if (error) {
         throw error;
       }
-      this.movimientosBancarios = data || [];
-      this.filterMovimientosBancariosByYear(); // Filtrar por el año actual al seleccionar un extracto
+      // DESENCRIPTAR para mostrar en la tabla del Dashboard
+      this.movimientosBancarios = (data || []).map((m: any) => {
+        const decrypted = {
+          ...m,
+          concepto_original: this.decryptVal(m.concepto_original),
+          ordenante: this.decryptVal(m.ordenante)
+        };
+        // Inicializar CONCEPTO para el input de la UI (Piso para ingresos, Categoría para gastos)
+        decrypted.CONCEPTO = decrypted.tipo === 'ingreso' 
+          ? this.formatearPiso(decrypted.piso_detectado) 
+          : (decrypted.categoria || 'Sin categoría');
+        return decrypted;
+      });
+
+      // Al seleccionar un extracto específico, mostramos todos sus movimientos
+      // sin aplicar el filtro de año global del dashboard (que ya coincide)
+      this.filteredMovimientosBancarios = [...this.movimientosBancarios];
     } catch (error: any) {
       console.error('Error al cargar movimientos del extracto:', error);
       this.movimientosBancarios = [];
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  async actualizarMovimientosDashboard() {
+    if (!this.extractoSeleccionado) return;
+    this.loading = true;
+    try {
+      // Sincronizamos los cambios del input (CONCEPTO) con los campos técnicos antes de guardar
+      this.movimientosBancarios.forEach(m => {
+        if (m.tipo === 'ingreso') {
+          m.piso_detectado = this.unformatPiso(m.CONCEPTO || '');
+        } else {
+          m.categoria = m.CONCEPTO || 'Sin Categoría';
+        }
+      });
+
+      const movimientosParaDB = this.movimientosBancarios.map(m => ({
+        id: m.id,
+        community_id: m.community_id,
+        extracto_id: m.extracto_id,
+        fecha: m.fecha,
+        concepto_original: this.encryptVal(m.concepto_original || ''),
+        importe: m.importe,
+        saldo_resultante: m.saldo_resultante,
+        ordenante: this.encryptVal(m.ordenante || ''),
+        piso_detectado: (m.piso_detectado && m.piso_detectado.trim() !== '') ? m.piso_detectado.substring(0, 20) : 'piso sin identificar',
+        tipo: m.tipo,
+        editado_manualmente: true,
+        categoria: (m.categoria || 'Sin Categoría').substring(0, 50),
+        confianza_clasificacion: m.confianza_clasificacion || 0
+      }));
+
+      const { error } = await this.supabase.upsertMovimientos(movimientosParaDB);
+      if (error) throw error;
+
+      alert('Cambios guardados correctamente en la base de datos.');
+    } catch (err: any) {
+      console.error('Error al actualizar movimientos:', err);
+      alert('Error al guardar: ' + (err.message || 'Error desconocido'));
     } finally {
       this.loading = false;
     }

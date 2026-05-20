@@ -102,17 +102,28 @@ export class SupabaseService {
     return response.json();
   }
 
-  async crearExtracto(comunidadId: number, nombreArchivo: string) {
+  async crearExtracto(comunidadId: number, nombreArchivo: string, mes: number | null, anio: number | null) {
     const { data: { session } } = await this.supabase.auth.getSession();
     if (!session) throw new Error("No hay sesión activa");
+
+    // Si ya existe un extracto para el mismo mes y año, lo eliminamos (junto con sus movimientos vía CASCADE)
+    if (mes !== null && anio !== null) {
+      await this.supabase
+        .from('extractos_procesados')
+        .delete()
+        .eq('comunidad_id', comunidadId)
+        .eq('mes_contable', mes)
+        .eq('anio_contable', anio);
+    }
 
     return await this.supabase
       .from('extractos_procesados')
       .insert([{
         comunidad_id: comunidadId,
         nombre_archivo: nombreArchivo,
-        user_id: session.user.id,
-        fecha_subida: new Date().toISOString()
+        fecha_subida: new Date().toISOString(),
+        mes_contable: mes,
+        anio_contable: anio
       }])
       .select();
   }
@@ -126,6 +137,13 @@ export class SupabaseService {
     return await this.supabase
       .from('movimientos')
       .insert(movimientos);
+  }
+
+  async upsertMovimientos(movimientos: any[]) {
+    const { data: { session } } = await this.supabase.auth.getSession();
+    if (!session) throw new Error("No hay sesión activa");
+
+    return await this.supabase.from('movimientos').upsert(movimientos);
   }
 
   async getPisos(communityId: number | string) {
@@ -252,7 +270,7 @@ export class SupabaseService {
   async getExtractosByCommunity(communityId: number | string) {
     const { data, error } = await this.supabase
       .from('extractos_procesados')
-      .select('*')
+      .select('*, movimientos(count)') // Ahora también obtenemos el conteo de movimientos relacionados
       .eq('comunidad_id', communityId)
       .order('anio_contable', { ascending: false })
       .order('mes_contable', { ascending: false });
