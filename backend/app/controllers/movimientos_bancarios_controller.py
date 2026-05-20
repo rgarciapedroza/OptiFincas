@@ -1,4 +1,5 @@
 import io
+import base64
 import pandas as pd
 from fastapi import UploadFile, HTTPException, BackgroundTasks
 from typing import List, Dict
@@ -6,6 +7,22 @@ from app.servicios.supabase_db import supabase_client, supabase_service_role_cli
 from app.servicios.procesar_extracto import limpiar_importe, normalizar_fecha, load_df_from_excel_sheet_robust, detectar_columnas
 import re
 from datetime import datetime
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.backends import default_backend
+
+# Claves de encriptación consistentes con el resto del sistema
+ENCRYPT_KEY = b'OptiFincasSecretKey2024_Security'
+ENCRYPT_IV = b'OptiFincas_IV_16'
+
+def encriptar_dato(texto: str, cipher: Cipher) -> str | None:
+    if not texto or str(texto).lower() in ["none", "nan", ""]:
+        return None
+    padder = padding.PKCS7(128).padder()
+    datos_padded = padder.update(texto.encode('utf-8')) + padder.finalize()
+    encryptor = cipher.encryptor()
+    ct = encryptor.update(datos_padded) + encryptor.finalize()
+    return base64.b64encode(ct).decode('utf-8')
 
 async def importar_movimientos_controller(community_id: str, file: UploadFile, user_id: str):
     """
@@ -31,6 +48,8 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
         "julio": 7, "jul": 7, "agosto": 8, "ago": 8, "septiembre": 9, "sep": 9, "setiembre": 9,
         "octubre": 10, "oct": 10, "noviembre": 11, "nov": 11, "diciembre": 12, "dic": 12
     }
+
+    cipher = Cipher(algorithms.AES(ENCRYPT_KEY), modes.CBC(ENCRYPT_IV), backend=default_backend())
 
     processed_sheets_info = []
     skipped_sheets_info = []
@@ -68,6 +87,7 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
             # Usar la función centralizada de detección de columnas
             columnas = detectar_columnas(df)
             col_fecha = columnas.get("fecha")
+            col_fecha_valor = columnas.get("fecha_valor")
             col_importe = columnas.get("importe")
             col_obs = columnas.get("observaciones")
             col_saldo = columnas.get("saldo")
@@ -86,8 +106,10 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
                 
                 # En tu registro, OBSERVACIONES es el concepto del banco
                 obs_str = str(row.get(col_obs, '')).strip()
-                # En tu registro, CONCEPTO es el Piso
-                piso_val = str(row.get(col_piso, '')).strip()
+                # En tu registro, CONCEPTO es el Piso (para ingresos) o Categoría (para gastos)
+                piso_raw = row.get(col_piso)
+                piso_val = str(piso_raw).strip() if pd.notna(piso_raw) else ""
+                if piso_val.lower() in ['nan', 'none']: piso_val = ""
 
                 ordenante_final = None
 
@@ -121,15 +143,31 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
                             d, m, y = partes_f
                             fecha_db = f"{y}-{m}-{d}"
 
+                    tipo = "ingreso" if importe_limpio > 0 else "gasto"
+                    
+                    # En los registros históricos (Registros.xlsx), la columna mapeada a 'piso' (col_piso)
+                    # contiene el Piso para ingresos y la Categoría para gastos.
+                    piso_detectado = None
+                    categoria = "Sin Categoría"
+                    
+                    if tipo == "ingreso":
+                        piso_detectado = piso_val[:20] if (piso_val and piso_val != "") else "piso sin identificar"
+                        categoria = "Ingreso Cuota"
+                    else:
+                        categoria = piso_val[:50] if (piso_val and piso_val != "") else "Gasto Varios" # Los gastos no tienen piso_detectado
+                        piso_detectado = None
+
                     movimientos_hoja.append({
                         "community_id": int(community_id),
                         "fecha": fecha_db,
-                        "concepto_original": obs_str if obs_str != "nan" else "",
+                        # Encriptamos datos sensibles durante la importación
+                        "concepto_original": encriptar_dato(obs_str, cipher) if obs_str != "nan" else "",
                         "importe": importe_limpio,
                         "saldo_resultante": limpiar_importe(row.get(col_saldo)) if col_saldo else None,
-                        "ordenante": ordenante_final, # Usar el ordenante determinado dinámicamente
-                        "piso_detectado": piso_val[:20] if piso_val != "nan" else None,
-                        "tipo": "ingreso" if importe_limpio > 0 else "gasto",
+                        "ordenante": encriptar_dato(ordenante_final, cipher) if ordenante_final else None,
+                        "piso_detectado": piso_detectado,
+                        "tipo": tipo,
+                        "categoria": categoria,
                         "user_id": user_id,
                         "editado_manualmente": True # Al venir de un registro ya clasificado
                     })

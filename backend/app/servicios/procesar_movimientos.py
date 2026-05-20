@@ -1,22 +1,35 @@
+import re
 from typing import Dict, List, Optional
 import pandas as pd
 from fastapi import UploadFile
-from  app.servicios.procesar_extracto import (
+from app.servicios.procesar_extracto import (
     cargar_extracto_a_df,
     cargar_registros_a_excel,
     detectar_columnas,
     limpiar_importe,
     normalizar_fecha,
     buscar_piso_regex_en_fila,
-    find_col_by_keywords, # Importar el helper
 )
-from  app.procesamiento.buscar_pisos import buscar_pisos_en_historico
-from  app.servicios.resumen import calcular_resumen_categorias_con_tipo # Importar correctamente
+from app.procesamiento.buscar_pisos import buscar_pisos_en_historico, find_col_by_keywords
+from app.servicios.resumen import calcular_resumen_categorias_con_tipo # Importar correctamente
+
+def formatear_piso(piso: str) -> str:
+    if not piso:
+        return ""
+    piso_str = str(piso).strip()
+    if piso_str.lower() in ["piso sin identificar", "piso desconocido", "sin asignar", "nan", "pisodesconocido", "none"]:
+        return "piso sin identificar"
+    piso_str = piso_str.upper()
+    # Detectar formato NumeroLetra (ej: 2J, 10A)
+    match = re.match(r"^(\d+)([A-Z])$", piso_str)
+    if match:
+        return f"{match.group(1)}º {match.group(2)}"
+    return piso_str
 
 def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
     movimientos_con_piso = []
     movimientos_sin_piso = []
-    
+
     col_fecha_proceso_csv = None
     if es_csv:
         for col in df_extracto.columns:
@@ -37,8 +50,8 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
     for idx, row in df_extracto.iterrows():
         # Intentamos obtener la fecha. normalizar_fecha devuelve None si encuentra guiones ("-") o nulos.
         fecha_final = normalizar_fecha(row.get(columnas["fecha"]))
-        
-        # Si la fecha principal no es válida y detectamos "FECHA PROCESO" 
+
+        # Si la fecha principal no es válida y detectamos "FECHA PROCESO"
         if not fecha_final and es_csv and col_fecha_proceso_csv:
             fecha_final = normalizar_fecha(row.get(col_fecha_proceso_csv))
 
@@ -50,16 +63,21 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
         importe = limpiar_importe(row.get(columnas["importe"], 0))
         # Corregimos la obtención del saldo usando la columna detectada
         saldo_val = limpiar_importe(row.get(columnas["saldo"], 0)) if columnas.get("saldo") else 0
-        
+
         if importe == 0: continue
 
         resultado_ml = clasificador.clasificar(concepto_completo, importe)
         
+        # Normalizar el piso devuelto por el ML para evitar que la cadena "NONE" se trate como un piso identificado
+        piso_ml = resultado_ml["piso"]
+        if piso_ml and str(piso_ml).strip().lower() in ["none", "nan", ""]:
+            piso_ml = None
+
         mov = {
             "id": idx,
             # Cabeceras en MAYÚSCULAS para la UI y Excel
             "FECHA": fecha_final or "",
-            "CONCEPTO": resultado_ml["piso"] or "Sin asignar",
+            "CONCEPTO": formatear_piso(piso_ml) if piso_ml else "piso sin identificar",
             "OBSERVACIONES": c_obs,
             "SALDO": saldo_val,
             "IMPORTE": round(importe, 2),
@@ -71,7 +89,7 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
             "saldo": saldo_val,
             "ordenante": c_ben if (col_ordenante and not es_csv) else "", # En UI mostrar solo si no es CSV
 
-            "piso": resultado_ml["piso"] or "",
+            "piso": piso_ml or "",
             "tipo": resultado_ml["tipo"],
             "categoria": resultado_ml["categoria"],
             "concepto_original": concepto_completo,
@@ -90,36 +108,34 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
             mov["CONCEPTO"] = resultado_ml["categoria"]
             movimientos_con_piso.append(mov)
         elif mov["piso"]:
-            mov["CONCEPTO"] = mov["piso"]
+            mov["CONCEPTO"] = formatear_piso(mov["piso"])
             movimientos_con_piso.append(mov)
         else:
             movimientos_sin_piso.append(mov)
 
     return movimientos_con_piso, movimientos_sin_piso
 
-def completar_pisos(movimientos_sin_piso, excel_registros, es_csv: bool):
-    print(f"\n[DEBUG completar_pisos] Recibidos {len(movimientos_sin_piso)} movimientos sin piso para buscar en histórico.")
+def completar_pisos(movimientos_sin_piso, excel_registros, es_csv: bool, extractos_map: Dict = None):
+    print(f"\n[DEBUG completar_pisos] Recibidos {len(movimientos_sin_piso)} movimientos para buscar en histórico.")
     if movimientos_sin_piso:
         print(f"[DEBUG completar_pisos] Primer movimiento sin piso: {movimientos_sin_piso[0].get('concepto_original', '')} / {movimientos_sin_piso[0].get('ordenante', '')}")
-    recuperados = buscar_pisos_en_historico(excel_registros, movimientos_sin_piso)
-    print(f"[DEBUG completar_pisos] buscar_pisos_en_historico devolvió {len(recuperados)} movimientos. (Pisos asignados: {sum(1 for m in recuperados if m.get('piso'))})")
+    
+    # Nota: Si buscar_pisos_en_historico requiere extractos_map, asegúrate de actualizar su firma también
+    recuperados = buscar_pisos_en_historico(excel_registros, movimientos_sin_piso, extractos_map)
+    print(f"[DEBUG completar_pisos] Histórico devolvió {len(recuperados)} movimientos.")
     if any(m.get('piso') for m in recuperados):
         print(f"[DEBUG completar_pisos] Movimientos con piso asignado: {[m.get('piso') for m in recuperados if m.get('piso')]}")
 
     for m in recuperados:
         if m.get("piso"):
-            m["es_historico"] = True
-            m["CONCEPTO"] = m["piso"]
-            m["detalle_historico"] = {
-                "piso_asignado": m.get("piso", "N/A"),
-                "metodo_usado": m.get("metodo_piso", "N/A"),
-                "motivo": "Coincidencia encontrada en registros históricos."
-            }
+            # The 'es_historico' and 'detalle_historico' should already be set by buscar_pisos_en_registro
+            # We just need to update the 'CONCEPTO' for display in the UI
+            m["CONCEPTO"] = formatear_piso(m["piso"])
     return recuperados
 
-def procesar_extracto_y_registros(extracto: UploadFile, registros: Optional[UploadFile], clasificador, db_historico: Optional[pd.DataFrame] = None) -> Dict:
+def procesar_extracto_y_registros(extracto: UploadFile, registros: Optional[UploadFile], clasificador, db_historico: Optional[pd.DataFrame] = None, extractos_map: Dict = None) -> Dict:
     df_extracto = cargar_extracto_a_df(extracto)
-    
+
     # Manejo de registros opcionales (archivo o base de datos)
     if db_historico is not None:
         excel_registros = {"DB": db_historico}
@@ -127,16 +143,16 @@ def procesar_extracto_y_registros(extracto: UploadFile, registros: Optional[Uplo
         excel_registros = cargar_registros_a_excel(registros)
     else:
         excel_registros = {}
-        
+
     columnas = detectar_columnas(df_extracto)
-    
+
     es_csv = extracto.filename.lower().endswith(".csv")
-    
-    movimientos_con_piso, movimientos_sin_piso = construir_movimientos(
+
+    movimientos_con_piso, movimientos_sin_piso = construir_movimientos( # type: ignore
         df_extracto, columnas, clasificador, es_csv
     )
 
-    recuperados = completar_pisos(movimientos_sin_piso, excel_registros, es_csv)
+    recuperados = completar_pisos(movimientos_sin_piso, excel_registros, es_csv, extractos_map)
     
     movimientos_finales = movimientos_con_piso + recuperados
     movimientos_finales = sorted(movimientos_finales, key=lambda m: m["id"])
@@ -159,11 +175,11 @@ def procesar_extracto_y_registros(extracto: UploadFile, registros: Optional[Uplo
         
         # Si se identificó un piso (por ML o histórico) y CONCEPTO aún es un valor por defecto, asignarlo.
         if piso_id:
-            if m.get("CONCEPTO") in ["Sin asignar", "Piso desconocido", "", None]:
-                m["CONCEPTO"] = piso_id
-        # Si no se identificó piso y CONCEPTO es un valor por defecto, establecer "Piso desconocido".
-        elif m.get("CONCEPTO") in ["Sin asignar", "", None]:
-            m["CONCEPTO"] = "Piso desconocido"
+            if m.get("CONCEPTO") in ["Sin asignar", "piso sin identificar", "piso desconocido", "Piso desconocido", "PISODESCONOCIDO", "", None]:
+                m["CONCEPTO"] = formatear_piso(piso_id)
+        # Si no se identificó piso y CONCEPTO es un valor por defecto, establecer "piso sin identificar".
+        elif m.get("CONCEPTO") in ["Sin asignar", "piso sin identificar", "piso desconocido", "PISODESCONOCIDO", "", None]:
+            m["CONCEPTO"] = "piso sin identificar"
         
     total_ingresos = sum(m["importe"] for m in movimientos_finales if m["importe"] > 0)
     total_gastos = sum(abs(m["importe"]) for m in movimientos_finales if m["importe"] < 0)
