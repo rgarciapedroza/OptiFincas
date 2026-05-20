@@ -43,7 +43,7 @@
         <!-- Nuevo: Selector de Comunidad de Referencia -->
         <div class="info-section" style="margin-bottom: 25px; background: #f0f7ff; border-left-color: #3498db;">
           <div class="form-group-opt">
-            <label style="color: #2c3e50; font-weight: 600;">Comunidad de Referencia (Opcional si usas Excel)</label>
+            <label style="color: #2c3e50; font-weight: 600;">Comunidad de Referencia *</label>
             <select [(ngModel)]="clasificadorCommunityId" class="input-concepto-edit" style="background: white; margin-top: 8px; width: 100%;">
               <option [ngValue]="null">-- Seleccionar Comunidad (para usar base de datos) --</option>
               <option *ngFor="let com of comunidadesDB" [ngValue]="com.id">{{ com.nombre }}</option>
@@ -53,7 +53,7 @@
 
         <div class="upload-grid">
           <!-- Zona Extracto -->
-          <div class="upload-zone" [class.has-file]="selectedFileExtracto" (click)="extInput.click()">
+          <div class="upload-zone" [class.has-file]="selectedFileExtracto" (click)="extInput.click()" style="max-width: 500px; margin: 0 auto;">
             <svg *ngIf="!selectedFileExtracto" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.5"><path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
             <div class="upload-text" *ngIf="!selectedFileExtracto">
               <b>Extracto Bancario</b>
@@ -70,26 +70,9 @@
             <input #extInput type="file" style="display:none" (change)="onFileSelected($event, 'extracto')">
           </div>
 
-          <!-- Zona Histórico -->
-          <div class="upload-zone" [class.has-file]="selectedFileRegistros" (click)="regInput.click()">
-            <svg *ngIf="!selectedFileRegistros" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="1.5"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13c1.168-.776 2.754-1.253 4.5-1.253s3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
-            <div class="upload-text" *ngIf="!selectedFileRegistros">
-              <b>Registros Históricos</b>
-              <span>Selecciona el Excel de referencia</span>
-            </div>
-
-            <div class="file-upload-badge" *ngIf="selectedFileRegistros" (click)="$event.stopPropagation()">
-              <div class="file-details">
-                <span class="file-name">{{ selectedFileRegistros.name }}</span>
-                <span class="file-status">Referencia cargada</span>
-              </div>
-              <button class="remove-file-btn" (click)="selectedFileRegistros = null">×</button>
-            </div>
-            <input #regInput type="file" style="display:none" (change)="onFileSelected($event, 'registros')">
-          </div>
         </div>
         <div class="btn-container">
-          <button class="btn-primary" [disabled]="!selectedFileExtracto || (!selectedFileRegistros && !clasificadorCommunityId)" (click)="procesar()">
+          <button class="btn-primary" [disabled]="!selectedFileExtracto || !clasificadorCommunityId" (click)="procesar()">
             Comenzar Clasificación
           </button>
         </div>

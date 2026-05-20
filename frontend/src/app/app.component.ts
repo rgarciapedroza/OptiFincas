@@ -125,7 +125,7 @@ interface Community {
     .error.show { display: block; }
 
     /* Zonas de Carga (Upload Zones) */
-    .upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-bottom: 30px; }
+    .upload-grid { display: grid; grid-template-columns: 1fr; gap: 25px; margin-bottom: 30px; }
     .upload-zone { 
       border: 2px dashed #cbd5e0; border-radius: 20px; padding: 50px 20px; 
       text-align: center; transition: all 0.3s ease; background: white; cursor: pointer;
@@ -383,9 +383,8 @@ export class AppComponent implements OnInit {
   async procesar() {
     if (!this.selectedFileExtracto) return;
 
-    // Ahora validamos que o bien haya un Excel histórico o bien se haya seleccionado una comunidad
-    if (!this.selectedFileRegistros && !this.clasificadorCommunityId) {
-      alert('Seleccione un archivo de registros históricos o una comunidad para usar los datos del sistema.');
+    if (!this.clasificadorCommunityId) {
+      alert('Seleccione una comunidad para usar los datos del sistema.');
       return;
     }
     
