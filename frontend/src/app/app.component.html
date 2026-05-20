@@ -117,7 +117,10 @@
               <td style="text-align: right; color: #7f8c8d;">{{ mov.SALDO | number:'1.2-2' }}€</td>
               <td style="text-align: center; min-width: 160px;">
                 <div style="display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;">
-                  <svg *ngIf="mov.es_historico" width="12" height="12" viewBox="0 0 24 24" fill="#6366f1" style="flex-shrink: 0;"><circle cx="12" cy="12" r="10"/></svg>
+                  <svg *ngIf="mov.es_historico" width="14" height="14" viewBox="0 0 24 24" fill="#6366f1" style="flex-shrink: 0; cursor: pointer; transition: transform 0.2s;"
+                       (click)="showHistoricalDetails($event, mov)">
+                    <circle cx="12" cy="12" r="10"/>
+                  </svg>
                   <input [(ngModel)]="mov.CONCEPTO" class="input-concepto-edit" style="text-align: center;">
                 </div>
               </td>
@@ -126,9 +129,7 @@
         </table>
 
         <div class="actions">
-          <button class="btn" (click)="descargar('mensual')">Descargar Mensual</button>
-          <button class="btn btn-success" (click)="descargar('historico')">Actualizar Histórico</button>
-          <button *ngIf="clasificadorCommunityId" class="btn btn-info" (click)="guardarEnBaseDeDatos()">Guardar en Sistema</button>
+          <button *ngIf="clasificadorCommunityId" class="btn btn-info" (click)="guardarEnBaseDeDatos()">Guardar Archivo</button>
         </div>
       </div>
 
@@ -141,7 +142,7 @@
           <p>Referencia guardada: <strong>{{ archivoReferencia.nombre }}</strong></p>
         </div>
         <div class="actions">
-          <button class="btn btn-info" (click)="irAFuncionalidad2()">Continuar a Funcionalidad 2</button>
+          <button class="btn btn-info" (click)="finalizarYVerComunidad()">Ver Registro en Comunidad</button>
           <button class="btn btn-secondary" (click)="reiniciarProceso()">Procesar otro extracto</button>
         </div>
       </div>
@@ -437,10 +438,18 @@
                   {{ mov.importe | number:'1.2-2' }}€
                 </td>
                 <td style="text-align: right; color: #7f8c8d;">{{ mov.saldo_resultante | number:'1.2-2' }}€</td>
-                <td style="text-align: center;">{{ mov.piso_detectado || 'Sin asignar' }}</td>
+                <td style="text-align: center;">
+                  <div style="display: flex; align-items: center; justify-content: center; width: 100%;">
+                    <input [(ngModel)]="mov.CONCEPTO" class="input-concepto-edit" style="text-align: center;">
+                  </div>
+                </td>
               </tr>
             </tbody>
           </table>
+
+          <div class="actions" *ngIf="extractoSeleccionado">
+            <button class="btn btn-info" (click)="actualizarMovimientosDashboard()">Guardar Cambios</button>
+          </div>
 
           <!-- Mensajes de estado -->
           <div *ngIf="!extractoSeleccionado && extractos.length === 0 && !loading" class="no-tasks" style="padding: 40px;">
@@ -569,6 +578,16 @@
           <div class="actions">
             <button class="btn btn-success" (click)="descargarExcelOptimizacion()">Descargar Excel de Rutas</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ventana de Detalles Históricos (Modal centrado) -->
+    <div class="modal-overlay" *ngIf="showHistoricalTooltip" (click)="hideHistoricalDetails()">
+      <div class="modal-card" style="max-width: 700px;" (click)="$event.stopPropagation()">
+        <div [innerHTML]="historicalTooltipContent"></div>
+        <div class="modal-footer" style="padding: 15px 25px;">
+          <button class="btn btn-secondary" (click)="hideHistoricalDetails()">Cerrar Detalles</button>
         </div>
       </div>
     </div>

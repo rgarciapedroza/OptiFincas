@@ -6,26 +6,7 @@ from fastapi import UploadFile, HTTPException
 from typing import Dict, Optional, List
 from app.adaptadores.csv_bbva import leer_extracto_csv
 from app.adaptadores.excel_bbva import leer_extracto_excel
-
-def find_col_by_keywords(cols_actuales: List[str], keywords: List[str], exclude_keywords: List[str] = None) -> Optional[str]:
-    """
-    Helper para encontrar columnas de forma flexible.
-    Busca palabras clave (case-insensitive) y puede excluir otras. Prioriza coincidencias exactas.
-    """
-    # Primero, buscar coincidencias exactas (ignorando case y espacios)
-    for kw in keywords:
-        for col_actual in cols_actuales:
-            if col_actual.lower().strip() == kw.lower().strip():
-                return col_actual
-    # Si no hay coincidencia exacta, buscar palabras clave contenidas
-    for kw in keywords:
-        for col_actual in cols_actuales:
-            col_lower = col_actual.lower().strip()
-            if kw.lower().strip() in col_lower:
-                if exclude_keywords and any(ex_kw.lower().strip() in col_lower for ex_kw in exclude_keywords):
-                    continue
-                return col_actual
-    return None
+from app.procesamiento.buscar_pisos import find_col_by_keywords
 
 
 def detectar_columnas(df: pd.DataFrame) -> Dict[str, str]:

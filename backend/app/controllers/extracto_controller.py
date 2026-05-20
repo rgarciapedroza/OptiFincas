@@ -14,12 +14,32 @@ from app.servicios.resumen import calcular_resumen_categorias_con_tipo
 from app.servicios.supabase_db import supabase_client, supabase_service_role_client # Importar supabase_service_role_client
 from app.procesamiento.generar_excel import crear_excel_actualizado
 from app.procesamiento.procesar_excel_contable import obtener_nombre_hoja
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.backends import default_backend
 
 clasificador = crear_clasificador()
 _movimientos_procesados = []
 _registros_contenido = None
 _registros_filename = "Registros.xlsx"
 _extracto_filename = "Extracto.csv" # Nueva variable global para el nombre del extracto
+
+# Claves de encriptación consistentes
+ENCRYPT_KEY = b'OptiFincasSecretKey2024_Security'
+ENCRYPT_IV = b'OptiFincas_IV_16'
+
+def desencriptar_dato(texto_encriptado: str | None, cipher: Cipher) -> str:
+    if not texto_encriptado:
+        return ""
+    try:
+        ct = base64.b64decode(texto_encriptado)
+        decryptor = cipher.decryptor()
+        datos_padded = decryptor.update(ct) + decryptor.finalize()
+        unpadder = padding.PKCS7(128).unpadder()
+        return (unpadder.update(datos_padded) + unpadder.finalize()).decode('utf-8')
+    except Exception:
+        return texto_encriptado # Fallback al original
+
 _mes = 1
 _año = 2024
 
@@ -60,6 +80,11 @@ async def entrenar_controller(extracto: UploadFile, excel_contable: UploadFile):
             _mes = numero
             break
 
+    # Detección del año en el nombre del archivo
+    anio_match = re.search(r"20\d{2}", nombre)
+    if anio_match:
+        _año = int(anio_match.group())
+
     for _, row in df.iterrows():
         concepto = str(row.get(columnas["concepto"], "")) if columnas["concepto"] else ""
         importe = limpiar_importe(row.get(columnas["importe"], 0))
@@ -90,7 +115,7 @@ async def procesar_extracto_db_controller(
     extracto: UploadFile, 
     community_id: int = Form(...)
 ):
-    global _movimientos_procesados, _registros_contenido, _registros_filename, _extracto_filename
+    global _movimientos_procesados, _registros_contenido, _registros_filename, _extracto_filename, _mes, _año
 
     _extracto_filename = extracto.filename
     df_historico = None
@@ -104,20 +129,64 @@ async def procesar_extracto_db_controller(
         if comm_res.data and len(comm_res.data) > 0:
             _registros_filename = f"{comm_res.data[0]['nombre']}.xlsx"
 
-        # Cargamos movimientos previos para usarlos como base de conocimiento
-        response = supabase_service_role_client.table("movimientos").select("concepto_original,importe,piso_detectado,ordenante,fecha").eq("community_id", community_id).order("fecha", desc=True).execute()
-        if response.data:
-            print(f"[DEBUG extracto_controller] Cargados {len(response.data)} movimientos históricos de la base de datos para la comunidad {community_id}")
-            df_historico = pd.DataFrame(response.data)
-            print(f"[DEBUG extracto_controller] df_historico head antes de renombrar:\n{df_historico.head().to_string()}")
+        # Cargamos movimientos previos para usarlos como base de conocimiento, incluyendo extracto_id
+        response_movs = supabase_service_role_client.table("movimientos").select("concepto_original,importe,piso_detectado,ordenante,fecha,extracto_id").eq("community_id", community_id).order("fecha", desc=True).execute()
+        if response_movs.data:
+            print(f"[DEBUG extracto_controller] Cargados {len(response_movs.data)} movimientos históricos de la base de datos para la comunidad {community_id}")
+            
+            # DESENCRIPTAR datos históricos para que el buscador pueda trabajar con texto plano
+            cipher = Cipher(algorithms.AES(ENCRYPT_KEY), modes.CBC(ENCRYPT_IV), backend=default_backend())
+            movs_desencriptados = []
+            for m in response_movs.data:
+                m["concepto_original"] = desencriptar_dato(m.get("concepto_original"), cipher)
+                m["ordenante"] = desencriptar_dato(m.get("ordenante"), cipher)
+                movs_desencriptados.append(m)
+            
+            df_historico = pd.DataFrame(movs_desencriptados)
             # Renombramos columnas para que coincidan con la lógica de búsqueda de pisos
             df_historico = df_historico.rename(columns={"concepto_original": "concepto", "piso_detectado": "piso"})
             df_historico.columns = [c.lower() for c in df_historico.columns]
             print(f"[DEBUG extracto_controller] df_historico head después de renombrar y lower:\n{df_historico.head().to_string()}")
         else:
             print(f"[DEBUG extracto_controller] No se encontraron movimientos históricos para la comunidad {community_id}.")
+            df_historico = pd.DataFrame() # Asegurarse de que df_historico siempre sea un DataFrame
 
-    resultado = procesar_extracto_y_registros(extracto, None, clasificador, db_historico=df_historico)
+        # Fetch extractos_procesados to get month/year mapping
+        extractos_res = supabase_service_role_client.table("extractos_procesados").select("id,mes_contable,anio_contable").eq("comunidad_id", community_id).execute()
+        extractos_map = {ext['id']: {'mes': ext['mes_contable'], 'anio': ext['anio_contable']} for ext in extractos_res.data}
+        print(f"[DEBUG extracto_controller] Cargados {len(extractos_map)} extractos procesados para la comunidad {community_id}.")
+
+    else:
+        extractos_map = {} # Ensure it's always defined
+
+    # 1. Intentar detectar mes y año del nombre del archivo
+    nombre_file = extracto.filename.lower()
+    meses_nombres = {
+        "enero": 1, "febrero": 2, "marzo": 3, "abril": 4,
+        "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,
+        "septiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12
+    }
+    for nombre_mes, numero in meses_nombres.items():
+        if nombre_mes in nombre_file:
+            _mes = numero
+            break
+    anio_search = re.search(r"20\d{2}", nombre_file)
+    if anio_search:
+        _año = int(anio_search.group())
+
+    resultado = procesar_extracto_y_registros(extracto, None, clasificador, db_historico=df_historico, extractos_map=extractos_map)
+    
+    # 2. Refinar mes y año con la fecha del primer movimiento si no se detectó o para mayor precisión
+    if resultado["movimientos_clasificados"]:
+        for m in resultado["movimientos_clasificados"]:
+            f = m.get("fecha")
+            if f and "/" in str(f):
+                try:
+                    p_fecha = str(f).split("/")
+                    if len(p_fecha) == 3:
+                        _mes, _año = int(p_fecha[1]), int(p_fecha[2])
+                        break
+                except: continue
     
     es_excel = extracto.filename.lower().endswith((".xlsx", ".xls"))
     _movimientos_procesados = resultado["movimientos_clasificados"]
@@ -132,7 +201,9 @@ async def procesar_extracto_db_controller(
         },
         "movimientos_clasificados": resultado["movimientos_clasificados"],
         "resumen_categorias": resultado["resumen_categorias"],
-        "es_excel": es_excel
+        "es_excel": es_excel,
+        "mes_extracto": _mes, # Añadir el mes detectado
+        "anio_extracto": _año # Añadir el año detectado
     }
 
 async def confirmar_controller(movimientos_actualizados: list[dict], modo: str = "mensual"):
