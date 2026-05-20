@@ -894,6 +894,26 @@ next: (data) => {
       .sort((a, b) => a.mes_contable - b.mes_contable);
   }
 
+  canNavigateExtractos(delta: number): boolean {
+    if (this.loading || !this.extractos.length) return false;
+
+    if (!this.extractoSeleccionado) {
+      // Navegación por año: buscamos si el año destino tiene algún extracto con movimientos
+      const targetYear = this.currentYearDashboard + delta;
+      return this.extractos.some(e => e.anio_contable === targetYear && (e.movimientos_count || 0) > 0);
+    } else {
+      // Navegación entre extractos: verificamos si el siguiente/anterior tiene movimientos
+      const sorted = [...this.extractos].sort((a, b) => (a.anio_contable * 12 + a.mes_contable) - (b.anio_contable * 12 + b.mes_contable));
+      const currentIndex = sorted.findIndex(e => e.id === this.extractoSeleccionado.id);
+      const nextIndex = currentIndex + delta;
+
+      if (nextIndex >= 0 && nextIndex < sorted.length) {
+        return (sorted[nextIndex].movimientos_count || 0) > 0;
+      }
+      return false;
+    }
+  }
+
   navegarExtractos(delta: number): void {
     if (!this.extractoSeleccionado) {
       // Si no hay extracto seleccionado, las flechas cambian el año de filtrado
