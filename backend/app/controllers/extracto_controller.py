@@ -223,79 +223,30 @@ async def confirmar_controller(movimientos_actualizados: list[dict], modo: str =
         )
     clasificador.guardar_estado()
 
-    # Crear un DataFrame de Pandas para asegurar el orden de las columnas
-    df_movimientos = pd.DataFrame(movimientos_actualizados)
-
     es_excel_extracto = _extracto_filename.lower().endswith((".xlsx", ".xls"))
 
-    # Asegurar que las columnas existan y tengan el nombre correcto antes de reordenar
-    mapeo = {
-        "fecha": "FECHA", 
-        "ordenante": "ORDENANTE", 
-        "beneficiario": "ORDENANTE",
-        "observaciones": "OBSERVACIONES",
-        "observación": "OBSERVACIONES",
-        "importe": "IMPORTE", 
-        "saldo": "SALDO", 
-        "concepto": "CONCEPTO",
-        "piso": "CONCEPTO",
-        "categoria": "categoria",
-        "tipo": "tipo"
-    }
-    
-    # Normalización agresiva de columnas basadas en el mapeo
-    for col_old, col_new in mapeo.items():
-        # Si es un CSV, no queremos crear la columna ORDENANTE
-        if col_new == "ORDENANTE" and not es_excel_extracto:
-            continue
-        for actual_col in df_movimientos.columns:
-            if col_old in actual_col.lower():
-                # Si la columna destino está vacía o es 0, intentamos llenarla con el valor de la columna encontrada
-                if col_new not in df_movimientos.columns:
-                    df_movimientos[col_new] = df_movimientos[actual_col]
-                else:
-                    # Evitar convertir NaN a la cadena literal "nan"
-                    val_clean = df_movimientos[col_new].fillna("")
-                    serie_destino = val_clean.astype(str).str.strip()
-                    vacio = serie_destino.isin(['', '0', '0.0', 'nan', 'None']).all()
-                    if vacio:
-                        df_movimientos[col_new] = df_movimientos[actual_col]
-
-    # Asegurar que las columnas clave existan (excluyendo ORDENANTE si no es excel)
-    columnas_clave = ["FECHA", "OBSERVACIONES", "IMPORTE", "SALDO", "CONCEPTO"]
-    if es_excel_extracto:
-        columnas_clave.insert(1, "ORDENANTE")
-
-    for col in columnas_clave:
-        if col not in df_movimientos.columns:
-            df_movimientos[col] = ""
-        else:
-            # Limpieza final para evitar "nan" en el Excel
-            if col not in ["IMPORTE", "SALDO"]:
-                df_movimientos[col] = df_movimientos[col].fillna("").astype(str).replace("nan", "")
-
-    # Convertir a numérico para evitar que el Excel trate los números como texto
-    for col_num in ["IMPORTE", "SALDO"]:
-        # Limpiar posibles formatos de string antes de convertir
-        if df_movimientos[col_num].dtype == object:
-            df_movimientos[col_num] = df_movimientos[col_num].astype(str).str.replace(',', '.')
-        df_movimientos[col_num] = pd.to_numeric(df_movimientos[col_num], errors="coerce").fillna(0)
-
-    # Definir el orden deseado de las columnas principales
+    # Definir el orden deseado de las columnas principales para el Excel de salida
     core_cols_order = ["FECHA"]
     if es_excel_extracto:
         core_cols_order.append("ORDENANTE")
     core_cols_order.extend(["OBSERVACIONES", "IMPORTE", "SALDO", "CONCEPTO"])
 
-    # Obtener todas las columnas existentes en el DataFrame
-    all_cols = df_movimientos.columns.tolist()
-    
-    # Construir el orden final de las columnas: las principales primero, luego el resto
-    final_cols_order = [col for col in core_cols_order if col in all_cols]
-    final_cols_order.extend([col for col in all_cols if col not in final_cols_order])
+    # Creamos el DataFrame seleccionando directamente las columnas deseadas.
+    # Como el frontend ya envía estas claves en mayúsculas, evitamos la lógica de mapeo
+    # anterior que causaba que 'OBSERVACIONES' se sobreescribiera con mezclas.
+    df_movimientos = pd.DataFrame(movimientos_actualizados, columns=core_cols_order)
 
-    # Reindexar el DataFrame para aplicar el orden de las columnas
-    df_movimientos = df_movimientos.reindex(columns=final_cols_order)
+    # Asegurar limpieza de textos y conversión de tipos numéricos
+    for col in core_cols_order:
+        if col not in df_movimientos.columns:
+            df_movimientos[col] = ""
+        
+        if col in ["IMPORTE", "SALDO"]:
+            if df_movimientos[col].dtype == object:
+                df_movimientos[col] = df_movimientos[col].astype(str).str.replace(',', '.')
+            df_movimientos[col] = pd.to_numeric(df_movimientos[col], errors="coerce").fillna(0)
+        else:
+            df_movimientos[col] = df_movimientos[col].fillna("").astype(str).replace("nan", "")
 
     # DEBUG: Ver exactamente qué datos vamos a enviar al frontend (confirmar/descarga)
     try:
