@@ -49,17 +49,38 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
 
     for idx, row in df_extracto.iterrows():
         # Intentamos obtener la fecha. normalizar_fecha devuelve None si encuentra guiones ("-") o nulos.
-        fecha_final = normalizar_fecha(row.get(columnas["fecha"]))
+        col_f = columnas.get("fecha")
+        col_fv = columnas.get("fecha_valor")
+        
+        fecha_final = normalizar_fecha(row.get(col_f)) if col_f else None
 
-        # Si la fecha principal no es válida y detectamos "FECHA PROCESO"
+        # Fallback 1: Si no hay fecha principal, intentar con fecha_valor
+        if not fecha_final and col_fv:
+            fecha_final = normalizar_fecha(row.get(col_fv))
+
+        # Fallback 2: Si sigue sin haber fecha y es CSV, probar con la columna detectada de proceso
         if not fecha_final and es_csv and col_fecha_proceso_csv:
             fecha_final = normalizar_fecha(row.get(col_fecha_proceso_csv))
 
-        c_base = clean_str(row.get(columnas["concepto"]))
-        c_obs = clean_str(row.get(columnas["observaciones"]))
+        c_base = clean_str(row.get(columnas.get("concepto"))) if columnas.get("concepto") else ""
+        c_obs = clean_str(row.get(columnas.get("observaciones"))) if columnas.get("observaciones") else ""
+        c_mix_raw = clean_str(row.get(columnas.get("texto_mezclado"))) if columnas.get("texto_mezclado") else ""
         c_ben = clean_str(row.get(col_ordenante)) if col_ordenante else ""
 
-        concepto_completo = f"{c_base} {c_ben} {c_obs}".strip()
+        if c_mix_raw:
+            concepto_completo = c_mix_raw
+        else:
+            concepto_completo = f"{c_base} {c_ben} {c_obs}".strip()
+
+        # Lógica de limpieza para la visualización de Observaciones
+        # Queremos mostrar el texto del banco sin el nombre del ordenante duplicado
+        obs_limpia = c_obs if c_obs else c_base
+        if c_ben and len(c_ben) > 3:
+            # Eliminamos el nombre del ordenante del texto (insensible a mayúsculas)
+            obs_limpia = re.sub(re.escape(c_ben), "", obs_limpia, flags=re.IGNORECASE).strip()
+            # Limpiamos ruidos sobrantes como guiones o barras al inicio/final
+            obs_limpia = re.sub(r"^[ \t\-\:\/]+|[ \t\-\:\/]+$", "", obs_limpia).strip()
+
         importe = limpiar_importe(row.get(columnas["importe"], 0))
         # Corregimos la obtención del saldo usando la columna detectada
         saldo_val = limpiar_importe(row.get(columnas["saldo"], 0)) if columnas.get("saldo") else 0
@@ -78,7 +99,7 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
             # Cabeceras en MAYÚSCULAS para la UI y Excel
             "FECHA": fecha_final or "",
             "CONCEPTO": formatear_piso(piso_ml) if piso_ml else "piso sin identificar",
-            "OBSERVACIONES": c_obs,
+            "OBSERVACIONES": obs_limpia, # Observaciones limpias de nombres
             "SALDO": saldo_val,
             "IMPORTE": round(importe, 2),
 
