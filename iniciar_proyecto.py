@@ -134,7 +134,7 @@ def start_backend():
     # Iniciar uvicorn
     process = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "app.main:app", 
-         "--host", "127.0.0.1", "--port", "8000", "--reload"],
+         "--host", "0.0.0.0", "--port", "8000", "--reload"],
         cwd=BACKEND_DIR,
         stdout=sys.stdout, # Mostrar la salida de Uvicorn
         stderr=sys.stderr, # Mostrar errores de Uvicorn
@@ -242,8 +242,16 @@ def main():
                 break
     except KeyboardInterrupt:
         print_info("\nDeteniendo servidores...")
-        backend_process.terminate()
-        if frontend_process: frontend_process.terminate()
+        try:
+            backend_process.terminate()
+            backend_process.wait(timeout=2)
+        except:
+            pass
+        if frontend_process:
+            try:
+                frontend_process.terminate()
+            except:
+                pass
         print_success("Sistema detenido correctamente")
 
 

@@ -319,11 +319,24 @@ export class AppComponent implements OnInit {
   
   // Gestión de Movimientos Bancarios
   movimientosBancarios: MovimientoBancario[] = [];
+  cambiosRealizados = false;
 
   historicalTooltipContent: string = '';
   showHistoricalTooltip: boolean = false;
   currentExtractoMes: number | null = null; // Para almacenar el mes del extracto actual
   currentExtractoAnio: number | null = null; // Para almacenar el año del extracto actual
+
+  // Datos procesados para la sección de Finanzas
+  finanzasData = {
+    ingresosPorPiso: [] as any[],
+    gastos: [] as any[],
+    resumenCuentas: {
+      saldoAnterior: 0,
+      ingresosMes: 0,
+      gastosMes: 0,
+      saldoTotal: 0
+    }
+  };
 
   // Funcionalidad 3: Optimización de Rutas
   numEmployees: number = 2;
@@ -423,7 +436,7 @@ export class AppComponent implements OnInit {
 
   // Formatear piso para la vista de dashboard
   formatearPiso(piso: string | undefined): string { 
-    if (!piso || piso.trim() === '' || piso.toLowerCase() === 'nan' || piso.toLowerCase() === 'none' || piso.toLowerCase().includes('desconocido') || piso.toLowerCase().includes('identificar')) return 'piso sin identificar';
+    if (!piso || piso.trim() === '' || piso.toLowerCase() === 'nan' || piso.toLowerCase() === 'none' || (piso.toLowerCase().includes('desconocido') && !piso.toLowerCase().includes('ingresos')) || piso.toLowerCase().includes('identificar')) return 'piso sin identificar';
     const trimmed = piso.trim();
     const upper = trimmed.toUpperCase();
     const match = upper.match(/^(\d+)([A-Z])$/);
@@ -1004,6 +1017,7 @@ next: (data) => {
   async seleccionarExtracto(extracto: any) {
     this.extractoSeleccionado = extracto;
     this.loading = true;
+    this.cambiosRealizados = false;
     this.movimientosBancarios = []; // Limpiar movimientos anteriores inmediatamente
     
     try {
@@ -1018,6 +1032,9 @@ next: (data) => {
           concepto_original: this.decryptVal(m.concepto_original),
           ordenante: this.decryptVal(m.ordenante)
         };
+        // Asegurar que los valores numéricos sean realmente números
+        decrypted.importe = this.asNumber(decrypted.importe);
+        decrypted.saldo_resultante = this.asNumber(decrypted.saldo_resultante);
         // Inicializar CONCEPTO para el input de la UI (Piso para ingresos, Categoría para gastos)
         decrypted.CONCEPTO = decrypted.tipo === 'ingreso' 
           ? this.formatearPiso(decrypted.piso_detectado) 
@@ -1028,6 +1045,7 @@ next: (data) => {
       // Al seleccionar un extracto específico, mostramos todos sus movimientos
       // sin aplicar el filtro de año global del dashboard (que ya coincide)
       this.filteredMovimientosBancarios = [...this.movimientosBancarios];
+      this.prepararFinanzas();
     } catch (error: any) {
       console.error('Error al cargar movimientos del extracto:', error);
       this.movimientosBancarios = [];
@@ -1036,6 +1054,162 @@ next: (data) => {
     }
   }
 
+  prepararFinanzas() {
+    // Reiniciar datos por seguridad
+    this.finanzasData.ingresosPorPiso = [];
+    this.finanzasData.gastos = [];
+
+    // Si no hay pisos cargados, no podemos generar el informe por vivienda
+    if (!this.pisos || this.pisos.length === 0) {
+      return;
+    }
+
+    const allMovs = this.movimientosBancarios || [];
+    
+    // 1. Identificar Ingresos y Gastos (usamos tipo o signo como fallback)
+    const ingresos = allMovs.filter(m => 
+      (m.tipo?.toLowerCase() === 'ingreso') || (this.asNumber(m.importe) > 0)
+    );
+    const gastosRaw = allMovs.filter(m => 
+      (m.tipo?.toLowerCase() === 'gasto') || (this.asNumber(m.importe) < 0)
+    );
+
+    // Normalizar censo para comparación
+    const censoNormalizado = this.pisos.map(p => ({
+      piso: p,
+      codigoNorm: this.unformatPiso(p.codigo)
+    }));
+
+    // Ingresos vinculados al censo
+    const ingresosCenso = censoNormalizado.map(item => {
+      const p = item.piso;
+      const codeNorm = item.codigoNorm;
+
+      // Buscar movimientos asociados a este piso
+      const movsAsociados = ingresos.filter(m => {
+        const pisoMovNorm = this.unformatPiso(m.piso_detectado || '');
+        if (pisoMovNorm && pisoMovNorm === codeNorm) return true;
+        
+        // Búsqueda en texto del concepto
+        const concepto = (m.concepto_original || '').toUpperCase();
+        return (codeNorm && concepto.includes(codeNorm)) || (p.codigo && concepto.includes(p.codigo.toUpperCase()));
+      });
+
+      // Sumar importes y obtener fecha del último pago
+      const totalPiso = movsAsociados.reduce((sum, m) => sum + (this.asNumber(m.importe) || 0), 0);
+
+      return {
+        codigo: p.codigo,
+        importe: movsAsociados.length > 0 ? totalPiso : null,
+        fecha: movsAsociados.length > 0 ? this.formatDateToUI(movsAsociados[movsAsociados.length - 1].fecha) : null
+      };
+    }).sort((a, b) => a.codigo.localeCompare(b.codigo, undefined, { numeric: true }));
+
+    // 2. Ingresos desconocidos
+    const codigosCensoNorm = new Set(censoNormalizado.map(i => i.codigoNorm));
+    const ingresosExtra = ingresos.filter(m => {
+      const pisoMovNorm = this.unformatPiso(m.piso_detectado || '');
+      if (pisoMovNorm && codigosCensoNorm.has(pisoMovNorm)) return false;
+
+      const concepto = (m.concepto_original || '').toUpperCase();
+      return !censoNormalizado.some(item => 
+        (item.codigoNorm && concepto.includes(item.codigoNorm)) || 
+        (item.piso.codigo && concepto.includes(item.piso.codigo.toUpperCase()))
+      );
+    });
+
+    ingresosExtra.forEach(m => {
+      ingresosCenso.push({
+        codigo: 'Ingresos desconocidos',
+        importe: this.asNumber(m.importe),
+        fecha: this.formatDateToUI(m.fecha)
+      });
+    });
+
+    this.finanzasData.ingresosPorPiso = ingresosCenso;
+
+    // 3. Gastos (Concepto y Cantidad)
+    this.finanzasData.gastos = gastosRaw.map(m => ({
+      concepto: m.categoria || m.concepto_original || 'Otros Gastos',
+      importe: Math.abs(this.asNumber(m.importe))
+    }));
+
+    // 4. Resumen de Cuentas
+    const totalIngresos = ingresos.reduce((sum, m) => sum + (this.asNumber(m.importe) || 0), 0);
+    const totalGastos = this.finanzasData.gastos.reduce((sum, m) => sum + m.importe, 0);
+    
+    const movsOrdenadosAsc = [...allMovs].sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime());
+    const primerMov = movsOrdenadosAsc[0];
+    const ultimoMov = movsOrdenadosAsc[movsOrdenadosAsc.length - 1];
+
+    this.finanzasData.resumenCuentas = {
+      saldoAnterior: (primerMov?.saldo_resultante || 0) - (primerMov?.importe || 0),
+      ingresosMes: totalIngresos,
+      gastosMes: totalGastos,
+      saldoTotal: ultimoMov?.saldo_resultante || 0
+    };
+  }
+
+
+  private formatDateToUI(dateStr: string): string {
+    if (!dateStr || !dateStr.includes('-')) return dateStr;
+    const [year, month, day] = dateStr.split('-');
+    return `${day}/${month}/${year}`;
+  }
+
+  generarReportePDF(reportType: 'extractos' | 'finanzas') {
+    if (!this.extractoSeleccionado) {
+      alert('Por favor, selecciona un extracto para generar el reporte.');
+      return;
+    }
+    this.loading = true;
+
+    let datosAEnviar: any;
+    let modoParam: string;
+
+    const comName = this.comunidadSeleccionada?.nombre || '';
+    const mes = this.extractoSeleccionado?.mes_contable;
+    const anio = this.extractoSeleccionado?.anio_contable;
+
+    if (reportType === 'finanzas') {
+      datosAEnviar = this.finanzasData;
+      modoParam = 'finanzas';
+    } else { // reportType === 'extractos'
+      datosAEnviar = this.movimientosBancarios.map(m => ({
+        FECHA: this.formatDateToUI(m.fecha),
+        ORDENANTE: m.ordenante || '',
+        OBSERVACIONES: m.concepto_original || '',
+        IMPORTE: m.importe,
+        SALDO: m.saldo_resultante,
+        CONCEPTO: m.CONCEPTO || (m.tipo === 'ingreso' ? this.formatearPiso(m.piso_detectado) : m.categoria)
+      }));
+      modoParam = 'mensual';
+    }
+
+    const url = `/api/confirmar?modo=${modoParam}&community_name=${encodeURIComponent(comName)}&mes=${mes}&anio=${anio}`;
+
+    this.http.post<any>(url, datosAEnviar).subscribe({
+      next: (data) => {
+        const byteCharacters = atob(data.excel_contenido);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const blob = new Blob([new Uint8Array(byteNumbers)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = data.nombre_archivo;
+        a.click();
+        this.loading = false;
+      },
+      error: (err) => {
+        console.error('Error al generar el reporte:', err);
+        alert('Error al generar el archivo de reporte. Consulta la consola para más detalles.');
+        this.loading = false;
+      }
+    });
+  }
   async actualizarMovimientosDashboard() {
     if (!this.extractoSeleccionado) return;
     this.loading = true;
@@ -1068,6 +1242,7 @@ next: (data) => {
       const { error } = await this.supabase.upsertMovimientos(movimientosParaDB);
       if (error) throw error;
 
+      this.cambiosRealizados = false;
       alert('Cambios guardados correctamente en la base de datos.');
     } catch (err: any) {
       console.error('Error al actualizar movimientos:', err);
@@ -1302,5 +1477,8 @@ next: (data) => {
 
   setSeccion(seccion: 'propietarios' | 'extractos' | 'finanzas' | 'limpieza') {
     this.seccionDashboard = seccion;
+    if (seccion === 'finanzas') {
+      this.prepararFinanzas();
+    }
   }
 }
