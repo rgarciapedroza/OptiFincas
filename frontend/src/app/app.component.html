@@ -440,7 +440,7 @@
                 <td style="text-align: right; color: #7f8c8d;">{{ mov.saldo_resultante | number:'1.2-2' }}€</td>
                 <td style="text-align: center;">
                   <div style="display: flex; align-items: center; justify-content: center; width: 100%;">
-                    <input [(ngModel)]="mov.CONCEPTO" class="input-concepto-edit" style="text-align: center;">
+                    <input [(ngModel)]="mov.CONCEPTO" (ngModelChange)="cambiosRealizados = true" class="input-concepto-edit" style="text-align: center;">
                   </div>
                 </td>
               </tr>
@@ -448,7 +448,11 @@
           </table>
 
           <div class="actions" *ngIf="extractoSeleccionado">
-            <button class="btn btn-info" (click)="actualizarMovimientosDashboard()">Guardar Cambios</button>
+            <button class="btn btn-secondary" (click)="generarReportePDF('extractos')" style="background: #94a3b8; margin-right: 0;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+              Exportar PDF
+            </button>
+            <button *ngIf="cambiosRealizados" class="btn btn-info" (click)="actualizarMovimientosDashboard()">Guardar Cambios</button>
           </div>
 
           <!-- Mensajes de estado -->
@@ -463,8 +467,104 @@
           </div>
         </div>
 
-        <!-- CONTENIDO: OTROS (PLACEHOLDERS) -->
-        <div *ngIf="seccionDashboard === 'finanzas' || seccionDashboard === 'limpieza'" class="card-container" style="max-width: 100%; text-align: center; padding: 50px;">
+        <!-- CONTENIDO: FINANZAS -->
+        <div *ngIf="seccionDashboard === 'finanzas'" class="container">
+          <div *ngIf="!extractoSeleccionado" class="no-tasks" style="padding: 60px; background: white; border-radius: 16px;">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#cbd5e0" stroke-width="1.5" style="margin-bottom: 15px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+            <p>Por favor, selecciona un mes en la pestaña de <b>Extractos</b> para ver el informe financiero detallado.</p>
+          </div>
+
+          <div *ngIf="extractoSeleccionado" style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; animation: fadeIn 0.4s ease;">
+            
+            <!-- Columna Ingresos -->
+            <div class="card-container" style="max-width: 100%; margin: 0;">
+              <h3 class="section-title" style="color: #2ecc71;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7-7 7 7"/></svg>
+                Ingresos por Piso
+              </h3>
+              <table class="movimientos-table" style="font-size: 0.9rem;">
+                <thead>
+                  <tr>
+                    <th>Piso</th>
+                    <th style="text-align: center;">Cantidad</th>
+                    <th style="text-align: center;">Fecha</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let item of finanzasData.ingresosPorPiso">
+                    <td style="font-weight: 600;">{{ formatearPiso(item.codigo) }}</td>
+                    <td style="text-align: center;">{{ item.importe !== null ? (item.importe | number:'1.2-2') + '€' : ' ' }}</td>
+                    <td style="text-align: center; color: #64748b;">{{ item.fecha || '-' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Columna Gastos y Cuentas -->
+            <div style="display: flex; flex-direction: column; gap: 30px;">
+              
+              <!-- Tabla Gastos -->
+              <div class="card-container" style="max-width: 100%; margin: 0;">
+                <h3 class="section-title" style="color: #e74c3c;">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7 7 7-7"/></svg>
+                  Gastos del Mes
+                </h3>
+                <table class="movimientos-table" style="font-size: 0.9rem;">
+                  <thead>
+                    <tr>
+                      <th>Concepto</th>
+                      <th style="text-align: right;">Cantidad</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let g of finanzasData.gastos">
+                      <td>{{ g.concepto }}</td>
+                      <td style="text-align: right; font-weight: 600; color: #e74c3c;">{{ g.importe | number:'1.2-2' }}€</td>
+                    </tr>
+                    <tr *ngIf="finanzasData.gastos.length === 0">
+                      <td colspan="2" class="no-tasks">No se registraron gastos este mes.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Resumen de Cuentas -->
+              <div class="card-container" style="max-width: 100%; margin: 0; background: #1a252f; color: white;">
+                <h3 class="section-title" style="color: white; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px;">
+                  Resumen de Cuentas
+                </h3>
+                <div style="display: flex; flex-direction: column; gap: 15px; margin-top: 10px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: #9ca3af;">Saldo Anterior:</span>
+                    <span style="font-weight: 600;">{{ finanzasData.resumenCuentas.saldoAnterior | number:'1.2-2' }}€</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: #2ecc71;">(+) Ingresos Mes:</span>
+                    <span style="font-weight: 600; color: #2ecc71;">{{ finanzasData.resumenCuentas.ingresosMes | number:'1.2-2' }}€</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: #e74c3c;">(-) Gastos Mes:</span>
+                    <span style="font-weight: 600; color: #e74c3c;">{{ finanzasData.resumenCuentas.gastosMes | number:'1.2-2' }}€</span>
+                  </div>
+                  <div style="border-top: 1px solid rgba(255,255,255,0.2); padding-top: 15px; margin-top: 5px; display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 1.1rem; font-weight: 700;">SALDO TOTAL:</span>
+                    <span style="font-size: 1.25rem; font-weight: 800; color: #6366f1;">{{ finanzasData.resumenCuentas.saldoTotal | number:'1.2-2' }}€</span>
+                  </div>
+                </div>
+                <div class="actions" style="margin-top: 25px; justify-content: flex-end; padding: 0;">
+<button class="btn btn-info" (click)="generarReportePDF('finanzas')" style="background: #6366f1; font-size: 0.85rem; width: 100%;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                    Generar Informe PDF Mensual
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- CONTENIDO: LIMPIEZA (PLACEHOLDER) -->
+        <div *ngIf="seccionDashboard === 'limpieza'" class="card-container" style="max-width: 100%; text-align: center; padding: 50px;">
           <p style="color: #64748b; margin: 0;">Módulo en fase de desarrollo.</p>
         </div>
       </div>

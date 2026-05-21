@@ -5,14 +5,14 @@ import re
 import pandas as pd
 from datetime import datetime
 from fastapi import UploadFile, HTTPException, File, Form
-from typing import Optional
+from typing import Optional, Any, Union
 from fastapi.responses import StreamingResponse
 from app.ml.clasificador_ml import crear_clasificador
 from app.servicios.procesar_movimientos import procesar_extracto_y_registros # Importar correctamente
 from app.servicios.procesar_extracto import detectar_columnas, limpiar_importe
 from app.servicios.resumen import calcular_resumen_categorias_con_tipo
 from app.servicios.supabase_db import supabase_client, supabase_service_role_client # Importar supabase_service_role_client
-from app.procesamiento.generar_excel import crear_excel_actualizado
+from app.procesamiento.generar_excel import crear_excel_actualizado, crear_excel_informe_finanzas
 from app.procesamiento.procesar_excel_contable import obtener_nombre_hoja
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
@@ -206,106 +206,76 @@ async def procesar_extracto_db_controller(
         "anio_extracto": _año # Añadir el año detectado
     }
 
-async def confirmar_controller(movimientos_actualizados: list[dict], modo: str = "mensual"):
-    global _movimientos_procesados, _registros_contenido, _registros_filename, _extracto_filename
+async def confirmar_controller(data: Any, modo: str = "mensual", community_name: Optional[str] = None, mes: Optional[int] = None, anio: Optional[int] = None):
+    global _movimientos_procesados, _registros_contenido, _registros_filename, _extracto_filename, _mes, _año
 
-    _movimientos_procesados = movimientos_actualizados
+    # Inicializar variables para los datos específicos de cada tipo de informe
+    finanzas_data_payload: Optional[dict] = None
+    movimientos_actualizados_payload: List[Dict] = []
 
-    # --- APRENDIZAJE INCREMENTAL ---
-    # Guardamos las correcciones del usuario como nuevos ejemplos para el futuro
-    for mov in movimientos_actualizados:
-        clasificador.add_ejemplo(
-            concepto=mov.get("concepto_original", mov.get("OBSERVACIONES", "")),
-            importe=mov.get("IMPORTE", 0),
-            tipo=mov.get("tipo", "gasto"),
-            categoria=mov.get("categoria", "Gasto Varios"),
-            piso=mov.get("CONCEPTO") if mov.get("tipo") == "ingreso" else None
-        )
-    clasificador.guardar_estado()
+    if modo == "finanzas":
+        if not isinstance(data, dict):
+            print(f"[ERROR] Modo finanzas pero el cuerpo de la petición no es un diccionario. Tipo recibido: {type(data)}")
+            raise HTTPException(status_code=400, detail="Para el modo 'finanzas', el cuerpo de la petición debe ser un objeto JSON (diccionario).")
+        finanzas_data_payload = data
+    else: # modo == "mensual"
+        if not isinstance(data, list):
+            print(f"[ERROR] Modo mensual pero el cuerpo de la petición no es una lista. Tipo recibido: {type(data)}")
+            raise HTTPException(status_code=400, detail="Para el modo 'mensual', el cuerpo de la petición debe ser una lista JSON.")
+        movimientos_actualizados_payload = data
 
-    es_excel_extracto = _extracto_filename.lower().endswith((".xlsx", ".xls"))
+    # Actualizar la variable global _movimientos_procesados solo si es relevante para el modo mensual
+    # (ya que el modo finanzas usa finanzas_data_payload directamente)
+    _movimientos_procesados = movimientos_actualizados_payload
 
-    # Definir el orden deseado de las columnas principales para el Excel de salida
-    core_cols_order = ["FECHA"]
-    if es_excel_extracto:
-        core_cols_order.append("ORDENANTE")
-    core_cols_order.extend(["OBSERVACIONES", "IMPORTE", "SALDO", "CONCEPTO"])
+    # Usar mes/año del parámetro (Dashboard) o globales (Clasificador)
+    # Usar mes/año del parámetro (Dashboard) o globales (Clasificador)
+    p_mes = mes if mes is not None else _mes
+    p_anio = anio if anio is not None else _año
 
-    # Creamos el DataFrame seleccionando directamente las columnas deseadas.
-    # Como el frontend ya envía estas claves en mayúsculas, evitamos la lógica de mapeo
-    # anterior que causaba que 'OBSERVACIONES' se sobreescribiera con mezclas.
-    df_movimientos = pd.DataFrame(movimientos_actualizados, columns=core_cols_order)
+    # Lógica de nombre de comunidad para el archivo y títulos
+    # Prioridad absoluta al nombre enviado desde la UI
+    nombre_limpio = str(community_name).strip() if community_name else ""
 
-    # Asegurar limpieza de textos y conversión de tipos numéricos
-    for col in core_cols_order:
-        if col not in df_movimientos.columns:
-            df_movimientos[col] = ""
-        
-        if col in ["IMPORTE", "SALDO"]:
-            if df_movimientos[col].dtype == object:
-                df_movimientos[col] = df_movimientos[col].astype(str).str.replace(',', '.')
-            df_movimientos[col] = pd.to_numeric(df_movimientos[col], errors="coerce").fillna(0)
-        else:
-            df_movimientos[col] = df_movimientos[col].fillna("").astype(str).replace("nan", "")
+    if not nombre_limpio or nombre_limpio.lower() in ["", "undefined", "null", "none", "comunidad"]:
+        nombre_limpio = os.path.splitext(_registros_filename)[0].replace(".xlsx", "").replace(".xls", "")
 
-    # DEBUG: Ver exactamente qué datos vamos a enviar al frontend (confirmar/descarga)
-    try:
-        print("\n[DEBUG CONFIRMAR] Columnas df_movimientos:", list(df_movimientos.columns))
-        sample = df_movimientos.head(5).to_dict(orient="records")
-        print("[DEBUG CONFIRMAR] Sample movimientos (head=5):")
-        for i, mov in enumerate(sample):
-            print(f"  #{i+1}: FECHA={mov.get('FECHA')!r} | CONCEPTO={mov.get('CONCEPTO')!r} | IMPORTE={mov.get('IMPORTE')!r} | SALDO={mov.get('SALDO')!r}")
-    except Exception as e:
-        print("[DEBUG CONFIRMAR] Error imprimiendo debug:", str(e))
+    # Si sigue siendo genérico o vacío, usamos "Comunidad" como último recurso
+    if not nombre_limpio or nombre_limpio.lower() in ["registros", "extracto", "extracto_clasificado", ""]:
+        nombre_limpio = "Comunidad"
 
-    
     # Determinar nombre de hoja (MES AÑO en MAYUSCULAS) basado en los datos
-    hoja_nombre = obtener_nombre_hoja(_mes, _año).upper()
-    if movimientos_actualizados:
-        for mov in movimientos_actualizados:
-            f = mov.get("FECHA")
-            if f and len(str(f)) >= 10:
-                try:
-                    dt = datetime.strptime(str(f), "%d/%m/%Y")
-                    meses = ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
-                             "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"]
-                    hoja_nombre = f"{meses[dt.month-1]} {dt.year}"
-                    break
-                except: continue
+    hoja_nombre = obtener_nombre_hoja(p_mes, p_anio).upper()
 
-    nombre_base_registros = os.path.splitext(_registros_filename)[0]
-    
-    # Limpiar el nombre del archivo histórico de mes y año para el título interno
-    nombre_limpio = nombre_base_registros
-    meses_es = r"(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)"
-    
-    if not nombre_limpio:
-        nombre_limpio = "Registros"
+    print(f"[DEBUG confirmar_controller] modo={modo} finanzas_payload_exists={finanzas_data_payload is not None} type(data)={type(data)}")
 
-    if modo == "mensual":
-        # Para el mensual, se crea un nuevo libro desde cero
-        base_excel_content = None
-        # El nombre del archivo de descarga para el mensual mantiene el formato original con fecha
-        nombre_archivo = f"{nombre_base_registros} {hoja_nombre}.xlsx"
+    if modo == "finanzas" and finanzas_data_payload:
+        print("[DEBUG confirmar_controller] Generando FINANZAS excel_informe")
+        # Generar el informe de finanzas (3 tablas: Ingresos por piso, Gastos y Resumen)
+        excel_bytes = crear_excel_informe_finanzas(
+            nombre_documento=nombre_limpio,
+            nombre_hoja=hoja_nombre,
+            finanzas_data=finanzas_data_payload
+        )
+        nombre_archivo = f"Informe_Finanzas_{nombre_limpio}_{hoja_nombre}.xlsx"
     else:
-        # Para el histórico, se usa el contenido original
-        base_excel_content = _registros_contenido
-        nombre_archivo = f"{nombre_limpio}.xlsx"
+        print("[DEBUG confirmar_controller] Generando MENSUAL/EXTRACTO excel_actualizado")
+        # Generar el Excel de movimientos (extracto mensual)
 
-    # El título que aparece DENTRO del Excel (antes de la tabla) siempre es el nombre limpio del histórico
-    document_name_for_excel = nombre_limpio
+        tiene_datos_ordenante = any(m.get("ORDENANTE") and str(m["ORDENANTE"]).strip() != "" for m in movimientos_actualizados_payload)
+        show_ordenante = tiene_datos_ordenante or _extracto_filename.lower().endswith((".xlsx", ".xls"))
 
-    # Generar el Excel usando el servicio de procesamiento que incluye estilos
-    excel_bytes = crear_excel_actualizado(
-        contenido_excel=base_excel_content,
-        nombre_hoja=hoja_nombre,
-        movimientos_nuevos=df_movimientos.to_dict(orient="records"), # Convertir a lista de diccionarios con el orden de columnas garantizado
-        resultado_conciliacion={}, # No se requiere conciliación completa para esta descarga
-        mes=_mes,
-        año=_año,
-        nombre_documento=document_name_for_excel,
-        es_excel=es_excel_extracto
-    )
+        excel_bytes = crear_excel_actualizado(
+            contenido_excel=None, # Siempre libro nuevo para mensual
+            nombre_hoja=hoja_nombre,
+            movimientos_nuevos=movimientos_actualizados_payload,
+            resultado_conciliacion={},
+            mes=p_mes,
+            año=p_anio,
+            nombre_documento=nombre_limpio,
+            es_excel=show_ordenante
+        )
+        nombre_archivo = f"Extracto_{nombre_limpio}_{hoja_nombre}.xlsx"
 
     excel_base64 = base64.b64encode(excel_bytes).decode("utf-8")
 

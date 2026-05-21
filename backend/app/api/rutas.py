@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, UploadFile, File, Form
-from typing import List, Dict, Optional
+from fastapi import APIRouter, Depends, UploadFile, File, Form, Body
+from typing import List, Dict, Optional, Any, Union
 from app.controllers.movimientos_bancarios_controller import importar_movimientos_controller, get_movimientos_by_community_controller, eliminar_extracto_controller, get_extractos_by_community_controller
 from app.controllers.pisos_controller import importar_censo_pisos_controller, get_piso_controller, create_piso_controller, update_piso_controller, delete_piso_controller, borrar_censo_comunidad_controller
 from app.controllers.extracto_controller import procesar_extracto_db_controller, confirmar_controller, descargar_controller, descargar_excel_controller, entrenar_controller, opciones_controller
@@ -111,11 +111,14 @@ async def procesar_extracto_db_route(
 
 @router.post("/confirmar")
 async def confirmar_route(
-    movimientos_actualizados: List[Dict],
-    modo: str = "mensual"
+    data: Any = Body(...), # Body(...) es obligatorio para evitar el error 422 con Any
+    modo: str = "mensual",
+    community_name: Optional[str] = None,
+    mes: Optional[int] = None,
+    anio: Optional[int] = None
 ):
     """Confirma los movimientos actualizados y genera un archivo."""
-    return await confirmar_controller(movimientos_actualizados, modo)
+    return await confirmar_controller(data, modo, community_name, mes, anio)
 
 @router.post("/descargar")
 async def descargar_route(
