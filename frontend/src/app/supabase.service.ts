@@ -299,4 +299,27 @@ export class SupabaseService {
     return response.json();
   }
 
+  async guardarPlanificacion(mes: number, anio: number, datos: any) {
+    const { data: { session } } = await this.supabase.auth.getSession();
+    if (!session) throw new Error("No hay sesión activa");
+
+    return await this.supabase
+      .from('planificaciones')
+      .upsert({
+        mes,
+        anio,
+        datos,
+        user_id: session.user.id
+      }, { onConflict: 'mes,anio,user_id' });
+  }
+
+  async getPlanificacion(mes: number, anio: number) {
+    return await this.supabase
+      .from('planificaciones')
+      .select('datos')
+      .eq('mes', mes)
+      .eq('anio', anio)
+      .single();
+  }
+
 }

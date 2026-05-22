@@ -277,7 +277,24 @@ interface Community {
       box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
     }
     .form-group textarea { resize: none; }
-    
+
+    /* Calendario Mensual */
+    .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: #e2e8f0; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; }
+    .calendar-day-header { background: #f8fafc; padding: 12px; text-align: center; font-weight: 700; font-size: 0.75rem; color: #64748b; text-transform: uppercase; }
+    .calendar-day { background: white; min-height: 140px; padding: 8px; transition: background 0.2s; border: 1px solid #f1f5f9; }
+    .calendar-day.empty { background: #f8fafc; }
+    .calendar-day.past { opacity: 0.6; background-color: #f8fafc; }
+    .calendar-day.today { border: 2px solid #6366f1; background-color: #f5f3ff; }
+    .calendar-day:hover:not(.empty) { background: #fcfcfd; }
+    .day-number { font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 8px; display: block; }
+    .calendar-task { font-size: 0.7rem; padding: 5px 8px; border-radius: 6px; margin-bottom: 4px; line-height: 1.2; border-left: 3px solid; font-weight: 500; cursor: pointer; transition: transform 0.1s; }
+    .calendar-task:hover { transform: scale(1.02); }
+    .calendar-task b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+    .emp-1-task { background: #eff6ff; color: #1d4ed8; border-left-color: #3b82f6; }
+    .emp-2-task { background: #fffbeb; color: #b45309; border-left-color: #f59e0b; }
+    .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; padding: 0 10px; }
+    .month-title { margin: 0; font-size: 1.5rem; font-weight: 700; color: #1e293b; text-transform: capitalize; }
+
     @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
   `]
 })
@@ -313,10 +330,21 @@ export class AppComponent implements OnInit {
   // Gestión de Comunidades (Persistencia)
   comunidadesDB: any[] = [];
   importProgress: { processed: { name: string, count: number }[], skipped: { name: string, reason: string }[] } | null = null;
-  nuevaComunidad = { nombre: '', direccion: '', servicios: '' };
+  // Declaración correcta de la propiedad para el formulario con campos de limpieza
+  nuevaComunidadForm = { 
+    nombre: '', direccion: '', servicios: '',
+    cleaningHours: 1.0, cleaningDaysPerWeek: 1,
+    latitude: 0, longitude: 0
+  };
   editandoId: string | null = null;
   availableYears: Set<number> = new Set<number>(); // Almacena los años con extractos disponibles
   
+  // Optimización y Calendario
+  mostrarConfiguracionOptimizacion = false;
+  viewDate: Date = new Date();
+  calendarDays: (Date | null)[] = [];
+  selectedTaskEdit: { task: any, emp: string, day: string, index: number } | null = null;
+
   // Gestión de Movimientos Bancarios
   movimientosBancarios: MovimientoBancario[] = [];
   cambiosRealizados = false;
@@ -347,9 +375,83 @@ export class AppComponent implements OnInit {
 
   constructor(private http: HttpClient, private supabase: SupabaseService) {}
 
+  async changeMonth(delta: number) {
+    this.viewDate = new Date(this.viewDate.getFullYear(), this.viewDate.getMonth() + delta, 1);
+    this.generateCalendar();
+    await this.cargarPlanificacion();
+  }
+
+  isPast(date: Date | null): boolean {
+    if (!date) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return date < today;
+  }
+
+  isToday(date: Date | null): boolean {
+    if (!date) return false;
+    const today = new Date();
+    return date.getDate() === today.getDate() &&
+           date.getMonth() === today.getMonth() &&
+           date.getFullYear() === today.getFullYear();
+  }
+
+  async cargarPlanificacion() {
+    const { data, error } = await this.supabase.getPlanificacion(
+      this.viewDate.getMonth() + 1,
+      this.viewDate.getFullYear()
+    );
+    if (!error && data) {
+      this.optimizationResult = data.datos;
+    } else {
+      this.optimizationResult = null;
+    }
+  }
+
+  generateCalendar() {
+    const year = this.viewDate.getFullYear();
+    const month = this.viewDate.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    
+    let startDayIdx = firstDay.getDay(); 
+    if (startDayIdx === 0) startDayIdx = 7; // Domingo a 7
+    startDayIdx--; // Ajuste para que Lunes sea 0
+
+    this.calendarDays = [];
+    for (let i = 0; i < startDayIdx; i++) {
+      this.calendarDays.push(null);
+    }
+    for (let d = 1; d <= lastDay.getDate(); d++) {
+      this.calendarDays.push(new Date(year, month, d));
+    }
+  }
+
+  getTasksForDate(date: Date | null): any[] {
+    if (!date || !this.optimizationResult || !this.optimizationResult.horarios) return [];
+    const dayNames = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+    const dayName = dayNames[date.getDay()];
+    
+    const tasks: any[] = [];
+    Object.keys(this.optimizationResult.horarios).forEach((emp, index) => {
+      const dayTasks = this.optimizationResult.horarios[emp][dayName] || [];
+      dayTasks.forEach((t: any, idx: number) => {
+        tasks.push({ ...t, emp, dayName, index: idx, cssClass: index === 0 ? 'emp-1-task' : 'emp-2-task' });
+      });
+    });
+    return tasks;
+  }
+
+  get comunidadesLimpieza(): any[] {
+    return this.comunidadesDB.filter(c => 
+      c.servicios?.toLowerCase().includes('limpieza')
+    );
+  }
+
   async ngOnInit() {
     console.log('[DEBUG] Iniciando AppComponent...');
-    
+    this.generateCalendar();
+
     // Centralizamos la lógica en el cambio de estado de autenticación
     this.supabase.authChanges((_, session) => {
       console.log('[DEBUG] Cambio detectado en Auth:', session ? 'Sesión Activa' : 'Sin Sesión');
@@ -357,6 +459,7 @@ export class AppComponent implements OnInit {
       
       if (session) {
         this.cargarComunidades();
+        this.cargarPlanificacion();
       } else {
         this.comunidadesDB = [];
       }
@@ -373,6 +476,9 @@ export class AppComponent implements OnInit {
     this.funcionalidadActiva = id;
     if (id === 2 && this.session) {
       this.cargarComunidades();
+    }
+    if (id === 3) {
+      this.nuevaComunidadForm.servicios = 'Limpieza';
     }
   }
 
@@ -679,7 +785,8 @@ next: (data) => {
         <div style="background: #f8fafc; padding: 35px; border-radius: 18px; border: 1px solid #edf2f7; margin-bottom: 35px;">
           <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #4a5568; text-transform: uppercase; margin-bottom: 12px; letter-spacing: 0.025em;">Contenido original que provocó la coincidencia:</label>
           <div style="padding: 25px; background: white; border: 1px solid #e2e8f0; border-radius: 12px; font-family: 'Inter', sans-serif; color: #111827; font-size: 1.4rem; font-weight: 600; border-left: 8px solid #6366f1; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
-            "${valor}"
+
+          "${valor}"
           </div>
           <p style="margin-top: 20px; font-size: 0.95rem; color: #4b5563; font-style: italic;">
             Este movimiento actual ha sido vinculado al piso <b>${piso}</b> tras encontrar una coincidencia con la información guardada en registros anteriores.
@@ -768,31 +875,63 @@ next: (data) => {
   }
 
   calcularOptimizacion() {
-    if (this.communities.length === 0) {
+    // Combinar comunidades de la base de datos (limpieza) con las cargadas por Excel
+    const dbCleaning = this.comunidadesLimpieza.map(c => ({
+      address: c.nombre,
+      // Sanitizamos los valores para asegurar que cumplen con el esquema del backend (deben ser > 0)
+      cleaningHours: Math.max(0.5, this.asNumber(c.cleaning_hours)),
+      cleaningDaysPerWeek: Math.max(1, Math.min(7, Math.floor(this.asNumber(c.cleaning_days_per_week)) || 1)),
+      latitude: this.asNumber(c.latitude),
+      longitude: this.asNumber(c.longitude)
+    }));
+
+    const excelCleaning = this.communities.map(c => ({
+      address: c.address,
+      // Sanitizamos también los datos que vienen del Excel
+      cleaningHours: Math.max(0.5, this.asNumber(c.cleaningHours)),
+      cleaningDaysPerWeek: Math.max(1, Math.min(7, Math.floor(this.asNumber(c.cleaningDaysPerWeek)) || 1)),
+      latitude: this.asNumber(c.latitude),
+      longitude: this.asNumber(c.longitude)
+    }));
+
+    const allCommunities = [...dbCleaning, ...excelCleaning];
+
+    if (allCommunities.length === 0) {
       this.error = 'Debe añadir al menos una comunidad para optimizar.';
       return;
     }
+
     this.loading = true;
     this.error = '';
 
     const payload = {
       numEmployees: this.numEmployees,
-      communities: this.communities.map(c => ({
-        address: c.address,
-        cleaningHours: c.cleaningHours,
-        cleaningDaysPerWeek: c.cleaningDaysPerWeek,
-        latitude: c.latitude,
-        longitude: c.longitude
-      }))
+      communities: allCommunities
     };
 
     this.http.post<any>('/api/optimizacion/calcular', payload).subscribe({
-      next: (data) => {
+      next: async (data) => {
         this.optimizationResult = data;
+        await this.supabase.guardarPlanificacion(
+          this.viewDate.getMonth() + 1,
+          this.viewDate.getFullYear(),
+          data
+        );
+        this.mostrarConfiguracionOptimizacion = false; // Volver al calendario
         this.loading = false;
       },
       error: (err) => {
-        this.error = 'Error al calcular la optimización: ' + (err.error?.detail || err.message);
+        console.error('Error detallado devuelto por el servidor:', err);
+        let detail = '';
+        if (err.status === 422 && Array.isArray(err.error?.detail)) {
+          // Formateamos los errores de validación de Pydantic para que sean legibles
+          detail = 'Datos inválidos: ' + err.error.detail.map((d: any) => `${d.loc[d.loc.length - 1]}: ${d.msg}`).join(', ');
+        } else if (err.error?.detail) {
+          detail = typeof err.error.detail === 'string' ? err.error.detail : JSON.stringify(err.error.detail);
+        } else {
+          detail = err.message || 'Error desconocido de red';
+        }
+        this.error = 'Error al calcular la optimización: ' + detail;
         this.loading = false;
       }
     });
@@ -819,6 +958,27 @@ next: (data) => {
     a.click();
   }
 
+  abrirEdicionTarea(task: any) {
+    this.selectedTaskEdit = {
+      task: { ...task },
+      emp: task.emp,
+      day: task.dayName,
+      index: task.index
+    };
+  }
+
+  async guardarCambioManual() {
+    if (!this.selectedTaskEdit || !this.optimizationResult) return;
+    const { emp, day, index, task } = this.selectedTaskEdit;
+    this.optimizationResult.horarios[emp][day][index] = task;
+    await this.supabase.guardarPlanificacion(
+      this.viewDate.getMonth() + 1,
+      this.viewDate.getFullYear(),
+      this.optimizationResult
+    );
+    this.selectedTaskEdit = null;
+  }
+
   reiniciarProceso() {
     this.pantallaActual = 1;
     this.movimientos = [];
@@ -842,16 +1002,27 @@ next: (data) => {
   }
 
   async guardarComunidad() {
-    if (!this.nuevaComunidad.nombre || !this.nuevaComunidad.direccion) {
+    if (!this.nuevaComunidadForm.nombre || !this.nuevaComunidadForm.direccion) {
       alert('Por favor, rellena los campos obligatorios.');
       return;
     }
 
     this.loading = true;
     try {
+      // Mapeo de campos del formulario (camelCase) a columnas de DB (snake_case)
+      const payload = {
+        nombre: this.nuevaComunidadForm.nombre,
+        direccion: this.nuevaComunidadForm.direccion,
+        servicios: this.nuevaComunidadForm.servicios,
+        cleaning_hours: this.nuevaComunidadForm.cleaningHours,
+        cleaning_days_per_week: this.nuevaComunidadForm.cleaningDaysPerWeek,
+        latitude: this.nuevaComunidadForm.latitude,
+        longitude: this.nuevaComunidadForm.longitude
+      };
+
       if (this.editandoId) {
         // MODO EDICIÓN
-        const { data, error } = await this.supabase.updateComunidad(this.editandoId, this.nuevaComunidad);
+        const { data, error } = await this.supabase.updateComunidad(this.editandoId, payload);
         if (error) throw error;
         if (data) {
           const index = this.comunidadesDB.findIndex(c => c.id === this.editandoId);
@@ -860,7 +1031,7 @@ next: (data) => {
         }
       } else {
         // MODO CREACIÓN
-        const { data, error } = await this.supabase.insertComunidad(this.nuevaComunidad);
+        const { data, error } = await this.supabase.insertComunidad(payload);
         if (error) throw error;
         if (data) {
           this.comunidadesDB = [data[0], ...this.comunidadesDB];
@@ -875,20 +1046,55 @@ next: (data) => {
     }
   }
 
+  async buscarCoordenadas() {
+    if (!this.nuevaComunidadForm.direccion) {
+      alert('Por favor, introduce una dirección primero.');
+      return;
+    }
+
+    this.loading = true;
+    // Usando Nominatim (OpenStreetMap) para geocodificación
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(this.nuevaComunidadForm.direccion)}`;
+    
+    this.http.get<any[]>(url).subscribe({
+      next: (data) => {
+        if (data && data.length > 0) {
+          this.nuevaComunidadForm.latitude = parseFloat(data[0].lat);
+          this.nuevaComunidadForm.longitude = parseFloat(data[0].lon);
+          console.log(`[GEO] Ubicación encontrada (Nominatim): ${data[0].display_name}`);
+        } else {
+          alert('No se han encontrado coordenadas para esa dirección. Intenta ser más específico (ej: añadir ciudad).');
+        }
+        this.loading = false;
+      },
+      error: (err) => {
+        alert('Error al conectar con el servicio de mapas (Nominatim).');
+        this.loading = false;
+      }
+    });
+  }
+
   prepararEdicion(com: any) {
     this.editandoId = com.id;
-    this.nuevaComunidad = {
+    this.nuevaComunidadForm = {
       nombre: com.nombre,
       direccion: com.direccion,
-      servicios: com.servicios
+      servicios: com.servicios || '',
+      cleaningHours: com.cleaning_hours || 1.0,
+      cleaningDaysPerWeek: com.cleaning_days_per_week || 1,
+      latitude: com.latitude || 0,
+      longitude: com.longitude || 0
     };
-    // Hacer scroll hacia arriba para que el usuario vea el formulario
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   cancelarEdicion() {
     this.editandoId = null;
-    this.nuevaComunidad = { nombre: '', direccion: '', servicios: '' };
+    this.nuevaComunidadForm = { 
+      nombre: '', direccion: '', servicios: '', 
+      cleaningHours: 1.0, cleaningDaysPerWeek: 1, 
+      latitude: 0, longitude: 0 
+    };
   }
 
   async eliminarComunidad(id: string) {
@@ -1480,5 +1686,49 @@ next: (data) => {
     if (seccion === 'finanzas') {
       this.prepararFinanzas();
     }
+  }
+
+  // --- GESTIÓN ESPECÍFICA DE LIMPIEZA ---
+
+  async actualizarDetallesLimpieza() {
+    if (!this.comunidadSeleccionada) return;
+    this.loading = true;
+    try {
+      const { error } = await this.supabase.updateComunidad(this.comunidadSeleccionada.id, {
+        cleaning_hours: this.comunidadSeleccionada.cleaning_hours,
+        cleaning_days_per_week: this.comunidadSeleccionada.cleaning_days_per_week,
+        latitude: this.comunidadSeleccionada.latitude,
+        longitude: this.comunidadSeleccionada.longitude
+      });
+      if (error) throw error;
+      alert('Configuración de limpieza guardada con éxito.');
+    } catch (e: any) {
+      alert('Error al guardar detalles: ' + e.message);
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  importarComunidadesDelSistema() {
+    const comunidadesLimpieza = this.comunidadesDB.filter(c => 
+      c.servicios?.toLowerCase().includes('limpieza')
+    );
+    
+    if (comunidadesLimpieza.length === 0) {
+      alert('No hay comunidades con servicio de limpieza configurado en la base de datos.');
+      return;
+    }
+
+    const nuevas = comunidadesLimpieza.map(c => ({
+      id: this.nextCommunityId++,
+      address: c.nombre,
+      cleaningHours: c.cleaning_hours || 1.0,
+      cleaningDaysPerWeek: c.cleaning_days_per_week || 1,
+      latitude: c.latitude || 28.1281,
+      longitude: c.longitude || -15.4468
+    }));
+
+    this.communities = [...this.communities, ...nuevas];
+    alert(`Se han cargado ${nuevas.length} comunidades desde el sistema.`);
   }
 }
