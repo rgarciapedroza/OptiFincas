@@ -3,17 +3,24 @@ from pydantic import BaseModel, Field
 from typing import List
 import pandas as pd
 import io
+import os
 import base64
 from datetime import datetime, timedelta
 import math
 import requests
+from ortools.constraint_solver import routing_enums_pb2
+from ortools.constraint_solver import pywrapcp
+from dotenv import load_dotenv
 
 router = APIRouter()
+
+# Cargar variables de entorno desde el archivo .env
+load_dotenv()
 
 # =========================
 # CONSTANTES
 # =========================
-PARKING_TIME = 10 / 60  # 10 minutos en horas
+PARKING_TIME_MINS = 10 
 MAX_HORAS = 8.0
 HORA_INICIO = datetime.strptime("07:00", "%H:%M")
 
@@ -38,24 +45,30 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     return R * c
 
 
-def get_travel_time_real(lat1, lon1, lat2, lon2, fallback_speed_kmh=30):
+def get_travel_time_osrm(lat1, lon1, lat2, lon2):
+    """Obtiene el tiempo de viaje en minutos usando OSRM."""
     try:
-        if (lat1 == 0 and lon1 == 0) or (lat2 == 0 and lon2 == 0):
-            return 0.5
-
+        # OSRM no tiene tráfico en tiempo real, usa el más rápido.
+        # La URL de OSRM es para un par de puntos. Para una matriz, se harían múltiples llamadas.
+        # Para simplificar, usaremos una instancia local o pública de OSRM.
+        # router.project-osrm.org es una instancia pública, pero puede tener límites de uso.
         url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=false"
-        response = requests.get(url, timeout=3)
-
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("code") == "Ok" and data.get("routes"):
-                return data["routes"][0]["duration"] / 3600.0
-
-    except Exception:
-        pass
-
-    return haversine_distance(lat1, lon1, lat2, lon2) / fallback_speed_kmh
-
+        response = requests.get(url, timeout=5)
+        response.raise_for_status() # Lanza un error para códigos de estado HTTP erróneos
+        data = response.json()
+        
+        if data.get("code") == "Ok" and data.get("routes"):
+            # Duración en segundos, convertimos a minutos y añadimos parking
+            duration_mins = (data["routes"][0]["duration"] / 60.0) + PARKING_TIME_MINS
+            return int(duration_mins)
+        else:
+            print(f"OSRM no pudo encontrar ruta entre ({lat1},{lon1}) y ({lat2},{lon2}).")
+            return 999 # Penalización
+    except Exception as e:
+        print(f"Error OSRM: {e}")
+        # Fallback a distancia haversine si OSRM falla
+        # Asumimos una velocidad promedio para convertir distancia a tiempo
+        return int((haversine_distance(lat1, lon1, lat2, lon2) / 30.0) * 60) + PARKING_TIME_MINS # 30 km/h
 
 # =========================
 # MODELOS
@@ -88,159 +101,212 @@ def carga_total(emp, asignacion):
 # =========================
 @router.post("/calcular")
 async def calcular_optimizacion(request: OptimizationRequest):
+    if not request.communities:
+        raise HTTPException(status_code=400, detail="Debe proporcionar al menos una comunidad.")
 
-    if request.numEmployees != 2:
-        raise HTTPException(status_code=400, detail="Solo 2 empleadas soportadas.")
+    # 1. Preparación de datos globales
+    depot_coords = (28.1281, -15.4468) 
+    all_locations_coords = [(depot_coords[0], depot_coords[1])]
+    all_locations_coords += [(c.latitude, c.longitude) for c in request.communities]
+    num_locations = len(all_locations_coords)
 
+    # 2. Generar Matriz de Tiempos Global (se calcula una vez para todos los puntos)
+    matrix = [[0 for _ in range(num_locations)] for _ in range(num_locations)]
+    for i in range(num_locations):
+        for j in range(num_locations):
+            if i == j: continue
+            matrix[i][j] = get_travel_time_osrm(all_locations_coords[i][0], all_locations_coords[i][1],
+                                              all_locations_coords[j][0], all_locations_coords[j][1])
+
+    if not matrix:
+        raise HTTPException(status_code=500, detail="No se pudo obtener la matriz de tiempos de OSRM.")
+
+    # 3. Distribución de Frecuencia Semanal (Proximidad e Intercalado Aware)
     dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"]
+    plan_por_dia = {d: [] for d in dias_semana}
+    
+    def get_valid_patterns(freq):
+        """Genera combinaciones de días que favorecen la limpieza intercalada."""
+        if freq <= 0: return []
+        if freq >= 5: return [dias_semana]
+        
+        # Frecuencia 1: Cualquier día individual es válido
+        if freq == 1:
+            return [[d] for d in dias_semana]
+        
+        # Frecuencia 2: Prioriza días con separación (mínimo 1 día en medio)
+        if freq == 2:
+            return [
+                ["Lunes", "Miércoles"], ["Lunes", "Jueves"], ["Lunes", "Viernes"],
+                ["Martes", "Jueves"], ["Martes", "Viernes"], ["Miércoles", "Viernes"]
+            ]
+        
+        # Frecuencia 3: El patrón óptimo es Lunes-Miércoles-Viernes
+        if freq == 3:
+            return [["Lunes", "Miércoles", "Viernes"]]
+        
+        # Frecuencia 4: Se deja libre un día intermedio o un extremo
+        if freq == 4:
+            return [
+                ["Lunes", "Martes", "Jueves", "Viernes"],
+                ["Lunes", "Miércoles", "Jueves", "Viernes"],
+                ["Martes", "Miércoles", "Jueves", "Viernes"]
+            ]
+        return []
 
-    horarios = {
-        "Empleada 1": {d: [] for d in dias_semana},
-        "Empleada 2": {d: [] for d in dias_semana}
-    }
+    # Repartir comunidades según frecuencia buscando el equilibrio de carga Y la cercanía geográfica.
+    # Ordenamos por horas de mayor a menor para asignar primero lo más pesado.
+    for comm in sorted(request.communities, key=lambda x: x.cleaningHours, reverse=True):
+        patterns = get_valid_patterns(min(comm.cleaningDaysPerWeek, 5))
+        if not patterns: continue
 
-    carga_horas = {
-        "Empleada 1": {d: 0.0 for d in dias_semana},
-        "Empleada 2": {d: 0.0 for d in dias_semana}
-    }
-
-    no_asignadas = {d: [] for d in dias_semana}
-
-    # =========================================================
-    # PASO 1: ASIGNACIÓN INTELIGENTE (DISTANCIA + BALANCE)
-    # =========================================================
-    asignacion_comunidades = {
-        "Empleada 1": [],
-        "Empleada 2": []
-    }
-
-    for comm in request.communities:
-
-        def coste(emp):
-            # Calculamos la carga actual de ambas
-            c1 = carga_total("Empleada 1", asignacion_comunidades)
-            c2 = carga_total("Empleada 2", asignacion_comunidades)
-            
-            # Proyectamos la carga sumando la comunidad actual a la empleada evaluada
-            carga_nueva = comm.cleaningHours * comm.cleaningDaysPerWeek
-            if emp == "Empleada 1":
-                c1 += carga_nueva
-            else:
-                c2 += carga_nueva
-
-            # El balance es la diferencia absoluta proyectada
-            balance_proyectado = abs(c1 - c2)
-
-            if not asignacion_comunidades[emp]:
-                dist = 0
-            else:
-                # Distancia mínima al grupo ya asignado a esta empleada
-                dist = min(
-                    haversine_distance(comm.latitude, comm.longitude, c.latitude, c.longitude)
-                    for c in asignacion_comunidades[emp]
-                )
-
-            # Multiplicamos el balance por un factor (ej. 20) para que 1h de diferencia 
-            # pese tanto como 20km de distancia, forzando un reparto más equitativo.
-            return dist + (balance_proyectado * 20.0)
-
-        emp = min(["Empleada 1", "Empleada 2"], key=coste)
-
-        asignacion_comunidades[emp].append(comm)
-
-    # =========================================================
-    # PASO 2: ORDENACIÓN DE RUTAS POR PROXIMIDAD
-    # =========================================================
-    planificacion_diaria = {
-        emp: {d: [] for d in dias_semana}
-        for emp in asignacion_comunidades
-    }
-
-    for emp, comunidades in asignacion_comunidades.items():
-
-        pendientes = comunidades[:]
-        dia_idx = 0
-
-        while pendientes and dia_idx < len(dias_semana):
-
-            dia = dias_semana[dia_idx]
-            ruta = []
-            carga_dia = 0.0
-
-            while pendientes:
-
-                if not ruta:
-                    siguiente = max(pendientes, key=lambda x: x.cleaningHours)
-                    viaje = 0.0
-                else:
-                    ultima = ruta[-1]
-
-                    siguiente = min(
-                        pendientes,
-                        key=lambda x: haversine_distance(
-                            ultima.latitude,
-                            ultima.longitude,
-                            x.latitude,
-                            x.longitude
-                        )
+        def calcular_puntuacion_patron(pattern):
+            score_total = 0
+            for dia in pattern:
+                carga_actual = sum(c.cleaningHours for c in plan_por_dia[dia])
+                
+                # Penalización por carga (para equilibrar los días de la semana)
+                score_dia = carga_actual * 40
+                
+                if plan_por_dia[dia]:
+                    # Puntuación por proximidad: ¿Este día ya tiene una comunidad cerca?
+                    dist_min = min(
+                        haversine_distance(comm.latitude, comm.longitude, c.latitude, c.longitude)
+                        for c in plan_por_dia[dia]
                     )
+                    # Bonus fuerte si hay una comunidad a menos de 500m (misma zona)
+                    if dist_min < 0.5:
+                        score_dia -= 150 # Prioridad máxima para agrupar
+                    elif dist_min < 2.0:
+                        score_dia -= 40
+                
+                score_total += score_dia
+            return score_total
 
-                    viaje = get_travel_time_real(
-                        ultima.latitude,
-                        ultima.longitude,
-                        siguiente.latitude,
-                        siguiente.longitude
-                    ) + PARKING_TIME
+        # Seleccionamos la combinación de días (patrón) que tenga menor coste acumulado
+        mejor_patron = min(patterns, key=calcular_puntuacion_patron)
+        for d in mejor_patron:
+            plan_por_dia[d].append(comm)
 
-                if carga_dia + viaje + siguiente.cleaningHours <= MAX_HORAS:
-                    ruta.append(siguiente)
-                    pendientes.remove(siguiente)
-                    carga_dia += viaje + siguiente.cleaningHours
-                else:
-                    break
+    # 4. Resolver un VRP por cada día de la semana
+    horarios = {f"Empleada {i+1}": {d: [] for d in dias_semana} for i in range(request.numEmployees)}
+    carga_horas = {f"Empleada {i+1}": {d: 0.0 for d in dias_semana} for i in range(request.numEmployees)}
+    no_asignadas = {d: [] for d in dias_semana}
+    total_horas_semanales = 0.0
+    total_horas_por_empleada = {f"Empleada {i+1}": 0.0 for i in range(request.numEmployees)}
 
-            planificacion_diaria[emp][dia] = ruta
-            dia_idx += 1
+    for dia in dias_semana:
+        comunidades_hoy = plan_por_dia[dia]
+        if not comunidades_hoy: continue
 
-    # =========================================================
-    # PASO 3: GENERACIÓN DE HORARIOS
-    # =========================================================
-    for emp in horarios:
+        # Mapear índices locales de hoy a índices globales de la matriz
+        # Depot es 0, y luego las comunidades de hoy mapeadas a sus índices originales en request.communities
+        indices_mapeados = [0]
+        for c_hoy in comunidades_hoy:
+            idx_original = request.communities.index(c_hoy) + 1
+            indices_mapeados.append(idx_original)
 
-        for dia in dias_semana:
+        num_locs_hoy = len(indices_mapeados)
+        manager = pywrapcp.RoutingIndexManager(num_locs_hoy, request.numEmployees, 0)
+        routing = pywrapcp.RoutingModel(manager)
 
-            tareas = planificacion_diaria[emp][dia]
-            tiempo = 0.0
-            pos = None
+        def time_callback(from_index, to_index):
+            from_node = manager.IndexToNode(from_index)
+            to_node = manager.IndexToNode(to_index)
+            global_from = indices_mapeados[from_node]
+            global_to = indices_mapeados[to_node]
+            travel_time = matrix[global_from][global_to]
+            
+            if to_node == 0: return travel_time
+            
+            comm = comunidades_hoy[to_node - 1]
+            return travel_time + int(comm.cleaningHours * 60)
 
-            for i, c in enumerate(tareas):
+        def distance_callback(from_index, to_index):
+            """Callback que devuelve SOLO el tiempo de viaje para el cálculo de costes."""
+            from_node = manager.IndexToNode(from_index)
+            to_node = manager.IndexToNode(to_index)
+            global_from = indices_mapeados[from_node]
+            global_to = indices_mapeados[to_node]
+            return matrix[global_from][global_to]
 
-                if i == 0:
-                    viaje = 0.0
-                else:
-                    viaje = get_travel_time_real(
-                        pos[0], pos[1],
-                        c.latitude, c.longitude
-                    ) + PARKING_TIME
+        transit_callback_index = routing.RegisterTransitCallback(time_callback)
+        distance_callback_index = routing.RegisterTransitCallback(distance_callback)
 
-                inicio = HORA_INICIO + timedelta(hours=tiempo + viaje)
-                fin = inicio + timedelta(hours=c.cleaningHours)
+        # Definimos que el coste principal a minimizar es el tiempo de viaje (distancia)
+        routing.SetArcCostEvaluatorOfAllVehicles(distance_callback_index)
 
-                horarios[emp][dia].append({
-                    "comunidad": c.address,
-                    "inicio": inicio.strftime("%H:%M"),
-                    "fin": fin.strftime("%H:%M"),
-                    "horas": c.cleaningHours,
-                    "viaje_previo_horas": round(viaje, 2)
-                })
+        routing.AddDimension(transit_callback_index, 480, 480, True, "Time")
+        time_dimension = routing.GetDimensionOrDie("Time")
+        
+        # Eliminamos el coeficiente de equilibrio diario (SpanCost).
+        # Al ponerlo a 0, permitimos que una empleada haga todo el trabajo de una zona
+        # en un mismo día sin forzar el reparto, ahorrando trayectos innecesarios.
+        # El equilibrio global se gestiona en la fase de distribución semanal (Paso 3).
+        time_dimension.SetGlobalSpanCostCoefficient(0)
 
-                tiempo += viaje + c.cleaningHours
-                pos = (c.latitude, c.longitude)
+        for loc_idx in range(1, num_locs_hoy):
+            index = manager.NodeToIndex(loc_idx)
+            comm = comunidades_hoy[loc_idx - 1]
+            # Ventana de 9:00 (120 min) a 15:00 (480 min - duración)
+            start_max = 480 - int(comm.cleaningHours * 60)
+            if start_max < 120: start_max = 120
+            time_dimension.CumulVar(index).SetRange(120, start_max)
 
-                carga_horas[emp][dia] = round(tiempo, 2)
+        search_parameters = pywrapcp.DefaultRoutingSearchParameters()
+        search_parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION
+        search_parameters.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
+        search_parameters.time_limit.seconds = 2 # Resolución rápida por cada día
 
-                if tiempo > MAX_HORAS:
-                    no_asignadas[dia].append(c.address)
+        # Incentivamos el uso de un solo vehículo por día para mantener la eficiencia geográfica.
+        # Además, ajustamos el coste de activación de cada empleada según sus horas acumuladas en la semana.
+        # La que menos horas lleve acumuladas será la "más barata" de activar, convirtiéndose en la principal hoy.
+        for vehicle_id in range(request.numEmployees):
+            emp_name = f"Empleada {vehicle_id + 1}"
+            # Base 300 mins + penalización de 15 mins por cada hora ya trabajada esta semana.
+            coste_dinamico = 300 + int(total_horas_por_empleada[emp_name] * 15)
+            routing.SetFixedCostOfVehicle(coste_dinamico, vehicle_id)
+
+        assignment = routing.SolveWithParameters(search_parameters)
+
+        if assignment:
+            for vehicle_id in range(request.numEmployees):
+                emp_name = f"Empleada {vehicle_id + 1}"
+                index = routing.Start(vehicle_id)
+                previous_index = index
+                index = assignment.Value(routing.NextVar(index))
+                while not routing.IsEnd(index):
+                    node_idx = manager.IndexToNode(index)
+                    prev_node_idx = manager.IndexToNode(previous_index)
+                    comm = comunidades_hoy[node_idx - 1]
+
+                    time_var = time_dimension.CumulVar(index)
+                    t_mins = assignment.Min(time_var)
+                    inicio = HORA_INICIO + timedelta(minutes=t_mins)
+                    fin = inicio + timedelta(hours=comm.cleaningHours)
+
+                    global_from = indices_mapeados[prev_node_idx]
+                    global_to = indices_mapeados[node_idx]
+                    travel_mins = matrix[global_from][global_to]
+
+                    horarios[emp_name][dia].append({
+                        "comunidad": comm.address,
+                        "inicio": inicio.strftime("%H:%M"),
+                        "fin": fin.strftime("%H:%M"),
+                        "horas": comm.cleaningHours,
+                        "viaje_previo_horas": round(travel_mins / 60.0, 2)
+                    })
+                    previous_index = index
+                    index = assignment.Value(routing.NextVar(index))
+
+                end_index = routing.End(vehicle_id)
+                total_mins = assignment.Min(time_dimension.CumulVar(end_index))
+                carga_horas[emp_name][dia] = round(total_mins / 60.0, 2)
+                total_horas_semanales += (total_mins / 60.0)
+                total_horas_por_empleada[emp_name] += (total_mins / 60.0)
+        else:
+            # Si un día falla, lo marcamos para el usuario
+            no_asignadas[dia] = [c.address for c in comunidades_hoy]
 
     # =========================================================
     # EXPORT EXCEL
@@ -281,7 +347,9 @@ async def calcular_optimizacion(request: OptimizationRequest):
         "nombre_archivo": f"Planificacion_{datetime.now().strftime('%Y%m%d')}.xlsx",
         "horarios": horarios,
         "resumen": carga_horas,
-        "no_asignadas": no_asignadas
+        "no_asignadas": no_asignadas,
+        "total_horas_planificacion": round(total_horas_semanales, 2),
+        "total_horas_por_empleada": {emp: round(horas, 2) for emp, horas in total_horas_por_empleada.items()}
     }
 
 @router.post("/importar-comunidades")

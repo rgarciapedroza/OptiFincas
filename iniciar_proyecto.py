@@ -51,14 +51,17 @@ def check_dependencies():
 
     # Mapeo de nombre de paquete pip a nombre de importación en Python
     packages = {
+        'numpy<2.0': 'numpy',
         'fastapi': 'fastapi',
         'uvicorn': 'uvicorn',
-        'pandas': 'pandas',
+        'pandas<3.0': 'pandas',
         'openpyxl': 'openpyxl',
         'scikit-learn': 'sklearn',
         'supabase': 'supabase',
         'cryptography': 'cryptography',
-        'python-dotenv': 'dotenv'
+        'python-dotenv': 'dotenv', # Necesario para cargar .env
+        'requests': 'requests', # Necesario para OSRM
+        'ortools': 'ortools'
     }
     
     missing = []
