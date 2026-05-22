@@ -667,8 +667,14 @@
       <div class="modal-overlay" *ngIf="mostrarConfiguracionOptimizacion">
         <div class="modal-card" style="max-width: 1000px; width: 95%;">
           <div class="modal-header">
-            <h3>Gestión de Rutas y Fincas</h3>
-            <button class="btn-action" (click)="mostrarConfiguracionOptimizacion = false">×</button>
+            <div style="display: flex; align-items: center; gap: 15px;">
+              <h3 style="margin: 0;">Gestión de Rutas y Fincas</h3>
+              <button class="btn btn-success" style="padding: 6px 12px; font-size: 0.8rem; display: flex; align-items: center; gap: 5px;" (click)="prepararNuevaFinca()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                Añadir Finca
+              </button>
+            </div>
+            <button class="btn-action" (click)="mostrarConfiguracionOptimizacion = false; editandoId = null;">×</button>
           </div>
           <div class="modal-body">
             <!-- Listado de Comunidades -->
@@ -703,43 +709,63 @@
               </tbody>
             </table>
 
-            <!-- Formulario -->
-            <div class="info-section" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 20px;">
-              <h4 style="margin-top:0;">{{ editandoId ? 'Editar Finca' : 'Nueva Finca' }}</h4>
-              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px;">
-                <div class="form-group">
-                  <label>Nombre *</label>
-                  <input [(ngModel)]="nuevaComunidadForm.nombre" class="input-concepto-edit">
-                </div>
-                <div class="form-group">
-                  <label>Dirección *</label>
-                  <div style="display: flex; gap: 5px;">
-                    <input [(ngModel)]="nuevaComunidadForm.direccion" class="input-concepto-edit">
-                    <button class="btn btn-info" (click)="buscarCoordenadas()" style="padding: 5px 10px;">📍</button>
-                  </div>
-                </div>
-                <div class="form-group">
-                  <label>Horas</label>
-                  <input type="number" [(ngModel)]="nuevaComunidadForm.cleaningHours" class="input-concepto-edit">
-                </div>
-                <div class="form-group">
-                  <label>Días/Sem</label>
-                  <input type="number" [(ngModel)]="nuevaComunidadForm.cleaningDaysPerWeek" class="input-concepto-edit">
+          </div>
+          <div class="modal-footer" style="justify-content: flex-end;">
+            <button class="btn-primary" (click)="calcularOptimizacion()" style="padding: 12px 30px; font-size: 0.95rem;">
+              PLANIFICAR Y ACTUALIZAR CALENDARIO
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODAL EDICIÓN/CREACIÓN DE COMUNIDAD (OPTIMIZACIÓN) -->
+      <div class="modal-overlay" *ngIf="mostrarModalEdicionComunidad" style="z-index: 1200;">
+        <div class="modal-card" style="max-width: 600px;">
+          <div class="modal-header">
+            <h3>{{ editandoId ? 'Editar Detalles de Finca' : 'Registrar Nueva Finca' }}</h3>
+            <button class="btn-action" (click)="cancelarEdicion()">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+          
+          <div class="modal-body">
+            <div class="form-grid-2">
+              <div class="form-group" style="grid-column: span 2;">
+                <label>Nombre Comunidad *</label>
+                <input [(ngModel)]="nuevaComunidadForm.nombre" class="input-concepto-edit" placeholder="Ej: Residencial Alameda">
+              </div>
+              <div class="form-group" style="grid-column: span 2;">
+                <label>Dirección *</label>
+                <div style="display: flex; gap: 8px;">
+                  <input [(ngModel)]="nuevaComunidadForm.direccion" class="input-concepto-edit" placeholder="Calle..." style="flex: 1;">
+                  <button class="btn btn-info" (click)="buscarCoordenadas()" type="button" title="Localizar coordenadas" style="padding: 8px 12px; display: flex; align-items: center;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                  </button>
                 </div>
               </div>
-              <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px;">
-                <button class="btn btn-secondary" (click)="cancelarEdicion()" *ngIf="editandoId">Cancelar</button>
-                <button class="btn btn-success" (click)="guardarComunidad()">{{ editandoId ? 'Actualizar' : 'Guardar' }}</button>
+              <div class="form-group">
+                <label>Horas Visita</label>
+                <input type="number" [(ngModel)]="nuevaComunidadForm.cleaningHours" class="input-concepto-edit" step="0.5">
+              </div>
+              <div class="form-group">
+                <label>Días/Semana</label>
+                <input type="number" [(ngModel)]="nuevaComunidadForm.cleaningDaysPerWeek" class="input-concepto-edit" min="1" max="7">
+              </div>
+              <div class="form-group">
+                <label>Latitud</label>
+                <input type="number" [(ngModel)]="nuevaComunidadForm.latitude" class="input-concepto-edit" step="any">
+              </div>
+              <div class="form-group">
+                <label>Longitud</label>
+                <input type="number" [(ngModel)]="nuevaComunidadForm.longitude" class="input-concepto-edit" step="any">
               </div>
             </div>
           </div>
-          <div class="modal-footer" style="justify-content: space-between;">
-            <div style="display: flex; gap: 10px;">
-              <button class="btn btn-info" (click)="commExcelInput.click()">Importar Excel</button>
-              <input #commExcelInput type="file" style="display:none" (change)="importarExcelComunidades($event)" accept=".xlsx, .xls">
-            </div>
-            <button class="btn-primary" (click)="calcularOptimizacion()" style="padding: 12px 30px;">
-              PLANIFICAR Y ACTUALIZAR CALENDARIO
+
+          <div class="modal-footer">
+            <button class="btn btn-secondary" (click)="cancelarEdicion()">Cancelar</button>
+            <button class="btn btn-success" (click)="guardarComunidad()">
+              {{ editandoId ? 'Actualizar Finca' : 'Guardar Finca' }}
             </button>
           </div>
         </div>
