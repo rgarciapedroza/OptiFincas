@@ -341,6 +341,7 @@ export class AppComponent implements OnInit {
   
   // Optimización y Calendario
   mostrarConfiguracionOptimizacion = false;
+  mostrarModalEdicionComunidad = false;
   viewDate: Date = new Date();
   calendarDays: (Date | null)[] = [];
   selectedTaskEdit: { task: any, emp: string, day: string, index: number } | null = null;
@@ -1039,6 +1040,7 @@ next: (data) => {
         }
       }
       this.cancelarEdicion();
+      this.mostrarModalEdicionComunidad = false;
     } catch (err: any) {
       alert('Error en la operación: ' + err.message);
     } finally {
@@ -1074,6 +1076,12 @@ next: (data) => {
     });
   }
 
+  prepararNuevaFinca() {
+    this.cancelarEdicion();
+    this.nuevaComunidadForm.servicios = 'Limpieza';
+    this.mostrarModalEdicionComunidad = true;
+  }
+
   prepararEdicion(com: any) {
     this.editandoId = com.id;
     this.nuevaComunidadForm = {
@@ -1085,6 +1093,9 @@ next: (data) => {
       latitude: com.latitude || 0,
       longitude: com.longitude || 0
     };
+    if (this.funcionalidadActiva === 3) {
+      this.mostrarModalEdicionComunidad = true;
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -1095,6 +1106,7 @@ next: (data) => {
       cleaningHours: 1.0, cleaningDaysPerWeek: 1, 
       latitude: 0, longitude: 0 
     };
+    this.mostrarModalEdicionComunidad = false;
   }
 
   async eliminarComunidad(id: string) {
