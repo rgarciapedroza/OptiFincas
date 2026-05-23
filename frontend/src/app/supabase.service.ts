@@ -314,12 +314,16 @@ export class SupabaseService {
   }
 
   async getPlanificacion(mes: number, anio: number) {
+    const { data: { session } } = await this.supabase.auth.getSession();
+    if (!session) return { data: null, error: new Error("No hay sesión activa") };
+
     return await this.supabase
       .from('planificaciones')
       .select('datos')
       .eq('mes', mes)
       .eq('anio', anio)
-      .single();
+      .eq('user_id', session.user.id)
+      .maybeSingle();
   }
 
 }

@@ -564,31 +564,65 @@
         </div>
 
         <!-- CONTENIDO: LIMPIEZA -->
-        <div *ngIf="seccionDashboard === 'limpieza'" class="card-container" style="max-width: 100%; text-align: center; padding: 30px;">
-          <h3 class="section-title">Configuración Técnica de Limpieza</h3>
-          <p style="color: #64748b; margin-bottom: 25px; text-align: left;">Complete estos datos para que la comunidad aparezca correctamente en el optimizador de rutas.</p>
-          
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; text-align: left;">
-            <div class="form-group">
-              <label>Horas necesarias por visita</label>
-              <input type="number" [(ngModel)]="comunidadSeleccionada.cleaning_hours" class="input-concepto-edit" step="0.5">
+        <div *ngIf="seccionDashboard === 'limpieza'">
+          <!-- Turnos de Limpieza Asignados -->
+          <div class="card-container" style="max-width: 100%; padding: 30px;">
+            <h3 class="section-title">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 10px; color: #6366f1;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+              Planificación Mensual de Turnos
+            </h3>
+            
+            <!-- Navegación de meses específica para el dashboard -->
+            <div style="display: flex; align-items: center; justify-content: center; gap: 20px; margin-bottom: 30px; background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #edf2f7;">
+              <button class="btn-action" (click)="changeMonth(-1)" style="background: white; border-radius: 50%; padding: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              </button>
+              <div style="text-align: center; min-width: 160px;">
+                <span style="display: block; font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Mes de servicio</span>
+                <span style="font-size: 1.15rem; font-weight: 800; color: #1e293b;">{{ getViewDateLabel() }}</span>
+              </div>
+              <button class="btn-action" (click)="changeMonth(1)" style="background: white; border-radius: 50%; padding: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
             </div>
-            <div class="form-group">
-              <label>Días de visita por semana</label>
-              <input type="number" [(ngModel)]="comunidadSeleccionada.cleaning_days_per_week" class="input-concepto-edit" min="1" max="7">
+
+            <p style="color: #64748b; margin-bottom: 25px; font-size: 0.95rem;">Representación visual de los turnos programados y el personal asignado.</p>
+
+            <div *ngIf="communityCleaningScheduleForMonthGroupedByDate.length > 0; else noSchedule">
+              <div *ngFor="let day of communityCleaningScheduleForMonthGroupedByDate" style="margin-bottom: 20px; border-left: 4px solid #6366f1; background: #ffffff; border-radius: 0 12px 12px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.04); border-top: 1px solid #f1f5f9; border-right: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9;">
+                <div style="padding: 15px 20px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; gap: 12px;">
+                  <div style="background: #f5f3ff; color: #6366f1; padding: 8px; border-radius: 8px;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                  </div>
+                  <span style="font-weight: 800; color: #1e293b; font-size: 1.05rem; text-transform: capitalize;">
+                    {{ day.date | date:'EEEE, d MMMM' }}
+                  </span>
+                </div>
+                <div style="padding: 10px 20px 20px;">
+                  <div *ngFor="let task of day.tasks; let last = last" style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0;" [style.border-bottom]="!last ? '1px dashed #e2e8f0' : 'none'">
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                      <div [class]="task.emp.includes('1') ? 'emp-1-task' : 'emp-2-task'" style="padding: 6px 14px; border-radius: 20px; font-size: 0.75rem; font-weight: 700; border-left: none; display: flex; align-items: center; gap: 6px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                        {{ task.emp }}
+                      </div>
+                      <div style="display: flex; flex-direction: column;">
+                        <span style="font-weight: 800; color: #1f2937; font-size: 1.1rem;">{{ task.inicio }} — {{ task.fin }}</span>
+                        <span style="font-size: 0.8rem; color: #64748b; font-weight: 500;">Servicio de limpieza ordinario</span>
+                      </div>
+                    </div>
+                    <div style="text-align: right;">
+                      <div style="font-weight: 700; color: #6366f1; font-size: 0.95rem; background: #f5f3ff; padding: 4px 10px; border-radius: 6px;">{{ task.horas }} horas</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div class="form-group">
-              <label>Latitud (Coordenadas)</label>
-              <input type="number" [(ngModel)]="comunidadSeleccionada.latitude" class="input-concepto-edit" step="any">
-            </div>
-            <div class="form-group">
-              <label>Longitud (Coordenadas)</label>
-              <input type="number" [(ngModel)]="comunidadSeleccionada.longitude" class="input-concepto-edit" step="any">
-            </div>
-          </div>
-          
-          <div class="btn-container" style="justify-content: flex-end; margin-top: 25px;">
-            <button class="btn btn-info" (click)="actualizarDetallesLimpieza()">Guardar Configuración</button>
+
+            <ng-template #noSchedule>
+              <div class="no-tasks" style="padding: 40px; background: #f8fafc; border-radius: 16px; border: 2px dashed #e2e8f0; color: #94a3b8; text-align: center;">
+                <p style="font-weight: 500; font-size: 1rem; color: #64748b;">No hay turnos planificados para el periodo seleccionado.</p>
+              </div>
+            </ng-template>
           </div>
         </div>
       </div>
@@ -601,7 +635,7 @@
           <button class="btn-action" (click)="changeMonth(-1)" style="background: #f1f5f9; border-radius: 50%; padding: 8px;">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
           </button>
-          <h2 class="month-title" style="min-width: 200px; text-align: center;">{{ viewDate | date:'MMMM yyyy' }}</h2>
+          <h2 class="month-title" style="margin: 0; min-width: 180px; text-align: center;">{{ getViewDateLabel() }}</h2>
           <button class="btn-action" (click)="changeMonth(1)" style="background: #f1f5f9; border-radius: 50%; padding: 8px;">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
           </button>
@@ -624,8 +658,9 @@
       <!-- CALENDARIO MENSUAL -->
       <div class="calendar-grid">
         <div class="calendar-day-header" *ngFor="let dia of ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']">{{ dia }}</div>
-        <div class="calendar-day" *ngFor="let date of calendarDays" [class.empty]="!date" [class.past]="isPast(date)" [class.today]="isToday(date)">
+        <div class="calendar-day" *ngFor="let date of calendarDays" [class.empty]="!date" [class.past]="isPast(date)" [class.today]="isToday(date)" [class.holiday]="isHoliday(date)">
           <span class="day-number" *ngIf="date">{{ date.getDate() }}</span>
+          <span class="holiday-label" *ngIf="isHoliday(date)">Festivo</span>
           <div *ngFor="let task of getTasksForDate(date)" class="calendar-task" [ngClass]="task.cssClass" (click)="abrirEdicionTarea(task)">
             <small>{{ task.inicio }} - {{ task.emp }}</small>
             <b>{{ task.comunidad }}</b>
@@ -794,7 +829,7 @@
 
     <div *ngIf="loading" class="loading-overlay">
       <div class="spinner"></div>
-      <p style="color: #2c3e50; font-weight: 600;">Procesando documentos...</p>
+      <p style="color: #2c3e50; font-weight: 600;">{{ loadingMessage }}</p>
     </div>
   </main>
   </div>
