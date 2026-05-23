@@ -61,7 +61,8 @@ def check_dependencies():
         'cryptography': 'cryptography',
         'python-dotenv': 'dotenv', # Necesario para cargar .env
         'requests': 'requests', # Necesario para OSRM
-        'ortools': 'ortools'
+        'ortools': 'ortools',
+        'holidays': 'holidays'
     }
     
     missing = []

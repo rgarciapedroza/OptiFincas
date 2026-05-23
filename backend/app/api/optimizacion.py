@@ -8,6 +8,8 @@ import base64
 from datetime import datetime, timedelta
 import math
 import requests
+import holidays
+from functools import lru_cache
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 from dotenv import load_dotenv
@@ -44,31 +46,46 @@ def haversine_distance(lat1, lon1, lat2, lon2):
 
     return R * c
 
-
-def get_travel_time_osrm(lat1, lon1, lat2, lon2):
-    """Obtiene el tiempo de viaje en minutos usando OSRM."""
+@lru_cache(maxsize=64)
+def get_matrix_osrm_cached(coords: tuple):
+    """Versión cacheada para evitar llamadas repetidas a OSRM con las mismas coordenadas."""
+    coords_list = list(coords)
+    if not coords:
+        return []
+    
+    # Formatear coordenadas para OSRM (lon,lat;lon,lat...)
+    # OSRM espera {longitude},{latitude}
+    coords_str = ";".join([f"{c[1]},{c[0]}" for c in coords_list])
+    url = f"http://router.project-osrm.org/table/v1/driving/{coords_str}?sources=all&destinations=all&annotations=duration"
+    
     try:
-        # OSRM no tiene tráfico en tiempo real, usa el más rápido.
-        # La URL de OSRM es para un par de puntos. Para una matriz, se harían múltiples llamadas.
-        # Para simplificar, usaremos una instancia local o pública de OSRM.
-        # router.project-osrm.org es una instancia pública, pero puede tener límites de uso.
-        url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=false"
-        response = requests.get(url, timeout=5)
-        response.raise_for_status() # Lanza un error para códigos de estado HTTP erróneos
-        data = response.json()
-        
-        if data.get("code") == "Ok" and data.get("routes"):
-            # Duración en segundos, convertimos a minutos y añadimos parking
-            duration_mins = (data["routes"][0]["duration"] / 60.0) + PARKING_TIME_MINS
-            return int(duration_mins)
-        else:
-            print(f"OSRM no pudo encontrar ruta entre ({lat1},{lon1}) y ({lat2},{lon2}).")
-            return 999 # Penalización
+        response = requests.get(url, timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("code") == "Ok":
+                durations = data.get("durations", [])
+                # OSRM devuelve segundos. Convertimos a minutos + parking.
+                return [
+                    [(int(d / 60) + PARKING_TIME_MINS if d is not None and d > 0 else 0) for d in row]
+                    for row in durations
+                ]
     except Exception as e:
-        print(f"Error OSRM: {e}")
-        # Fallback a distancia haversine si OSRM falla
-        # Asumimos una velocidad promedio para convertir distancia a tiempo
-        return int((haversine_distance(lat1, lon1, lat2, lon2) / 30.0) * 60) + PARKING_TIME_MINS # 30 km/h
+        print(f"Error OSRM Table Service: {e}")
+
+    # Fallback: Matriz basada en Haversine (distancia lineal) si falla el servicio
+    num_locs = len(coords_list)
+    matrix = [[0 for _ in range(num_locs)] for _ in range(num_locs)]
+    for i in range(num_locs):
+        for j in range(num_locs):
+            if i == j: continue
+            dist = haversine_distance(coords_list[i][0], coords_list[i][1], coords_list[j][0], coords_list[j][1])
+            # Asumimos una velocidad promedio de 30 km/h
+            matrix[i][j] = int((dist / 30.0) * 60) + PARKING_TIME_MINS
+    return matrix
+
+def get_matrix_osrm(coords: List[tuple]):
+    """Proxy para la función cacheada."""
+    return get_matrix_osrm_cached(tuple(coords))
 
 # =========================
 # MODELOS
@@ -84,18 +101,13 @@ class CommunityInput(BaseModel):
 class OptimizationRequest(BaseModel):
     numEmployees: int = Field(2, ge=1, le=2)
     communities: List[CommunityInput]
+    month: int = Field(..., ge=1, le=12)
+    year: int = Field(...)
 
 
 # =========================
 # UTILIDAD BALANCE
 # =========================
-def carga_total(emp, asignacion):
-    return sum(
-        c.cleaningHours * c.cleaningDaysPerWeek
-        for c in asignacion[emp]
-    )
-
-
 # =========================
 # ENDPOINT PRINCIPAL
 # =========================
@@ -110,94 +122,140 @@ async def calcular_optimizacion(request: OptimizationRequest):
     all_locations_coords += [(c.latitude, c.longitude) for c in request.communities]
     num_locations = len(all_locations_coords)
 
-    # 2. Generar Matriz de Tiempos Global (se calcula una vez para todos los puntos)
-    matrix = [[0 for _ in range(num_locations)] for _ in range(num_locations)]
-    for i in range(num_locations):
-        for j in range(num_locations):
-            if i == j: continue
-            matrix[i][j] = get_travel_time_osrm(all_locations_coords[i][0], all_locations_coords[i][1],
-                                              all_locations_coords[j][0], all_locations_coords[j][1])
+    # 2. Generar Matriz de Tiempos Global (Optimizado: una sola petición por mes)
+    matrix = get_matrix_osrm(all_locations_coords)
 
-    if not matrix:
+    if not matrix or len(matrix) != num_locations:
         raise HTTPException(status_code=500, detail="No se pudo obtener la matriz de tiempos de OSRM.")
 
-    # 3. Distribución de Frecuencia Semanal (Proximidad e Intercalado Aware)
-    dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"]
-    plan_por_dia = {d: [] for d in dias_semana}
+    # 3. Identificación de días laborables reales en el mes
+    # Cargamos festivos de Canarias para el año actual y adyacentes por seguridad en límites de mes
+    cal_festivos = holidays.Spain(subdiv='CN', years=[request.year - 1, request.year, request.year + 1])
     
+    laborables_por_semana = {}
+    
+    # Calculamos el inicio de la primera semana que toca el mes
+    primer_dia = datetime(request.year, request.month, 1)
+    fecha_aux = primer_dia - timedelta(days=primer_dia.weekday()) # Lunes de la semana inicial
+    
+    while True:
+        isocal = fecha_aux.isocalendar()
+        week_key = f"{isocal.year}-W{isocal.week}"
+        
+        dias_semana_completa = []
+        tiene_dia_en_mes = False
+        
+        for i in range(5): # L-V
+            dia = fecha_aux + timedelta(days=i)
+            if dia.month == request.month:
+                tiene_dia_en_mes = True
+            if dia not in cal_festivos:
+                dias_semana_completa.append(dia)
+        
+        # Si la semana ya no tiene días en el mes objetivo y hemos pasado el inicio, paramos
+        if not tiene_dia_en_mes and fecha_aux > primer_dia:
+            break
+            
+        if tiene_dia_en_mes and dias_semana_completa:
+            laborables_por_semana[week_key] = dias_semana_completa
+            
+        fecha_aux += timedelta(days=7)
+
+    # 4. Distribución dinámica de tareas en días laborables
+    plan_por_dia_especifico = {}
+    sorted_comms = sorted(request.communities, key=lambda x: x.cleaningHours, reverse=True)
+
+    # Mantenemos un estado de la semana "estándar" para calcular los días ideales optimizados geográficamente
+    standard_week_plan = {i: [] for i in range(5)}
+
     def get_valid_patterns(freq):
-        """Genera combinaciones de días que favorecen la limpieza intercalada."""
+        """Genera combinaciones de días que favorecen la limpieza intercalada (L-X-V, etc.)."""
         if freq <= 0: return []
-        if freq >= 5: return [dias_semana]
-        
-        # Frecuencia 1: Cualquier día individual es válido
-        if freq == 1:
-            return [[d] for d in dias_semana]
-        
-        # Frecuencia 2: Prioriza días con separación (mínimo 1 día en medio)
-        if freq == 2:
-            return [
-                ["Lunes", "Miércoles"], ["Lunes", "Jueves"], ["Lunes", "Viernes"],
-                ["Martes", "Jueves"], ["Martes", "Viernes"], ["Miércoles", "Viernes"]
-            ]
-        
-        # Frecuencia 3: El patrón óptimo es Lunes-Miércoles-Viernes
-        if freq == 3:
-            return [["Lunes", "Miércoles", "Viernes"]]
-        
-        # Frecuencia 4: Se deja libre un día intermedio o un extremo
-        if freq == 4:
-            return [
-                ["Lunes", "Martes", "Jueves", "Viernes"],
-                ["Lunes", "Miércoles", "Jueves", "Viernes"],
-                ["Martes", "Miércoles", "Jueves", "Viernes"]
-            ]
+        if freq >= 5: return [[0, 1, 2, 3, 4]]
+        if freq == 1: return [[0], [1], [2], [3], [4]]
+        if freq == 2: return [[0, 2], [0, 3], [0, 4], [1, 3], [1, 4], [2, 4]]
+        if freq == 3: return [[0, 2, 4]]
+        if freq == 4: return [[0, 1, 3, 4], [0, 2, 3, 4], [1, 2, 3, 4]]
         return []
 
-    # Repartir comunidades según frecuencia buscando el equilibrio de carga Y la cercanía geográfica.
-    # Ordenamos por horas de mayor a menor para asignar primero lo más pesado.
-    for comm in sorted(request.communities, key=lambda x: x.cleaningHours, reverse=True):
+    for i_comm, comm in enumerate(sorted_comms):
+        # 1. Definimos los días ideales en una semana estándar de 5 días (Lunes a Viernes)
+        # usando la lógica de patrones y puntuación geográfica para maximizar el clustering (agrupación).
         patterns = get_valid_patterns(min(comm.cleaningDaysPerWeek, 5))
-        if not patterns: continue
-
+        
         def calcular_puntuacion_patron(pattern):
             score_total = 0
-            for dia in pattern:
-                carga_actual = sum(c.cleaningHours for c in plan_por_dia[dia])
-                
-                # Penalización por carga (para equilibrar los días de la semana)
+            for d_idx in pattern:
+                carga_actual = sum(c.cleaningHours for c in standard_week_plan[d_idx])
+                # Penalización por carga para equilibrar los días de la semana
                 score_dia = carga_actual * 40
-                
-                if plan_por_dia[dia]:
-                    # Puntuación por proximidad: ¿Este día ya tiene una comunidad cerca?
+                if standard_week_plan[d_idx]:
+                    # Bonus por proximidad geográfica a comunidades ya asignadas ese día
                     dist_min = min(
                         haversine_distance(comm.latitude, comm.longitude, c.latitude, c.longitude)
-                        for c in plan_por_dia[dia]
+                        for c in standard_week_plan[d_idx]
                     )
-                    # Bonus fuerte si hay una comunidad a menos de 500m (misma zona)
-                    if dist_min < 0.5:
-                        score_dia -= 150 # Prioridad máxima para agrupar
-                    elif dist_min < 2.0:
-                        score_dia -= 40
-                
+                    if dist_min < 0.5: score_dia -= 150 # Prioridad máxima: misma calle o zona
+                    elif dist_min < 2.0: score_dia -= 40
                 score_total += score_dia
             return score_total
 
-        # Seleccionamos la combinación de días (patrón) que tenga menor coste acumulado
-        mejor_patron = min(patterns, key=calcular_puntuacion_patron)
-        for d in mejor_patron:
-            plan_por_dia[d].append(comm)
+        indices_objetivo = min(patterns, key=calcular_puntuacion_patron) if patterns else []
+        # Actualizamos el plan estándar para que las siguientes comunidades tengan contexto geográfico
+        for idx in indices_objetivo:
+            standard_week_plan[idx].append(comm)
 
-    # 4. Resolver un VRP por cada día de la semana
-    horarios = {f"Empleada {i+1}": {d: [] for d in dias_semana} for i in range(request.numEmployees)}
-    carga_horas = {f"Empleada {i+1}": {d: 0.0 for d in dias_semana} for i in range(request.numEmployees)}
-    no_asignadas = {d: [] for d in dias_semana}
+        for week_key, dias_laborables in laborables_por_semana.items():
+            # Mapeamos qué días de la semana (0-4) son laborables en esta semana específica.
+            # laborables_por_semana ya contiene la semana completa aunque comparta días con otros meses.
+            mapa_laborables = {d.weekday(): d for d in dias_laborables}
+            
+            asignados_esta_semana = []
+            # 2. Asignación Primaria: Intentamos asignar los días ideales.
+            # En semanas normales (5 días), esto siempre asignará los mismos días.
+            for idx_ideal in indices_objetivo:
+                if idx_ideal in mapa_laborables:
+                    asignados_esta_semana.append(mapa_laborables[idx_ideal])
+            
+            # 3. REORGANIZACIÓN POR FESTIVOS (Distribuida):
+            # Si hay festivos que impiden cumplir el cupo, buscamos huecos alternativos.
+            num_final_objetivo = min(len(dias_laborables), comm.cleaningDaysPerWeek)
+            if len(asignados_esta_semana) < num_final_objetivo:
+                huecos_disponibles = [d for d in dias_laborables if d not in asignados_esta_semana]
+                necesarios = num_final_objetivo - len(asignados_esta_semana)
+                
+                if huecos_disponibles:
+                    for j in range(necesarios):
+                        # Selección circular basada en el índice de la comunidad para distribuir el impacto
+                        # de los festivos entre todos los días laborables restantes de la semana.
+                        idx_hueco = (i_comm + j) % len(huecos_disponibles)
+                        asignados_esta_semana.append(huecos_disponibles.pop(idx_hueco))
+
+            for dia_asignado in asignados_esta_semana:
+                # Filtro final: Solo guardamos la tarea si el día pertenece al mes solicitado.
+                # Esto permite que las semanas compartidas se calculen con contexto de 5 días pero se filtren correctamente.
+                if dia_asignado.month == request.month:
+                    fecha_str = dia_asignado.strftime("%Y-%m-%d")
+                    plan_por_dia_especifico.setdefault(fecha_str, []).append(comm)
+
+    # 5. Resolver VRP para cada día laborable del mes
+    horarios = {f"Empleada {i+1}": {} for i in range(request.numEmployees)}
+    carga_horas_semanal = {f"Empleada {i+1}": 0.0 for i in range(request.numEmployees)}
+    carga_horas_total_mes = {f"Empleada {i+1}": 0.0 for i in range(request.numEmployees)}
+    last_week_key = None
+    no_asignadas = {}
     total_horas_semanales = 0.0
-    total_horas_por_empleada = {f"Empleada {i+1}": 0.0 for i in range(request.numEmployees)}
 
-    for dia in dias_semana:
-        comunidades_hoy = plan_por_dia[dia]
+    for fecha_str in sorted(plan_por_dia_especifico.keys()):
+        comunidades_hoy = plan_por_dia_especifico[fecha_str]
         if not comunidades_hoy: continue
+
+        # Reiniciar carga semanal si cambiamos de semana para balancear costes correctamente
+        fecha_dt = datetime.strptime(fecha_str, "%Y-%m-%d")
+        current_week_key = f"{fecha_dt.isocalendar().year}-W{fecha_dt.isocalendar().week}"
+        if current_week_key != last_week_key:
+            for emp in carga_horas_semanal: carga_horas_semanal[emp] = 0.0
+            last_week_key = current_week_key
 
         # Mapear índices locales de hoy a índices globales de la matriz
         # Depot es 0, y luego las comunidades de hoy mapeadas a sus índices originales en request.communities
@@ -256,15 +314,13 @@ async def calcular_optimizacion(request: OptimizationRequest):
         search_parameters = pywrapcp.DefaultRoutingSearchParameters()
         search_parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION
         search_parameters.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
-        search_parameters.time_limit.seconds = 2 # Resolución rápida por cada día
+        search_parameters.time_limit.seconds = 1 # Resolución ultra-rápida por cada día (1 segundo)
 
-        # Incentivamos el uso de un solo vehículo por día para mantener la eficiencia geográfica.
-        # Además, ajustamos el coste de activación de cada empleada según sus horas acumuladas en la semana.
-        # La que menos horas lleve acumuladas será la "más barata" de activar, convirtiéndose en la principal hoy.
         for vehicle_id in range(request.numEmployees):
             emp_name = f"Empleada {vehicle_id + 1}"
-            # Base 300 mins + penalización de 15 mins por cada hora ya trabajada esta semana.
-            coste_dinamico = 300 + int(total_horas_por_empleada[emp_name] * 15)
+            # Coste de activación dinámico para balancear carga SEMANAL.
+            # Esto evita saturar a una empleada a principio de mes solo porque el acumulado mensual sea bajo.
+            coste_dinamico = 300 + int(carga_horas_semanal[emp_name] * 20)
             routing.SetFixedCostOfVehicle(coste_dinamico, vehicle_id)
 
         assignment = routing.SolveWithParameters(search_parameters)
@@ -272,6 +328,7 @@ async def calcular_optimizacion(request: OptimizationRequest):
         if assignment:
             for vehicle_id in range(request.numEmployees):
                 emp_name = f"Empleada {vehicle_id + 1}"
+                if fecha_str not in horarios[emp_name]: horarios[emp_name][fecha_str] = []
                 index = routing.Start(vehicle_id)
                 previous_index = index
                 index = assignment.Value(routing.NextVar(index))
@@ -289,7 +346,7 @@ async def calcular_optimizacion(request: OptimizationRequest):
                     global_to = indices_mapeados[node_idx]
                     travel_mins = matrix[global_from][global_to]
 
-                    horarios[emp_name][dia].append({
+                    horarios[emp_name][fecha_str].append({
                         "comunidad": comm.address,
                         "inicio": inicio.strftime("%H:%M"),
                         "fin": fin.strftime("%H:%M"),
@@ -301,33 +358,22 @@ async def calcular_optimizacion(request: OptimizationRequest):
 
                 end_index = routing.End(vehicle_id)
                 total_mins = assignment.Min(time_dimension.CumulVar(end_index))
-                carga_horas[emp_name][dia] = round(total_mins / 60.0, 2)
+                carga_horas_semanal[emp_name] += (total_mins / 60.0)
+                carga_horas_total_mes[emp_name] += (total_mins / 60.0)
                 total_horas_semanales += (total_mins / 60.0)
-                total_horas_por_empleada[emp_name] += (total_mins / 60.0)
         else:
-            # Si un día falla, lo marcamos para el usuario
-            no_asignadas[dia] = [c.address for c in comunidades_hoy]
+            no_asignadas[fecha_str] = [c.address for c in comunidades_hoy]
 
-    # =========================================================
-    # EXPORT EXCEL
-    # =========================================================
+    # Calcular promedio semanal para el resumen
+    num_semanas = len(laborables_por_semana) or 1
+
     rows = []
-
-    for emp, dias in horarios.items():
-        for dia, tareas in dias.items():
-
-            if not tareas:
-                rows.append({
-                    "Empleada": emp,
-                    "Día": dia,
-                    "Horario": "Sin tareas",
-                    "Comunidad": "-"
-                })
-
+    for emp, fechas in horarios.items():
+        for f_str, tareas in fechas.items():
             for t in tareas:
                 rows.append({
                     "Empleada": emp,
-                    "Día": dia,
+                    "Fecha": f_str,
                     "Horario": f"{t['inicio']} - {t['fin']}",
                     "Comunidad": t["comunidad"],
                     "Horas": t["horas"]
@@ -346,10 +392,10 @@ async def calcular_optimizacion(request: OptimizationRequest):
         "excel_archivo": excel_data,
         "nombre_archivo": f"Planificacion_{datetime.now().strftime('%Y%m%d')}.xlsx",
         "horarios": horarios,
-        "resumen": carga_horas,
+        "resumen": {emp: round(h / num_semanas, 2) for emp, h in carga_horas_total_mes.items()},
         "no_asignadas": no_asignadas,
-        "total_horas_planificacion": round(total_horas_semanales, 2),
-        "total_horas_por_empleada": {emp: round(horas, 2) for emp, horas in total_horas_por_empleada.items()}
+        "total_horas_planificacion": round(total_horas_semanales / num_semanas, 2),
+        "total_horas_por_empleada": {emp: round(h / num_semanas, 2) for emp, h in carga_horas_total_mes.items()}
     }
 
 @router.post("/importar-comunidades")

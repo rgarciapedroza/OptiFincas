@@ -287,6 +287,9 @@ interface Community {
     .calendar-day.today { border: 2px solid #6366f1; background-color: #f5f3ff; }
     .calendar-day:hover:not(.empty) { background: #fcfcfd; }
     .day-number { font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 8px; display: block; }
+    .calendar-day.holiday { background-color: #fff1f2; }
+    .calendar-day.holiday .day-number { color: #e11d48; }
+    .holiday-label { font-size: 0.6rem; color: #e11d48; font-weight: 600; text-transform: uppercase; margin-bottom: 4px; display: block; }
     .calendar-task { font-size: 0.7rem; padding: 5px 8px; border-radius: 6px; margin-bottom: 4px; line-height: 1.2; border-left: 3px solid; font-weight: 500; cursor: pointer; transition: transform 0.1s; }
     .calendar-task:hover { transform: scale(1.02); }
     .calendar-task b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
@@ -349,6 +352,7 @@ export class AppComponent implements OnInit {
   // Gestión de Movimientos Bancarios
   movimientosBancarios: MovimientoBancario[] = [];
   cambiosRealizados = false;
+  loadingMessage: string = 'Procesando documentos...';
 
   historicalTooltipContent: string = '';
   showHistoricalTooltip: boolean = false;
@@ -374,12 +378,63 @@ export class AppComponent implements OnInit {
   optimizationResult: any = null;
   diasSemana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 
+  // Getter para la representación visual de los turnos de la comunidad seleccionada
+  get communityCleaningScheduleForMonthGroupedByDate(): { date: string, tasks: any[] }[] {
+    if (!this.comunidadSeleccionada || !this.optimizationResult || !this.optimizationResult.horarios) {
+      return [];
+    }
+
+    const communityName = this.comunidadSeleccionada.nombre;
+    const scheduleByDate: { [date: string]: any[] } = {};
+
+    // Iteramos sobre todas las empleadas en los resultados
+    for (const [empName, planEmp] of Object.entries(this.optimizationResult.horarios)) {
+      const fechas: any = planEmp;
+      
+      for (const dateKey of Object.keys(fechas)) {
+        const tasksForDate = fechas[dateKey];
+        // Filtramos solo las tareas que pertenecen a ESTA comunidad
+        const communityTasks = tasksForDate.filter((task: any) => task.comunidad === communityName);
+        
+        communityTasks.forEach((task: any) => {
+          if (!scheduleByDate[dateKey]) {
+            scheduleByDate[dateKey] = [];
+          }
+          scheduleByDate[dateKey].push({
+            ...task,
+            emp: empName
+          });
+        });
+      }
+    }
+
+    // Convertimos a array ordenado por fecha
+    return Object.keys(scheduleByDate)
+      .sort()
+      .map(date => ({
+        date,
+        tasks: scheduleByDate[date].sort((a, b) => a.inicio.localeCompare(b.inicio))
+      }));
+  }
+
   constructor(private http: HttpClient, private supabase: SupabaseService) {}
 
   async changeMonth(delta: number) {
     this.viewDate = new Date(this.viewDate.getFullYear(), this.viewDate.getMonth() + delta, 1);
     this.generateCalendar();
     await this.cargarPlanificacion();
+  }
+
+  getViewDateLabel(): string {
+    const month = this.viewDate.toLocaleString('es-ES', { month: 'long' });
+    const year = this.viewDate.getFullYear();
+    return month.charAt(0).toUpperCase() + month.slice(1) + ' ' + year;
+  }
+
+  isHoliday(date: Date | null): boolean {
+    if (!date) return false;
+    const holidays = ['1-1', '6-1', '2-4', '3-4', '1-5', '30-5', '15-8', '12-10', '1-11', '6-12', '8-12', '25-12'];
+    return holidays.includes(`${date.getDate()}-${date.getMonth() + 1}`);
   }
 
   isPast(date: Date | null): boolean {
@@ -398,14 +453,29 @@ export class AppComponent implements OnInit {
   }
 
   async cargarPlanificacion() {
-    const { data, error } = await this.supabase.getPlanificacion(
-      this.viewDate.getMonth() + 1,
-      this.viewDate.getFullYear()
-    );
-    if (!error && data) {
-      this.optimizationResult = data.datos;
-    } else {
-      this.optimizationResult = null;
+    const mes = this.viewDate.getMonth() + 1;
+    const anio = this.viewDate.getFullYear();
+    
+    // 1. Limpiamos el resultado actual para forzar a la UI a resetearse mientras carga
+    this.optimizationResult = null;
+
+    console.log(`[CALENDARIO] Solicitando planificación para: ${mes}/${anio}`);
+
+    try {
+      const { data, error } = await this.supabase.getPlanificacion(mes, anio);
+
+      if (error) {
+        console.warn(`[CALENDARIO] Error al recuperar planificación:`, error);
+      } else if (data && data.datos) {
+        // 2. IMPORTANTE: Usamos el operador spread para crear una nueva referencia 
+        // de objeto. Esto obliga a Angular a re-evaluar la función getTasksForDate en la vista.
+        this.optimizationResult = { ...data.datos };
+        console.log(`[CALENDARIO] Planificación cargada para ${mes}/${anio}`);
+      } else {
+        console.log(`[CALENDARIO] No hay datos guardados para ${mes}/${anio}.`);
+      }
+    } catch (err) {
+      console.error(`[CALENDARIO] Error inesperado en la carga:`, err);
     }
   }
 
@@ -429,17 +499,31 @@ export class AppComponent implements OnInit {
   }
 
   getTasksForDate(date: Date | null): any[] {
-    if (!date || !this.optimizationResult || !this.optimizationResult.horarios) return [];
-    const dayNames = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
-    const dayName = dayNames[date.getDay()];
+    // Si no hay fecha o no hay resultados de optimización, no devolvemos tareas
+    if (!date || !this.optimizationResult || !this.optimizationResult.horarios) {
+      return [];
+    }
+
+    // Formatear la fecha como YYYY-MM-DD para buscar en el objeto del backend
+    const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     
     const tasks: any[] = [];
-    Object.keys(this.optimizationResult.horarios).forEach((emp, index) => {
-      const dayTasks = this.optimizationResult.horarios[emp][dayName] || [];
-      dayTasks.forEach((t: any, idx: number) => {
-        tasks.push({ ...t, emp, dayName, index: idx, cssClass: index === 0 ? 'emp-1-task' : 'emp-2-task' });
+    // Iteramos sobre las empleadas para extraer las tareas del día actual
+    for (const [empName, planSemanal] of Object.entries(this.optimizationResult.horarios)) {
+      const planEmp: any = planSemanal;
+      const tareasDelDia = planEmp[dateKey] || [];
+      
+      tareasDelDia.forEach((t: any, idx: number) => {
+        tasks.push({ 
+          ...t, 
+          emp: empName, 
+          dayName: dateKey, 
+          index: idx, 
+          cssClass: empName.includes('1') ? 'emp-1-task' : 'emp-2-task' 
+        });
       });
-    });
+    }
+
     return tasks;
   }
 
@@ -875,11 +959,10 @@ next: (data) => {
     }
   }
 
-  calcularOptimizacion() {
+  async calcularOptimizacion() {
     // Combinar comunidades de la base de datos (limpieza) con las cargadas por Excel
     const dbCleaning = this.comunidadesLimpieza.map(c => ({
       address: c.nombre,
-      // Sanitizamos los valores para asegurar que cumplen con el esquema del backend (deben ser > 0)
       cleaningHours: Math.max(0.5, this.asNumber(c.cleaning_hours)),
       cleaningDaysPerWeek: Math.max(1, Math.min(7, Math.floor(this.asNumber(c.cleaning_days_per_week)) || 1)),
       latitude: this.asNumber(c.latitude),
@@ -888,7 +971,6 @@ next: (data) => {
 
     const excelCleaning = this.communities.map(c => ({
       address: c.address,
-      // Sanitizamos también los datos que vienen del Excel
       cleaningHours: Math.max(0.5, this.asNumber(c.cleaningHours)),
       cleaningDaysPerWeek: Math.max(1, Math.min(7, Math.floor(this.asNumber(c.cleaningDaysPerWeek)) || 1)),
       latitude: this.asNumber(c.latitude),
@@ -904,38 +986,64 @@ next: (data) => {
 
     this.loading = true;
     this.error = '';
+    
+    const startMonth = this.viewDate.getMonth();
+    const startYear = this.viewDate.getFullYear();
+    console.log(`[OPTIMIZACIÓN] Iniciando cálculo masivo desde ${startMonth + 1}/${startYear}`);
 
-    const payload = {
+    const payloadBase = {
       numEmployees: this.numEmployees,
       communities: allCommunities
     };
 
-    this.http.post<any>('/api/optimizacion/calcular', payload).subscribe({
-      next: async (data) => {
-        this.optimizationResult = data;
-        await this.supabase.guardarPlanificacion(
-          this.viewDate.getMonth() + 1,
-          this.viewDate.getFullYear(),
-          data
-        );
-        this.mostrarConfiguracionOptimizacion = false; // Volver al calendario
-        this.loading = false;
-      },
-      error: (err) => {
-        console.error('Error detallado devuelto por el servidor:', err);
-        let detail = '';
-        if (err.status === 422 && Array.isArray(err.error?.detail)) {
-          // Formateamos los errores de validación de Pydantic para que sean legibles
-          detail = 'Datos inválidos: ' + err.error.detail.map((d: any) => `${d.loc[d.loc.length - 1]}: ${d.msg}`).join(', ');
-        } else if (err.error?.detail) {
-          detail = typeof err.error.detail === 'string' ? err.error.detail : JSON.stringify(err.error.detail);
-        } else {
-          detail = err.message || 'Error desconocido de red';
+    this.loadingMessage = 'Iniciando planificación anual en paralelo...';
+    let completedMonths = 0;
+
+    const monthTasks = Array.from({ length: 12 }, async (_, i) => {
+      const d = new Date(startYear, startMonth + i, 1);
+      const m = d.getMonth() + 1;
+      const y = d.getFullYear();
+      
+      const payload = { ...payloadBase, month: m, year: y };
+      try {
+        const data = await this.http.post<any>('/api/optimizacion/calcular', payload).toPromise();
+        await this.supabase.guardarPlanificacion(m, y, data);
+        
+        completedMonths++;
+        this.loadingMessage = `Cargando: ${completedMonths} de 12 meses listos`;
+        
+        if (i === 0) {
+          this.optimizationResult = { ...data };
         }
-        this.error = 'Error al calcular la optimización: ' + detail;
-        this.loading = false;
+        return data;
+      } catch (monthErr) {
+        console.error(`Error en mes ${m}/${y}:`, monthErr);
+        throw monthErr;
       }
     });
+
+    try {
+      await Promise.all(monthTasks);
+      
+      this.mostrarConfiguracionOptimizacion = false;
+      this.loading = false;
+      this.loadingMessage = 'Procesando documentos...';
+      alert('Planificación anual completada y guardada con éxito.');
+
+    } catch (err: any) {
+      console.error('Error detallado devuelto por el servidor:', err);
+      let detail = '';
+      if (err.status === 422 && Array.isArray(err.error?.detail)) {
+        detail = 'Datos inválidos: ' + err.error.detail.map((d: any) => `${d.loc[d.loc.length - 1]}: ${d.msg}`).join(', ');
+      } else if (err.error?.detail) {
+        detail = typeof err.error.detail === 'string' ? err.error.detail : JSON.stringify(err.error.detail);
+      } else {
+        detail = err.message || 'Error desconocido de red';
+      }
+      this.error = 'Error al calcular la optimización: ' + detail;
+      this.loading = false;
+      this.loadingMessage = 'Procesando documentos...';
+    }
   }
 
   hasNoAsignadas(): boolean {
