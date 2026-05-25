@@ -14,34 +14,9 @@ from app.servicios.resumen import calcular_resumen_categorias_con_tipo
 from app.servicios.supabase_db import supabase_client, supabase_service_role_client # Importar supabase_service_role_client
 from app.procesamiento.generar_excel import crear_excel_actualizado, crear_excel_informe_finanzas
 from app.procesamiento.procesar_excel_contable import obtener_nombre_hoja
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives import padding
-from cryptography.hazmat.backends import default_backend
+from app.controllers.security import encriptar_dato, desencriptar_dato
 
 clasificador = crear_clasificador()
-_movimientos_procesados = []
-_registros_contenido = None
-_registros_filename = "Registros.xlsx"
-_extracto_filename = "Extracto.csv" # Nueva variable global para el nombre del extracto
-
-# Claves de encriptación consistentes
-ENCRYPT_KEY = b'OptiFincasSecretKey2024_Security'
-ENCRYPT_IV = b'OptiFincas_IV_16'
-
-def desencriptar_dato(texto_encriptado: str | None, cipher: Cipher) -> str:
-    if not texto_encriptado:
-        return ""
-    try:
-        ct = base64.b64decode(texto_encriptado)
-        decryptor = cipher.decryptor()
-        datos_padded = decryptor.update(ct) + decryptor.finalize()
-        unpadder = padding.PKCS7(128).unpadder()
-        return (unpadder.update(datos_padded) + unpadder.finalize()).decode('utf-8')
-    except Exception:
-        return texto_encriptado # Fallback al original
-
-_mes = 1
-_año = 2024
 
 def opciones_controller():
     return {
@@ -51,7 +26,9 @@ def opciones_controller():
     }
 
 async def entrenar_controller(extracto: UploadFile, excel_contable: UploadFile):
-    global _mes, _año
+    # Variables locales en lugar de globales
+    mes_detectado = 1
+    anio_detectado = 2024
 
     contenido = await extracto.read()
     try:
@@ -77,13 +54,13 @@ async def entrenar_controller(extracto: UploadFile, excel_contable: UploadFile):
     }
     for nombre_mes, numero in meses.items():
         if nombre_mes in nombre:
-            _mes = numero
+            mes_detectado = numero
             break
 
     # Detección del año en el nombre del archivo
     anio_match = re.search(r"20\d{2}", nombre)
     if anio_match:
-        _año = int(anio_match.group())
+        anio_detectado = int(anio_match.group())
 
     for _, row in df.iterrows():
         concepto = str(row.get(columnas["concepto"], "")) if columnas["concepto"] else ""
@@ -115,19 +92,18 @@ async def procesar_extracto_db_controller(
     extracto: UploadFile, 
     community_id: int = Form(...)
 ):
-    global _movimientos_procesados, _registros_contenido, _registros_filename, _extracto_filename, _mes, _año
-
-    _extracto_filename = extracto.filename
+    # Variables locales para evitar colisiones
     df_historico = None
-    _registros_filename = "Registros.xlsx"
-    _registros_contenido = None
+    nombre_comunidad_fallback = "Comunidad"
+    mes_detectado = 1
+    anio_detectado = 2024
 
     # Si se proporciona community_id, cargamos el histórico directamente desde la base de datos
     if community_id:
         # Consultamos el nombre de la comunidad para nombrar el archivo de salida
         comm_res = supabase_client.table("comunidades").select("nombre").eq("id", community_id).execute()
         if comm_res.data and len(comm_res.data) > 0:
-            _registros_filename = f"{comm_res.data[0]['nombre']}.xlsx"
+            nombre_comunidad_fallback = comm_res.data[0]['nombre']
 
         # Cargamos movimientos previos para usarlos como base de conocimiento, incluyendo extracto_id
         response_movs = supabase_service_role_client.table("movimientos").select("concepto_original,importe,piso_detectado,ordenante,fecha,extracto_id").eq("community_id", community_id).order("fecha", desc=True).execute()
@@ -135,11 +111,10 @@ async def procesar_extracto_db_controller(
             print(f"[DEBUG extracto_controller] Cargados {len(response_movs.data)} movimientos históricos de la base de datos para la comunidad {community_id}")
             
             # DESENCRIPTAR datos históricos para que el buscador pueda trabajar con texto plano
-            cipher = Cipher(algorithms.AES(ENCRYPT_KEY), modes.CBC(ENCRYPT_IV), backend=default_backend())
             movs_desencriptados = []
             for m in response_movs.data:
-                m["concepto_original"] = desencriptar_dato(m.get("concepto_original"), cipher)
-                m["ordenante"] = desencriptar_dato(m.get("ordenante"), cipher)
+                m["concepto_original"] = desencriptar_dato(m.get("concepto_original"))
+                m["ordenante"] = desencriptar_dato(m.get("ordenante"))
                 movs_desencriptados.append(m)
             
             df_historico = pd.DataFrame(movs_desencriptados)
@@ -168,11 +143,11 @@ async def procesar_extracto_db_controller(
     }
     for nombre_mes, numero in meses_nombres.items():
         if nombre_mes in nombre_file:
-            _mes = numero
+            mes_detectado = numero
             break
     anio_search = re.search(r"20\d{2}", nombre_file)
     if anio_search:
-        _año = int(anio_search.group())
+        anio_detectado = int(anio_search.group())
 
     resultado = procesar_extracto_y_registros(extracto, None, clasificador, db_historico=df_historico, extractos_map=extractos_map)
     
@@ -184,12 +159,11 @@ async def procesar_extracto_db_controller(
                 try:
                     p_fecha = str(f).split("/")
                     if len(p_fecha) == 3:
-                        _mes, _año = int(p_fecha[1]), int(p_fecha[2])
+                        mes_detectado, anio_detectado = int(p_fecha[1]), int(p_fecha[2])
                         break
                 except: continue
     
     es_excel = extracto.filename.lower().endswith((".xlsx", ".xls"))
-    _movimientos_procesados = resultado["movimientos_clasificados"]
 
     return {
         "estado": "ok",
@@ -202,13 +176,12 @@ async def procesar_extracto_db_controller(
         "movimientos_clasificados": resultado["movimientos_clasificados"],
         "resumen_categorias": resultado["resumen_categorias"],
         "es_excel": es_excel,
-        "mes_extracto": _mes, # Añadir el mes detectado
-        "anio_extracto": _año # Añadir el año detectado
+        "mes_extracto": mes_detectado,
+        "anio_extracto": anio_detectado,
+        "nombre_comunidad": nombre_comunidad_fallback
     }
 
 async def confirmar_controller(data: Any, modo: str = "mensual", community_name: Optional[str] = None, mes: Optional[int] = None, anio: Optional[int] = None):
-    global _movimientos_procesados, _registros_contenido, _registros_filename, _extracto_filename, _mes, _año
-
     # Inicializar variables para los datos específicos de cada tipo de informe
     finanzas_data_payload: Optional[dict] = None
     movimientos_actualizados_payload: List[Dict] = []
@@ -224,21 +197,13 @@ async def confirmar_controller(data: Any, modo: str = "mensual", community_name:
             raise HTTPException(status_code=400, detail="Para el modo 'mensual', el cuerpo de la petición debe ser una lista JSON.")
         movimientos_actualizados_payload = data
 
-    # Actualizar la variable global _movimientos_procesados solo si es relevante para el modo mensual
-    # (ya que el modo finanzas usa finanzas_data_payload directamente)
-    _movimientos_procesados = movimientos_actualizados_payload
-
-    # Usar mes/año del parámetro (Dashboard) o globales (Clasificador)
-    # Usar mes/año del parámetro (Dashboard) o globales (Clasificador)
-    p_mes = mes if mes is not None else _mes
-    p_anio = anio if anio is not None else _año
+    # Usar mes/año del parámetro o fecha actual como fallback seguro
+    p_mes = mes if mes is not None else datetime.now().month
+    p_anio = anio if anio is not None else datetime.now().year
 
     # Lógica de nombre de comunidad para el archivo y títulos
     # Prioridad absoluta al nombre enviado desde la UI
     nombre_limpio = str(community_name).strip() if community_name else ""
-
-    if not nombre_limpio or nombre_limpio.lower() in ["", "undefined", "null", "none", "comunidad"]:
-        nombre_limpio = os.path.splitext(_registros_filename)[0].replace(".xlsx", "").replace(".xls", "")
 
     # Si sigue siendo genérico o vacío, usamos "Comunidad" como último recurso
     if not nombre_limpio or nombre_limpio.lower() in ["registros", "extracto", "extracto_clasificado", ""]:
@@ -263,7 +228,7 @@ async def confirmar_controller(data: Any, modo: str = "mensual", community_name:
         # Generar el Excel de movimientos (extracto mensual)
 
         tiene_datos_ordenante = any(m.get("ORDENANTE") and str(m["ORDENANTE"]).strip() != "" for m in movimientos_actualizados_payload)
-        show_ordenante = tiene_datos_ordenante or _extracto_filename.lower().endswith((".xlsx", ".xls"))
+        show_ordenante = tiene_datos_ordenante # Simplificado para no depender de la global
 
         excel_bytes = crear_excel_actualizado(
             contenido_excel=None, # Siempre libro nuevo para mensual
@@ -286,15 +251,13 @@ async def confirmar_controller(data: Any, modo: str = "mensual", community_name:
         "nombre_archivo": nombre_archivo
     }
 
-async def descargar_controller(movimientos_actualizados: list[dict], formato: str):
+async def descargar_controller(movimientos_actualizados: list[dict], formato: str, mes: int = 1, anio: int = 2024):
     df = pd.DataFrame(movimientos_actualizados)
 
-    # (Usamos la extensión real del extracto que se guardó globalmente en `procesar_dos_archivos_controller`).
-    es_excel_extracto = _extracto_filename.lower().endswith((".xlsx", ".xls"))
-
+    es_ordenante_presente = "ORDENANTE" in df.columns
     cols_order = [
         "FECHA",
-        "ORDENANTE" if (es_excel_extracto and "ORDENANTE" in df.columns) else None,
+        "ORDENANTE" if es_ordenante_presente else None,
         "OBSERVACIONES",
         "IMPORTE",
         "SALDO",
@@ -324,7 +287,7 @@ async def descargar_controller(movimientos_actualizados: list[dict], formato: st
         extension = "csv"
         contenido = output.getvalue().encode("utf-8")
 
-    nombre = f"extracto_clasificado_{_mes}_{_año}.{extension}"
+    nombre = f"extracto_clasificado_{mes}_{anio}.{extension}"
 
     return StreamingResponse(
         io.BytesIO(contenido),
@@ -332,12 +295,11 @@ async def descargar_controller(movimientos_actualizados: list[dict], formato: st
         headers={"Content-Disposition": f"attachment; filename={nombre}"}
     )
 
-async def descargar_excel_controller(movimientos_actualizados: list[dict]):
+async def descargar_excel_controller(movimientos_actualizados: list[dict], mes: int = 1, anio: int = 2024):
     df = pd.DataFrame(movimientos_actualizados)
-    es_excel_extracto = _extracto_filename.lower().endswith((".xlsx", ".xls"))
-
+    
     cols_order = ["FECHA"]
-    if es_excel_extracto:
+    if "ORDENANTE" in df.columns:
         cols_order.append("ORDENANTE")
     cols_order.extend(["OBSERVACIONES", "IMPORTE", "SALDO", "CONCEPTO"])
 
@@ -351,7 +313,7 @@ async def descargar_excel_controller(movimientos_actualizados: list[dict]):
         resumen_df = df.groupby(["tipo", "categoria"])["importe"].sum().reset_index()
         resumen_df.to_excel(writer, index=False, sheet_name="Resumen", startrow=0)
 
-    nombre = f"extracto_completo_{_mes}_{_año}.xlsx"
+    nombre = f"extracto_completo_{mes}_{anio}.xlsx"
 
     return StreamingResponse(
         output.getvalue(),

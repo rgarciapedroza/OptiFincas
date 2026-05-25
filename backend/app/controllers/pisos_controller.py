@@ -1,39 +1,8 @@
 import io
-import base64
 import pandas as pd
 from fastapi import UploadFile, HTTPException
 from app.servicios.supabase_db import supabase_client
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives import padding
-from cryptography.hazmat.backends import default_backend
-
-# En un entorno real, estas claves deben estar en variables de entorno (.env)
-# La clave debe tener exactamente 32 caracteres para AES-256
-ENCRYPT_KEY = b'OptiFincasSecretKey2024_Security' 
-ENCRYPT_IV = b'OptiFincas_IV_16' # Vector de inicialización (16 bytes)
-
-def encriptar_dato(texto: str, cipher: Cipher) -> str | None:
-    """Encripta un texto usando AES-256-CBC."""
-    if not texto or str(texto).lower() in ["none", "nan", ""]:
-        return None
-    padder = padding.PKCS7(128).padder()
-    datos_padded = padder.update(texto.encode('utf-8')) + padder.finalize()
-    encryptor = cipher.encryptor()
-    ct = encryptor.update(datos_padded) + encryptor.finalize()
-    return base64.b64encode(ct).decode('utf-8')
-
-def desencriptar_dato(texto_encriptado: str | None, cipher: Cipher) -> str:
-    """Desencripta un texto usando AES-256-CBC."""
-    if not texto_encriptado:
-        return ""
-    try:
-        ct = base64.b64decode(texto_encriptado)
-        decryptor = cipher.decryptor()
-        datos_padded = decryptor.update(ct) + decryptor.finalize()
-        unpadder = padding.PKCS7(128).unpadder()
-        return (unpadder.update(datos_padded) + unpadder.finalize()).decode('utf-8')
-    except Exception as e:
-        return texto_encriptado # Retornar el original si falla la desencriptación
+from app.controllers.security import encriptar_dato, desencriptar_dato
 
 def importar_censo_pisos_controller(community_id: int, file: UploadFile, user_id: str = None):
     """
@@ -66,9 +35,6 @@ def importar_censo_pisos_controller(community_id: int, file: UploadFile, user_id
 
         if not col_piso:
             raise HTTPException(status_code=400, detail="No se encontró la columna de 'Piso' o 'Código'")
-
-        # Pre-creamos el objeto Cipher una sola vez para ganar velocidad
-        cipher = Cipher(algorithms.AES(ENCRYPT_KEY), modes.CBC(ENCRYPT_IV), backend=default_backend())
 
         def limpiar_valor(val):
             if pd.isna(val):
@@ -108,10 +74,10 @@ def importar_censo_pisos_controller(community_id: int, file: UploadFile, user_id
             print(f"DEBUG: Procesando fila - Codigo: {codigo}, Nombre: '{nombre_completo}', Email: '{debug_email_val}', Tel1: '{val_tel1}', Obs: '{debug_obs_val}'")
 
             # Encriptamos los datos sensibles
-            encrypted_propietario = encriptar_dato(nombre_completo, cipher) if nombre_completo else None
-            encrypted_tel1 = encriptar_dato(val_tel1, cipher) if val_tel1 else None
-            encrypted_tel2 = encriptar_dato(val_tel2, cipher) if val_tel2 else None
-            encrypted_obs = encriptar_dato(debug_obs_val, cipher) if debug_obs_val else None
+            encrypted_propietario = encriptar_dato(nombre_completo) if nombre_completo else None
+            encrypted_tel1 = encriptar_dato(val_tel1) if val_tel1 else None
+            encrypted_tel2 = encriptar_dato(val_tel2) if val_tel2 else None
+            encrypted_obs = encriptar_dato(debug_obs_val) if debug_obs_val else None
             print(f"DEBUG: Procesando - Codigo: {codigo}, Propietario Encriptado: {encrypted_propietario[:30] if encrypted_propietario else None}...")
 
             pisos_a_insertar.append({
@@ -154,22 +120,20 @@ def get_piso_controller(piso_id: int):
     if not response.data:
         raise HTTPException(status_code=404, detail="Piso no encontrado")
 
-    cipher = Cipher(algorithms.AES(ENCRYPT_KEY), modes.CBC(ENCRYPT_IV), backend=default_backend())
     piso = response.data
-    piso["propietario"] = desencriptar_dato(piso["propietario"], cipher)
-    piso["telefono1"] = desencriptar_dato(piso["telefono1"], cipher)
-    piso["telefono2"] = desencriptar_dato(piso["telefono2"], cipher)
-    piso["observaciones"] = desencriptar_dato(piso["observaciones"], cipher)
+    piso["propietario"] = desencriptar_dato(piso["propietario"])
+    piso["telefono1"] = desencriptar_dato(piso["telefono1"])
+    piso["telefono2"] = desencriptar_dato(piso["telefono2"])
+    piso["observaciones"] = desencriptar_dato(piso["observaciones"])
     return piso
 
 def create_piso_controller(piso_data: dict, user_id: str = None):
     """Crea un nuevo piso, encriptando los datos sensibles."""
-    cipher = Cipher(algorithms.AES(ENCRYPT_KEY), modes.CBC(ENCRYPT_IV), backend=default_backend())
     if user_id: piso_data["user_id"] = user_id
     
     for field in ["propietario", "telefono1", "telefono2", "observaciones"]:
         if field in piso_data and piso_data[field]:
-            piso_data[field] = encriptar_dato(piso_data[field], cipher)
+            piso_data[field] = encriptar_dato(piso_data[field])
 
     response = supabase_client.table("pisos").insert(piso_data).execute()
     if response.data:
@@ -178,12 +142,10 @@ def create_piso_controller(piso_data: dict, user_id: str = None):
 
 def update_piso_controller(piso_id: int, piso_data: dict, user_id: str = None):
     """Actualiza un piso existente."""
-    cipher = Cipher(algorithms.AES(ENCRYPT_KEY), modes.CBC(ENCRYPT_IV), backend=default_backend())
-    
     updates = {}
     for field in ["propietario", "telefono1", "telefono2", "observaciones"]:
         if field in piso_data:
-            updates[field] = encriptar_dato(str(piso_data[field]), cipher) if piso_data[field] else None
+            updates[field] = encriptar_dato(str(piso_data[field])) if piso_data[field] else None
             
     if "codigo" in piso_data:
         updates["codigo"] = str(piso_data["codigo"]).upper()
@@ -207,7 +169,7 @@ def update_piso_controller(piso_id: int, piso_data: dict, user_id: str = None):
     if response.data:
         updated = response.data[0]
         for field in ["propietario", "telefono1", "telefono2", "observaciones"]:
-            updated[field] = desencriptar_dato(updated.get(field), cipher)
+            updated[field] = desencriptar_dato(updated.get(field))
         return updated
     raise HTTPException(status_code=403, detail="No tienes permiso para editar este piso")
 
