@@ -62,7 +62,8 @@ def check_dependencies():
         'python-dotenv': 'dotenv', # Necesario para cargar .env
         'requests': 'requests', # Necesario para OSRM
         'ortools': 'ortools',
-        'holidays': 'holidays'
+        'holidays': 'holidays',
+        'python-multipart': 'multipart'
     }
     
     missing = []

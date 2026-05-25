@@ -44,7 +44,7 @@ export class AppComponent implements OnInit {
   constructor(
     private http: HttpClient, 
     private supabase: SupabaseService, 
-    private router: Router,
+    public router: Router,
     private ngZone: NgZone
   ) {}
 
@@ -56,38 +56,49 @@ export class AppComponent implements OnInit {
     this.supabase.authChanges(async (event, session) => {
       console.log(`[AUTH] Evento: ${event} | Sesión: ${session ? 'Activa' : 'Nula'}`);
       
-      // Ejecutamos dentro de ngZone para asegurar que la UI se actualice
-      await this.ngZone.run(async () => {
-        if (session) {
-          this.session = session;
-          const email = session.user.email?.toLowerCase().trim() || '';
+      this.ngZone.run(async () => {
+        try {
+          if (session) {
+            this.session = session;
+            const email = session.user.email?.toLowerCase().trim() || '';
 
-          // Evitamos procesar el acceso si el email no ha cambiado (ej. en eventos TOKEN_REFRESHED)
-          // Esto previene bucles de navegación y llamadas redundantes a la DB.
-          if (this.emailProcesado !== email) {
-            this.emailProcesado = email;
-            await this.procesarAccesoUsuario(email);
+            // Solo procesamos si el email es nuevo o si venimos de un evento de login explícito
+            if (this.emailProcesado !== email || event === 'SIGNED_IN') {
+              this.emailProcesado = email;
+              await this.procesarAccesoUsuario(email);
+            }
+          } else {
+            this.limpiarEstadoSesion();
+            if (!this.router.url.includes('login')) {
+              await this.router.navigate(['/login']);
+            }
           }
-        } else {
-          this.session = null;
-          this.userRole = null;
-          this.emailProcesado = null;
-          if (!this.router.url.includes('login')) {
-            await this.router.navigate(['/login']);
-          }
+        } catch (err) {
+          console.error('[AUTH] Error crítico en el flujo de sesión:', err);
+          this.error = 'Ocurrió un error inesperado al iniciar sesión.';
+        } finally {
+          this.loadingSession = false;
+          this.loading = false;
         }
-        this.loadingSession = false;
-        this.loading = false;
       });
     });
 
-    // Seguro de desbloqueo: si nada ocurre en 6 segundos, forzamos la entrada
+    // Seguro de desbloqueo: si nada ocurre en 4 segundos, liberamos la UI
     setTimeout(() => {
-      this.ngZone.run(() => {
-        this.loadingSession = false;
-        this.loading = false;
-      });
-    }, 6000);
+      if (this.loading || this.loadingSession) {
+        console.warn('[AUTH] Tiempo de espera de validación agotado (Timeout).');
+        this.ngZone.run(() => {
+          this.loadingSession = false;
+          this.loading = false;
+        });
+      }
+    }, 4000);
+  }
+
+  private limpiarEstadoSesion() {
+    this.session = null;
+    this.userRole = null;
+    this.emailProcesado = null;
   }
 
   async procesarAccesoUsuario(email: string) {
@@ -96,38 +107,44 @@ export class AppComponent implements OnInit {
     
     const admins = ['admin@optifincas.com', 'rosmarygp11@gmail.com'];
 
-    if (email && admins.includes(email)) {
-      this.userRole = 'admin';
-      // Solo navegamos si estamos en la raíz o login
-      if (this.router.url === '/' || this.router.url.includes('login')) {
-        this.router.navigate(['/comunidades']);
+    try {
+      if (email && admins.includes(email)) {
+        this.userRole = 'admin';
+        if (this.router.url === '/' || this.router.url.includes('login')) {
+          await this.router.navigate(['/comunidades']);
+        }
+      } else if (email) {
+        await this.determinarPropietario(email);
       }
-    } else if (email) {
-      await this.determinarPropietario(email);
+    } catch (err) {
+      console.error('[AUTH] Error en procesarAccesoUsuario:', err);
+    } finally {
+      this.loading = false;
     }
   }
 
   async determinarPropietario(email: string) {
-    // Aquí solo necesitamos saber si es propietario, no cargar todos sus datos en AppComponent
-    const { data, error } = await this.supabase.buscarPisoPorEmail(email);
-    if (error) {
-      console.error('[AUTH] Error buscando piso para propietario:', error);
-      this.error = 'Error al verificar su rol de propietario.';
-      await this.supabase.signOut(); // Forzar cierre de sesión si hay error
-      return;
-    }
+    try {
+      const { data, error } = await this.supabase.buscarPisoPorEmail(email);
+      
+      if (error) {
+        console.error('[AUTH] Error buscando piso para propietario:', error);
+        this.error = 'Error de conexión con la base de datos.';
+        await this.supabase.signOut();
+        return;
+      }
 
-    if (data && data.length > 0) {
-      this.userRole = 'propietario';
-      // Redirigir a su portal específico
-      // this.router.navigate(['/portal-propietario']);
-      // Si es propietario y no hay ruta específica, lo dejamos en el login o una página por defecto.
-      // Deberías tener una ruta para '/portal-propietario' y navegar aquí.
-      this.router.navigate(['/portal-propietario']); // Asumiendo que crearás esta ruta
-    } else {
-      console.warn('[AUTH] Email no encontrado como propietario. Cerrando sesión.');
-      this.error = 'Su correo no está registrado como propietario autorizado.';
-      await this.supabase.signOut();
+      if (data && data.length > 0) {
+        this.userRole = 'propietario';
+        await this.router.navigate(['/portal-propietario']);
+      } else {
+        console.warn('[AUTH] Email no encontrado en el censo. Cerrando sesión.');
+        this.error = 'Su correo no está registrado como propietario autorizado.';
+        await this.supabase.signOut();
+      }
+    } catch (err) {
+      console.error('[AUTH] Error en determinarPropietario:', err);
+      this.loading = false;
     }
   }
 

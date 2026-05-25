@@ -256,9 +256,18 @@ export class ComunidadExtractosComponent implements OnInit {
   }
 
   unformatPiso(formattedPiso: string): string {
-    if (!formattedPiso || formattedPiso.toLowerCase().includes('desconocido') || formattedPiso.toLowerCase().includes('identificar') || formattedPiso.toLowerCase().includes('asignar')) return '';
-    const match = formattedPiso.match(/^(\d+)º\s*([A-Z])$/i);
-    return match ? `${match[1]}${match[2]}`.toUpperCase() : formattedPiso.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!formattedPiso) return '';
+    const lowerPiso = formattedPiso.toLowerCase();
+    if (lowerPiso.includes('identificar') || lowerPiso.includes('desconocido') || lowerPiso.includes('sin asignar')) return '';
+
+    // Remove common prefixes that might appear in descriptions
+    let cleanedPiso = lowerPiso.replace(/^(piso|vivienda|cuota|recibo|abono|finca)\s*/, '');
+    
+    const match = cleanedPiso.match(/^(\d+)º\s*([a-z])$/i); // Match "XºY" format
+    if (match) return `${match[1]}${match[2]}`.toUpperCase(); // Convert "2ºJ" to "2J"
+    
+    // Final cleaning: remove non-alphanumeric, then uppercase
+    return cleanedPiso.toUpperCase().replace(/[^A-Z0-9]/g, '');
   }
 
   async generarReportePDF() {

@@ -294,8 +294,17 @@ export class ComunidadFinanzasComponent implements OnInit {
 
   unformatPiso(formattedPiso: string | undefined): string {
     if (!formattedPiso) return '';
-    if (formattedPiso.toLowerCase().includes('identificar') || formattedPiso.toLowerCase().includes('desconocido')) return '';
-    return formattedPiso.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const lowerPiso = formattedPiso.toLowerCase();
+    if (lowerPiso.includes('identificar') || lowerPiso.includes('desconocido') || lowerPiso.includes('sin asignar')) return '';
+
+    // Remove common prefixes that might appear in descriptions
+    let cleanedPiso = lowerPiso.replace(/^(piso|vivienda|cuota|recibo|abono|finca)\s*/, '');
+    
+    const match = cleanedPiso.match(/^(\d+)º\s*([a-z])$/i); // Match "XºY" format
+    if (match) return `${match[1]}${match[2]}`.toUpperCase(); // Convert "2ºJ" to "2J"
+    
+    // Final cleaning: remove non-alphanumeric, then uppercase
+    return cleanedPiso.toUpperCase().replace(/[^A-Z0-9]/g, '');
   }
 
   formatearPiso(piso: string | undefined): string {
@@ -317,6 +326,6 @@ export class ComunidadFinanzasComponent implements OnInit {
         padding: CryptoJS.pad.Pkcs7
       });
       return decrypted.toString(CryptoJS.enc.Utf8) || ciphertext;
-    } catch (e) { return ciphertext || ''; }
+    } catch (e) { console.error("Decryption error:", e); return ''; }
   }
 }
