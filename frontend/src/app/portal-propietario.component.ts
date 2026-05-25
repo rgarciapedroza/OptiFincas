@@ -1,5 +1,14 @@
 import { Component, OnInit } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
+import { HttpClient } from '@angular/common/http';
+import { lastValueFrom } from 'rxjs';
 import { SupabaseService } from './supabase.service';
+import * as CryptoJS from 'crypto-js';
+import { FinanzasData, MovimientoBancario } from './models';
+
+// Claves para desencriptación
+const ENCRYPT_KEY = CryptoJS.enc.Utf8.parse('OptiFincasSecretKey2024_Security');
+const ENCRYPT_IV = CryptoJS.enc.Utf8.parse('OptiFincas_IV_16');
 
 @Component({
   selector: 'app-portal-propietario',
@@ -7,17 +16,515 @@ import { SupabaseService } from './supabase.service';
   styleUrls: ['./portal-propietario.component.css']
 })
 export class PortalPropietarioComponent implements OnInit {
-  userPiso: any = null;
+  userPisos: any[] = [];
+  selectedPiso: any | null = null;
+  userName: string = '';
+  loading = true;
+  allRecibosGrouped: any[] = [];
+  seccionActiva: 'finanzas' | 'limpieza' | 'recibos' = 'finanzas'; // This is not used anymore as main sections are handled by router
+  seccionPrincipalActiva: 'mis-propiedades' | 'mis-recibos' | 'finanzas' | 'limpieza' | 'contactar' = 'mis-propiedades'; // Top-level sections
 
-  constructor(private supabase: SupabaseService) {}
+  // Propiedades para Finanzas
+  finanzasData: FinanzasData = {
+    ingresosPorPiso: [],
+    gastos: [],
+    resumenCuentas: { saldoAnterior: 0, ingresosMes: 0, gastosMes: 0, saldoTotal: 0 }
+  };
+  viewDateFinanzas: Date = new Date();
+  currentMonthLabelFinanzas: string = '';
+  extractoActualFinanzas: any = null;
+
+  // Propiedades para Limpieza
+  cleaningSchedule: { date: string, tasks: any[] }[] = [];
+  viewDateLimpieza: Date = new Date();
+  currentMonthLabelLimpieza: string = '';
+
+  // Propiedades para Recibos
+  viewDateRecibos: Date = new Date();
+  currentMonthLabelRecibos: string = '';
+  mostrarPendientes: boolean = false;
+
+  // Formulario de contacto
+  contactForm = { reason: '', message: '', photo: null as File | null };
+  contactReasons = [
+    'Avería en zonas comunes', 'Incidencia en mi propiedad', 'Consulta sobre recibos/pagos', 
+    'Cambio de datos de contacto', 'Solicitud de documentos', 'Sugerencias', 'Otros'
+  ];
+  sendingContact = false;
+
+  constructor(
+    private supabase: SupabaseService,
+    private route: ActivatedRoute,
+    private router: Router,
+    private http: HttpClient
+  ) {}
 
   async ngOnInit() {
+    // Detectar sección inicial basándose en la URL actual
+    this.detectarSeccionDesdeUrl();
+
     const session = await this.supabase.getSession();
     if (session?.user?.email) {
       const { data } = await this.supabase.buscarPisoPorEmail(session.user.email);
-      if (data && data.length > 0) {
-        this.userPiso = data[0];
+      if (data) {
+        this.userPisos = data.map((p: any) => ({
+          ...p,
+          propietario: this.decryptVal(p.propietario),
+          observaciones: this.decryptVal(p.observaciones)
+        }));
+        
+        if (this.userPisos.length > 0) {
+          this.userName = this.userPisos[0].propietario;
+          
+          // Pre-seleccionar la primera propiedad si estamos en una vista de detalle y no hay ninguna seleccionada
+          if (this.seccionPrincipalActiva !== 'mis-propiedades' && !this.selectedPiso) {
+            this.selectedPiso = this.userPisos[0];
+            this.updateMonthLabels();
+            await Promise.all([
+              this.loadFinanzas(),
+              this.loadCleaningSchedule(),
+              this.loadRecibos()
+            ]);
+          }
+        }
       }
     }
+    this.loading = false;
+  }
+
+  private detectarSeccionDesdeUrl() {
+    const url = this.router.url;
+    if (url.endsWith('portal-propietario') || url.includes('mis-propiedades')) this.seccionPrincipalActiva = 'mis-propiedades';
+    else if (url.includes('mis-recibos')) this.seccionPrincipalActiva = 'mis-recibos';
+    else if (url.includes('finanzas')) this.seccionPrincipalActiva = 'finanzas';
+    else if (url.includes('limpieza')) this.seccionPrincipalActiva = 'limpieza';
+    else if (url.includes('contactar')) this.seccionPrincipalActiva = 'contactar';
+  }
+
+  async loadPisoData(piso: any) {
+    this.loading = true;
+    this.selectedPiso = piso;
+    this.updateMonthLabels();
+    await Promise.all([
+      this.loadFinanzas(),
+      this.loadCleaningSchedule(),
+      this.loadRecibos()
+    ]);
+    this.loading = false;
+  }
+
+  async seleccionarPisoParaDetalle(piso: any) {
+    await this.loadPisoData(piso);
+    // Si el usuario selecciona una finca desde el listado, le llevamos a la "página" de Finanzas por defecto
+    if (this.seccionPrincipalActiva === 'mis-propiedades') {
+      this.router.navigate(['/portal-propietario/finanzas']);
+    }
+  }
+
+  setSeccion(seccion: 'finanzas' | 'limpieza' | 'recibos') {
+    this.seccionActiva = seccion;
+  }
+
+  async setSeccionPrincipal(seccion: 'mis-propiedades' | 'mis-recibos' | 'finanzas' | 'limpieza' | 'contactar') {
+    // Navegación mediante router para cumplir con el requisito de "páginas distintas"
+    this.router.navigate(['/portal-propietario', seccion]);
+  }
+
+  // --- Lógica de Finanzas ---
+  async loadFinanzas() {
+    if (!this.selectedPiso?.comunidades?.id) return;
+    this.loading = true;
+    try {
+      const mes = this.viewDateFinanzas.getMonth() + 1;
+      const anio = this.viewDateFinanzas.getFullYear();
+
+      const { data: extData } = await this.supabase.getExtractosByCommunity(this.selectedPiso.comunidades.id);
+      this.extractoActualFinanzas = extData?.find((e: any) => e.mes_contable === mes && e.anio_contable === anio) || null;
+
+      if (this.extractoActualFinanzas) {
+        const { data: movs } = await this.supabase.getMovimientosByExtracto(this.extractoActualFinanzas.id);
+        const { data: allPisos } = await this.supabase.getPisos(this.selectedPiso.comunidades.id);
+        
+        if (movs && allPisos) {
+          const ingresos = movs.filter(m => this.asNumber(m.importe) > 0);
+          const gastos = movs.filter(m => this.asNumber(m.importe) < 0);
+          
+          // Identificar los pisos del propietario para resaltarlos
+          const misPisosNorm = new Set(this.userPisos.map(p => this.unformatPiso(p.codigo)));
+
+          this.finanzasData.ingresosPorPiso = allPisos.map(p => {
+            const pNorm = this.unformatPiso(p.codigo);
+            const movsDelPiso = ingresos.filter(m => this.unformatPiso(m.piso_detectado) === pNorm);
+            const total = movsDelPiso.reduce((acc, m) => acc + this.asNumber(m.importe), 0);
+            
+            return {
+              codigo: p.codigo,
+              importe: total,
+              pagado: movsDelPiso.length > 0,
+              fecha: movsDelPiso.length > 0 ? movsDelPiso[0].fecha : null,
+              esMio: misPisosNorm.has(pNorm)
+            };
+          });
+
+          this.finanzasData.gastos = gastos.map(g => ({
+            concepto: g.categoria !== 'Sin Categoría' ? g.categoria : this.decryptVal(g.concepto_original),
+            importe: Math.abs(this.asNumber(g.importe))
+          })).sort((a, b) => b.importe - a.importe);
+
+          const totalIngresosCom = ingresos.reduce((acc, m) => acc + this.asNumber(m.importe), 0);
+          const totalGastosCom = gastos.reduce((acc, m) => acc + Math.abs(this.asNumber(m.importe)), 0);
+          const saldoF = movs.length > 0 ? this.asNumber(movs[0].saldo_resultante) : 0;
+
+          this.finanzasData.resumenCuentas = {
+            saldoAnterior: saldoF - totalIngresosCom + totalGastosCom,
+            ingresosMes: totalIngresosCom,
+            gastosMes: totalGastosCom,
+            saldoTotal: saldoF
+          };
+        }
+      } else {
+        this.finanzasData = {
+          ingresosPorPiso: [], gastos: [],
+          resumenCuentas: { saldoAnterior: 0, ingresosMes: 0, gastosMes: 0, saldoTotal: 0 }
+        };
+      }
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  changeMonthFinanzas(delta: number) {
+    this.viewDateFinanzas = new Date(this.viewDateFinanzas.getFullYear(), this.viewDateFinanzas.getMonth() + delta, 1);
+    this.updateMonthLabels();
+    this.loadFinanzas();
+  }
+
+  async generarReportePDF() {
+    if (!this.extractoActualFinanzas || !this.selectedPiso) return;
+    this.loading = true;
+    
+    const comName = this.selectedPiso.comunidades?.nombre || 'Comunidad';
+    const mes = this.extractoActualFinanzas.mes_contable;
+    const anio = this.extractoActualFinanzas.anio_contable;
+
+    try {
+      const url = `/api/confirmar?modo=finanzas&community_name=${encodeURIComponent(comName)}&mes=${mes}&anio=${anio}`;
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(this.finanzasData)
+      });
+      
+      const resData = await response.json();
+      
+      const byteCharacters = atob(resData.excel_contenido);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const blob = new Blob([new Uint8Array(byteNumbers)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const urlBlob = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = urlBlob;
+      a.download = resData.nombre_archivo;
+      a.click();
+    } catch (e) {
+      alert('Error al generar el reporte financiero');
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  // --- Lógica de Limpieza ---
+  async loadCleaningSchedule() {
+    if (this.userPisos.length === 0) return;
+    const mes = this.viewDateLimpieza.getMonth() + 1;
+    const anio = this.viewDateLimpieza.getFullYear();
+    const { data } = await this.supabase.getPlanificacion(mes, anio);
+
+    this.cleaningSchedule = [];
+    if (data?.datos?.horarios) {
+      const grouped: { [date: string]: any[] } = {};
+      const myCommunityNames = this.userPisos.map(p => p.comunidades?.nombre?.toLowerCase()).filter(n => !!n);
+
+      for (const [emp, dates] of Object.entries(data.datos.horarios)) {
+        for (const [date, tasks] of Object.entries(dates as any)) {
+          const myTasks = (tasks as any[]).filter(t => myCommunityNames.includes(t.comunidad.toLowerCase()));
+          if (myTasks.length > 0) {
+            if (!grouped[date]) grouped[date] = [];
+            myTasks.forEach(t => grouped[date].push({ ...t, emp }));
+          }
+        }
+      }
+      this.cleaningSchedule = Object.keys(grouped).sort().map(date => ({ date, tasks: grouped[date] }));
+    }
+  }
+
+  changeMonthLimpieza(delta: number) {
+    this.viewDateLimpieza = new Date(this.viewDateLimpieza.getFullYear(), this.viewDateLimpieza.getMonth() + delta, 1);
+    this.updateMonthLabels();
+    this.loadCleaningSchedule();
+  }
+
+  // --- Lógica de Recibos ---
+  async loadRecibos() {
+    if (this.userPisos.length === 0) return;
+    
+    this.loading = true;
+    const targetAnio = this.viewDateRecibos.getFullYear();
+    const hoy = new Date();
+    this.allRecibosGrouped = [];
+    
+    const currentMonth = hoy.getMonth() + 1; // 1-indexed month
+    const currentAnio = hoy.getFullYear();
+
+    // 1. Validación de año futuro
+    if (targetAnio > currentAnio) {
+      console.log("Ignorando año futuro:", targetAnio);
+      this.loading = false;
+      return;
+    }
+
+    // 2. Determinar hasta qué mes mostrar
+    const maxMonth = (targetAnio === currentAnio) ? currentMonth : 12;
+
+    // Agrupar comunidades únicas para evitar peticiones repetidas
+    const communityIds = [...new Set(this.userPisos.map(p => p.comunidades?.id))].filter(id => !!id);
+    const movementsCache = new Map();
+
+    try {
+      for (const cid of communityIds) {
+        // Fallback: Si el propietario no puede leer toda la tabla de movimientos, 
+        // probamos a leer vía extractos (método usado en Finanzas que sabemos que funciona)
+        const { data: extractos } = await this.supabase.getExtractosByCommunity(cid);
+        const extractosDelAnio = extractos?.filter((e: any) => e.anio_contable === targetAnio) || [];
+        
+        let movimientosAcumulados: any[] = [];
+        for (const ext of extractosDelAnio) {
+          // Intentamos cargar los movimientos. Si devuelve 0, es probable que falten permisos RLS para el propietario.
+          const { data: movs, error: movError } = await this.supabase.getMovimientosByExtracto(ext.id);
+          
+          if (movError) {
+            console.error(`[ERROR RLS/DB] No se pudieron cargar movimientos del extracto ${ext.id}:`, movError);
+          }
+          
+          if (movs && movs.length > 0) {
+            console.log(`[OK] Extracto ${ext.id} (${this.getMesNombre(ext.mes_contable)}): ${movs.length} movimientos encontrados.`);
+            movimientosAcumulados = [...movimientosAcumulados, ...movs];
+          } else {
+            console.warn(`[AVISO] El extracto ${ext.id} no devolvió movimientos. Revisa las políticas RLS de la tabla 'movimientos' en Supabase.`);
+          }
+        }
+        
+        movementsCache.set(cid, movimientosAcumulados);
+      }
+
+      // Iterar de mes actual hacia atrás para que aparezca lo más reciente primero
+      for (let m = maxMonth; m >= 1; m--) {
+        const detallesPisosDelMes = [];
+        
+        for (const p of this.userPisos) {
+          const movimientosComunidad = movementsCache.get(p.comunidades?.id) || [];
+          const pisoNorm = this.unformatPiso(p.codigo);
+
+          const pagosEncontrados = movimientosComunidad.filter((mov: any) => {
+            const d = new Date(mov.fecha);
+            const movAnio = d.getFullYear();
+            const movMes = d.getMonth() + 1;
+            const importe = this.asNumber(mov.importe);
+
+            // Solo ingresos del mes y año correcto
+            if (movAnio !== targetAnio || movMes !== m) return false;
+            if (importe <= 0) return false; // Solo ingresos
+
+            // 2. Comprobación por piso_detectado (ML/Clasificador)
+            const pisoDetectadoNorm = this.unformatPiso(mov.piso_detectado);
+            if (pisoDetectadoNorm && pisoDetectadoNorm === pisoNorm) {
+              console.log(`  [MATCH!] Mes ${m} - Piso ${pisoNorm}: Encontrado vía piso_detectado`);
+              return true;
+            }
+
+            // 3. Comprobación por Concepto Original (Desencriptado)
+            const descPlana = this.decryptVal(mov.concepto_original);
+            const descNorm = this.unformatPiso(descPlana);
+            if (descNorm.includes(pisoNorm)) {
+              console.log(`  [MATCH!] Mes ${m} - Piso ${pisoNorm}: Encontrado en descripción: "${descPlana}"`);
+              return true;
+            }
+
+            // 4. Comprobación por Ordenante (Desencriptado)
+            const ordPlano = this.decryptVal(mov.ordenante);
+            const ordNorm = this.unformatPiso(ordPlano);
+            if (ordNorm.includes(pisoNorm)) {
+              console.log(`  [MATCH!] Mes ${m} - Piso ${pisoNorm}: Encontrado en ordenante: "${ordPlano}"`);
+              return true;
+            }
+
+            return false;
+          });
+
+          const pagado = pagosEncontrados.length > 0;
+          const importeTotal = pagosEncontrados.reduce((acc: number, mov: MovimientoBancario) => acc + this.asNumber(mov.importe), 0);
+          const fechaUltimoPago = pagado ? [...pagosEncontrados].sort((a: MovimientoBancario, b: MovimientoBancario) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())[0].fecha : null;
+          const esVencido = !pagado && (targetAnio < currentAnio || (targetAnio === currentAnio && m < currentMonth));
+
+          detallesPisosDelMes.push({
+            piso: p.codigo,
+            comunidad: p.comunidades?.nombre,
+            fecha: fechaUltimoPago,
+            importe: importeTotal,
+            pagado: pagado,
+            vencido: esVencido
+          });
+        }
+
+        this.allRecibosGrouped.push({
+          mes: m,
+          mesNombre: this.getMesNombre(m),
+          detalles: detallesPisosDelMes
+        });
+      }
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  changeMonthRecibos(delta: number) {
+    // Navegación anual para recibos
+    this.viewDateRecibos = new Date(this.viewDateRecibos.getFullYear(), this.viewDateRecibos.getMonth() + delta, 1);
+    console.log(`[DEBUG RECIBOS] Cambiando año de recibos a: ${this.viewDateRecibos.getFullYear()}`);
+    this.updateMonthLabels();
+    this.loadRecibos();
+  }
+
+  // --- Lógica de Contacto ---
+  onContactPhotoSelected(event: any) {
+    const file = event.target.files[0];
+    if (file) {
+      this.contactForm.photo = file;
+    }
+  }
+
+  async sendContactMessage() {
+    if (!this.contactForm.reason || !this.contactForm.message) {
+      alert('Por favor, rellene el motivo y el mensaje de su comunicación.');
+      return;
+    }
+
+    this.sendingContact = true;
+
+    const session = await this.supabase.getSession();
+    const userEmail = session?.user?.email || 'desconocido@optifincas.com';
+    const communityId = this.selectedPiso?.comunidades?.id || null;
+
+    const formData = new FormData();
+    formData.append('userName', this.userName);
+    formData.append('userEmail', userEmail);
+    if (communityId) {
+      formData.append('communityId', communityId.toString());
+    }
+    formData.append('reason', this.contactForm.reason);
+    formData.append('message', this.contactForm.message);
+    if (this.contactForm.photo) {
+      formData.append('photo', this.contactForm.photo);
+    }
+
+    try {
+      // Llamada al backend para enviar el correo (ajusta la ruta según tu API)
+      await lastValueFrom(this.http.post('/api/contacto/enviar', formData));
+      alert('Su mensaje y evidencia han sido enviados correctamente al administrador.');
+      this.contactForm = { reason: '', message: '', photo: null };
+    } catch (e: any) {
+      console.error('[ERROR DE CONTACTO]', e);
+      const errorMsg = e.error?.detail || e.message || 'Servidor no disponible';
+      alert(`Error al enviar: ${errorMsg}. Verifique que el backend esté iniciado.`);
+    } finally {
+      this.sendingContact = false;
+    }
+  }
+
+  get pendingReceiptsList() {
+    const list: any[] = [];
+    if (!this.allRecibosGrouped) return list;
+    this.allRecibosGrouped.forEach(group => {
+      if (!group.detalles) return;
+      group.detalles.forEach((det: any) => {
+        if (!det.pagado && det.vencido) {
+          list.push({ ...det, mesNombre: group.mesNombre, anio: this.viewDateRecibos.getFullYear() });
+        }
+      });
+    });
+    return list;
+  }
+
+  togglePendientes() {
+    this.mostrarPendientes = !this.mostrarPendientes;
+    console.log('[DEBUG] Mostrar solo pendientes:', this.mostrarPendientes);
+  }
+
+  decryptVal(ciphertext: string): string {
+    if (!ciphertext || ciphertext === '-' || ciphertext === 'nan') return '';
+    try {
+      const decrypted = CryptoJS.AES.decrypt(ciphertext, ENCRYPT_KEY, {
+        iv: ENCRYPT_IV,
+        mode: CryptoJS.mode.CBC,
+        padding: CryptoJS.pad.Pkcs7
+      });
+      return decrypted.toString(CryptoJS.enc.Utf8) || ciphertext;
+    } catch (e) { console.error("Decryption error:", e); return ''; } // Return empty string on error
+  }
+
+  asNumber(val: any): number {
+    if (typeof val === 'number') return val;
+    if (val === undefined || val === null || String(val).trim() === '') return 0;
+    const str = String(val).trim().replace(/\./g, '').replace(',', '.');
+    const num = parseFloat(str);
+    return isNaN(num) ? 0 : Number(num.toFixed(2));
+  }
+
+  unformatPiso(formattedPiso: string | undefined): string {
+    if (!formattedPiso) return '';
+    const lowerPiso = formattedPiso.toLowerCase();
+    if (lowerPiso.includes('identificar') || lowerPiso.includes('desconocido') || lowerPiso.includes('sin asignar')) return '';
+
+    // Remove common prefixes that might appear in descriptions
+    let cleanedPiso = lowerPiso.replace(/^(piso|vivienda|cuota|recibo|abono|finca)\s*/, '');
+    
+    const match = cleanedPiso.match(/^(\d+)º\s*([a-z])$/i); // Match "XºY" format
+    if (match) return `${match[1]}${match[2]}`.toUpperCase(); // Convert "2ºJ" to "2J"
+    
+    // Final cleaning: remove non-alphanumeric, then uppercase
+    return cleanedPiso.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  }
+
+  formatearPiso(piso: string | undefined): string {
+    if (!piso || piso.trim() === '' || piso.toLowerCase() === 'nan' || piso.toLowerCase() === 'none' || (piso.toLowerCase().includes('desconocido') && !piso.toLowerCase().includes('ingresos')) || piso.toLowerCase().includes('identificar')) return 'piso sin identificar';
+    
+    const rawPisoCode = this.unformatPiso(piso); // Use unformatPiso to get the raw code
+    if (!rawPisoCode) return 'piso sin identificar';
+
+    const match = rawPisoCode.match(/^(\d+)([A-Z])$/);
+    if (match) {
+      return `${match[1]}º ${match[2]}`;
+    }
+    return rawPisoCode; // If it doesn't match the XN format, just return the cleaned code
+  }
+
+  getMesNombre(mes: number | null): string {
+    if (!mes) return 'Registro';
+    const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+    return meses[mes - 1] || 'Mes Desconocido';
+  }
+
+  updateMonthLabels() {
+    this.currentMonthLabelFinanzas = this.viewDateFinanzas.toLocaleString('es-ES', { month: 'long', year: 'numeric' });
+    this.currentMonthLabelFinanzas = this.currentMonthLabelFinanzas.charAt(0).toUpperCase() + this.currentMonthLabelFinanzas.slice(1);
+
+    this.currentMonthLabelLimpieza = this.viewDateLimpieza.toLocaleString('es-ES', { month: 'long', year: 'numeric' });
+    this.currentMonthLabelLimpieza = this.currentMonthLabelLimpieza.charAt(0).toUpperCase() + this.currentMonthLabelLimpieza.slice(1);
+
+    this.currentMonthLabelRecibos = this.viewDateRecibos.toLocaleString('es-ES', { year: 'numeric' });
+    this.currentMonthLabelRecibos = this.currentMonthLabelRecibos.charAt(0).toUpperCase() + this.currentMonthLabelRecibos.slice(1);
   }
 }

@@ -168,7 +168,7 @@ export class SupabaseService {
   async buscarPisoPorEmail(email: string) {
     return await this.supabase
       .from('pisos')
-      .select('*')
+      .select('*, comunidades(*)') // Fetch related community data
       .ilike('email', email.trim());
   }
 

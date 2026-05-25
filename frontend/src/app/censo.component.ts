@@ -52,7 +52,7 @@ export class CensoComponent implements OnInit {
         padding: CryptoJS.pad.Pkcs7
       });
       return decrypted.toString(CryptoJS.enc.Utf8) || ciphertext;
-    } catch (e) { return ciphertext; }
+    } catch (e) { console.error("Decryption error:", e); return ''; }
   }
 
   prepararNuevoPiso() {

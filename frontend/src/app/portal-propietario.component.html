@@ -1,13 +1,397 @@
-<div class="container" *ngIf="userPiso">
-  <div class="card-container">
-    <div style="border-bottom: 1px solid #eee; padding-bottom: 20px; margin-bottom: 20px;">
-        <h2 style="margin: 0; color: #2c3e50;">Bienvenido, {{ userPiso.propietario }}</h2>
-        <p style="color: #666;">Portal del propietario - Vivienda: <strong>{{ userPiso.codigo }}</strong></p>
+<div class="portal-container" *ngIf="!loading">
+  <header class="portal-header">
+    <div class="welcome-section">
+      <h1>Bienvenido, <span class="highlight">{{ userName || 'Propietario' }}</span></h1>
+      <p class="subtitle">Gestiona la información de tus propiedades en OptiFincas</p>
     </div>
-    
-    <div class="info-section" style="background: #f0f7ff; border-left-color: #3498db;">
-        <h3 style="margin-top: 0; font-size: 1.1rem; color: #2980b9;">Información de su comunidad</h3>
-        <p>Aquí podrá consultar los próximos turnos de limpieza y el estado de las cuentas de su edificio.</p>
+  </header>
+
+  <!-- BARRA DE NAVEGACIÓN SUPERIOR (Tipo Admin) -->
+  <div class="summary-cards" *ngIf="seccionPrincipalActiva !== 'contactar'" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 25px; gap: 10px;">
+    <div class="card" [class.active-tab]="seccionPrincipalActiva === 'mis-propiedades'" (click)="setSeccionPrincipal('mis-propiedades')" style="cursor: pointer; padding: 15px;">
+      <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+      Mis Propiedades
+    </div>
+    <div class="card" [class.active-tab]="seccionPrincipalActiva === 'mis-recibos'" (click)="setSeccionPrincipal('mis-recibos')" style="cursor: pointer; padding: 15px;">
+      <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+      Mis Recibos
+    </div>
+    <div class="card" [class.active-tab]="seccionPrincipalActiva === 'finanzas'" (click)="setSeccionPrincipal('finanzas')" style="cursor: pointer; padding: 15px;">
+      <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+      Finanzas
+    </div>
+    <div class="card" [class.active-tab]="seccionPrincipalActiva === 'limpieza'" (click)="setSeccionPrincipal('limpieza')" style="cursor: pointer; padding: 15px;">
+      <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path></svg>
+      Limpieza
     </div>
   </div>
+
+  <!-- SECCIÓN: MIS PROPIEDADES -->
+  <section *ngIf="seccionPrincipalActiva === 'mis-propiedades'" class="properties-section" style="animation: fadeIn 0.4s ease;">
+    <div class="section-title-wrapper">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+      <h2>Mis Propiedades</h2>
+    </div>
+
+    <div class="properties-grid" style="margin-bottom: 40px;">
+      <div class="property-card" *ngFor="let p of userPisos">
+        <div class="card-header">
+          <span class="unit-badge">{{ p.codigo }}</span>
+        </div>
+        <div class="card-body">
+          <div class="property-icon-bg">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+          </div>
+          <h3 class="community-name">{{ p.comunidades?.nombre }}</h3>
+          <div class="info-row">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+            <span>{{ p.comunidades?.direccion }}</span>
+          </div>
+          <div class="services-mini-list" *ngIf="p.comunidades?.servicios">
+            <span class="service-chip" *ngFor="let s of p.comunidades.servicios.split(',').slice(0, 3)">
+              {{ s.trim() }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- SECCIONES DE DETALLE (Finanzas, Limpieza, Recibos) -->
+  <section *ngIf="seccionPrincipalActiva !== 'mis-propiedades'" style="animation: fadeIn 0.4s ease;">
+    <!-- Selector de Propiedad: Solo visible en Finanzas y Limpieza si tiene más de una -->
+    <div class="property-selector-wrapper" *ngIf="userPisos.length > 1 && !['mis-recibos', 'finanzas', 'limpieza', 'contactar'].includes(seccionPrincipalActiva)" style="background: #f0f7ff; border-left: 4px solid #3b82f6; margin-bottom: 25px;">
+      <label for="piso-select" style="color: #1e40af; font-weight: 700;">PROPIEDAD SELECCIONADA:</label>
+      <select id="piso-select" [(ngModel)]="selectedPiso" (ngModelChange)="loadPisoData(selectedPiso)" class="input-concepto-edit" style="background: white;">
+        <option *ngFor="let piso of userPisos" [ngValue]="piso">
+          {{ piso.codigo }} — {{ piso.comunidades?.nombre }} ({{ piso.comunidades?.direccion }})
+        </option>
+      </select>
+    </div>
+
+    <div *ngIf="selectedPiso">
+      <!-- Contenido de Contactar -->
+      <div *ngIf="seccionPrincipalActiva === 'contactar'" class="tab-content">
+        <div style="max-width: 650px; margin: 0 auto; padding: 30px; background: white; border-radius: 16px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);">
+          <h3 class="section-subtitle" style="border-bottom: 1px solid #e2e8f0; padding-bottom: 15px; margin-bottom: 25px; color: #1e293b; font-weight: 800;">
+            Nueva Comunicación al Administrador
+          </h3>
+          
+          <div class="form-group" style="margin-bottom: 20px;">
+            <label style="display: block; font-weight: 700; color: #475569; margin-bottom: 8px;">¿Cuál es el motivo de su mensaje?</label>
+            <select [(ngModel)]="contactForm.reason" class="input-concepto-edit" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1; background-color: #f8fafc;">
+              <option value="" disabled selected>Seleccione una opción...</option>
+              <option *ngFor="let r of contactReasons" [value]="r">{{ r }}</option>
+            </select>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 20px;">
+            <label style="display: block; font-weight: 700; color: #475569; margin-bottom: 8px;">Mensaje / Descripción</label>
+            <textarea [(ngModel)]="contactForm.message" class="input-concepto-edit" placeholder="Explique aquí los detalles de su consulta o incidencia..." rows="6" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1; resize: none;"></textarea>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 30px;">
+            <label style="display: block; font-weight: 700; color: #475569; margin-bottom: 8px;">Adjuntar foto (Opcional)</label>
+            <div style="position: relative; border: 2px dashed #cbd5e1; border-radius: 12px; padding: 25px; text-align: center; background: #fdfdfd;">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" style="margin-bottom: 10px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+              <p style="margin: 0; color: #64748b; font-size: 0.9rem;">Haga clic para subir una foto de la avería</p>
+              <input type="file" (change)="onContactPhotoSelected($event)" accept="image/*" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;">
+            </div>
+            <div *ngIf="contactForm.photo" style="display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 8px 12px; background: #f0fdf4; border-radius: 6px; border: 1px solid #bbf7d0;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span style="font-size: 0.85rem; color: #15803d; font-weight: 600;">{{ contactForm.photo.name }} seleccionado</span>
+              <button (click)="contactForm.photo = null" style="margin-left: auto; border: none; background: none; color: #ef4444; cursor: pointer; font-weight: 700;">×</button>
+            </div>
+          </div>
+
+          <button class="btn btn-primary" (click)="sendContactMessage()" [disabled]="sendingContact" style="width: 100%; padding: 15px; font-weight: 800; border-radius: 12px; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 12px; box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3);">
+            <span *ngIf="sendingContact" class="spinner-small" style="width: 18px; height: 18px; border-width: 3px;"></span>
+            {{ sendingContact ? 'Enviando Mensaje...' : 'Enviar Incidencia' }}
+          </button>
+          
+          <p style="margin-top: 20px; font-size: 0.8rem; color: #94a3b8; text-align: center; line-height: 1.4;">
+            Sus comunicaciones serán revisadas por el administrador de la finca. Recibirá una respuesta en su correo electrónico registrado.
+          </p>
+        </div>
+      </div>
+      <!-- Contenido de Finanzas -->
+      <div *ngIf="seccionPrincipalActiva === 'finanzas'" class="tab-content">
+        <div class="month-navigation-finanzas">
+          <button class="btn-nav" (click)="changeMonthFinanzas(-1)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+          <span class="month-label">{{ currentMonthLabelFinanzas }}</span>
+          <button class="btn-nav" (click)="changeMonthFinanzas(1)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </button>
+        </div>
+
+        <!-- Cabecera de Resumen Rápido (Estilo Administrador) -->
+        <div class="summary-cards" style="grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 30px;">
+          <div class="card p-3 text-center" style="border-left: 4px solid #10b981;">
+            <small class="text-muted">Ingresos Mes</small>
+            <div style="font-size: 1.25rem; font-weight: 800; color: #10b981;">{{ finanzasData.resumenCuentas.ingresosMes | number:'1.2-2' }} €</div>
+          </div>
+          <div class="card p-3 text-center" style="border-left: 4px solid #ef4444;">
+            <small class="text-muted">Gastos Mes</small>
+            <div style="font-size: 1.25rem; font-weight: 800; color: #ef4444;">{{ finanzasData.resumenCuentas.gastosMes | number:'1.2-2' }} €</div>
+          </div>
+          <div class="card p-3 text-center" style="border-left: 4px solid #6366f1;">
+            <small class="text-muted">Saldo Actual</small>
+            <div style="font-size: 1.25rem; font-weight: 800; color: #6366f1;">{{ finanzasData.resumenCuentas.saldoTotal | number:'1.2-2' }} €</div>
+          </div>
+        </div>
+
+        <div *ngIf="extractoActualFinanzas; else noFinanzasData" style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+          <!-- Tabla de Ingresos por Piso (Con resaltado) -->
+          <div class="card-container" style="max-width: 100%; margin: 0;">
+            <h3 class="section-title" style="color: #10b981; font-size: 1rem; margin-bottom: 15px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;"><path d="M12 5v14M5 12l7-7 7 7"/></svg>
+              Ingresos por Piso
+            </h3>
+            <table class="movimientos-table" style="font-size: 0.85rem;">
+              <thead>
+                <tr>
+                  <th>Piso</th>
+                  <th style="text-align: right;">Cantidad</th>
+                  <th style="text-align: center;">Fecha</th>
+                  <th style="text-align: center;">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let item of finanzasData.ingresosPorPiso" [style.background]="item.esMio ? '#f5f3ff' : 'transparent'">
+                  <td [style.font-weight]="item.esMio ? '800' : '600'">
+                    {{ formatearPiso(item.codigo) }}
+                    <span *ngIf="item.esMio" style="color: #6366f1; font-size: 0.7rem; margin-left: 5px;">(MI PROPIEDAD)</span>
+                  </td>
+                  <td style="text-align: right;" [style.font-weight]="item.pagado ? '700' : 'normal'">
+                    {{ item.pagado ? (item.importe | number:'1.2-2') + '€' : '-' }}
+                  </td>
+                  <td style="text-align: center; color: #64748b; font-size: 0.8rem;">{{ item.fecha | date:'dd/MM/yyyy' }}</td>
+                  <td style="text-align: center;">
+                    <span class="badge" [style.background]="item.pagado ? '#dcfce7' : '#fee2e2'" [style.color]="item.pagado ? '#166534' : '#991b1b'">
+                      {{ item.pagado ? 'Pagado' : 'Pendiente' }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Detalle de Gastos y Resumen (Estilo Administrador) -->
+          <div class="card-container" style="max-width: 100%; margin: 0;">
+            <h3 class="section-title" style="color: #ef4444; font-size: 1rem; margin-bottom: 15px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;"><path d="M12 19V5M5 12l7 7 7-7"/></svg>
+              Detalle de Gastos
+            </h3>
+            <table class="movimientos-table" style="font-size: 0.85rem;">
+              <thead>
+                <tr>
+                  <th>Concepto</th>
+                  <th style="text-align: right;">Importe</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let g of finanzasData.gastos">
+                  <td>{{ g.concepto }}</td>
+                  <td style="text-align: right; font-weight: 700; color: #ef4444;">{{ g.importe | number:'1.2-2' }}€</td>
+                </tr>
+                <tr *ngIf="finanzasData.gastos.length === 0">
+                  <td colspan="2" class="no-tasks">No se registraron gastos este mes.</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr style="border-top: 2px solid #ef4444; background: #fef2f2;">
+                  <td style="font-weight: 800; color: #ef4444; padding: 10px;">TOTAL GASTOS</td>
+                  <td style="text-align: right; font-weight: 800; color: #ef4444; padding: 10px;">{{ finanzasData.resumenCuentas.gastosMes | number:'1.2-2' }}€</td>
+                </tr>
+              </tfoot>
+            </table>
+
+            <!-- Resumen de Cuentas (Estilo Administrador) -->
+            <div class="card-container" style="max-width: 100%; margin: 30px 0 0 0; background: #1a252f; color: white; padding: 20px; border-radius: 12px;">
+              <h3 class="section-title" style="color: white; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; font-size: 1rem;">
+                Resumen de Cuentas
+              </h3>
+              <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem;">
+                  <span style="color: #9ca3af;">Saldo Anterior:</span>
+                  <span style="font-weight: 600;">{{ finanzasData.resumenCuentas.saldoAnterior | number:'1.2-2' }}€</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem;">
+                  <span style="color: #10b981;">(+) Ingresos Mes:</span>
+                  <span style="font-weight: 600; color: #10b981;">{{ finanzasData.resumenCuentas.ingresosMes | number:'1.2-2' }}€</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem;">
+                  <span style="color: #ef4444;">(-) Gastos Mes:</span>
+                  <span style="font-weight: 600; color: #ef4444;">{{ finanzasData.resumenCuentas.gastosMes | number:'1.2-2' }}€</span>
+                </div>
+                <div style="border-top: 1px solid rgba(255,255,255,0.2); padding-top: 12px; margin-top: 5px; display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 1rem; font-weight: 700;">SALDO TOTAL:</span>
+                  <span style="font-size: 1.15rem; font-weight: 800; color: #6366f1;">{{ finanzasData.resumenCuentas.saldoTotal | number:'1.2-2' }}€</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="actions" style="margin-top: 20px;">
+              <button class="btn btn-info" (click)="generarReportePDF()" style="width: 100%; font-size: 0.85rem;">Generar Informe PDF</button>
+            </div>
+          </div>
+        </div>
+
+        <ng-template #noFinanzasData>
+          <div class="empty-state" style="text-align: center; padding: 60px; background: white; border-radius: 16px; border: 2px dashed #e2e8f0; color: #94a3b8;">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom: 15px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+            <p style="font-weight: 600; color: #64748b;">No hay datos financieros disponibles para este mes.</p>
+          </div>
+        </ng-template>
+      </div>
+
+      <!-- Contenido de Limpieza -->
+      <div *ngIf="seccionPrincipalActiva === 'limpieza'" class="tab-content">
+        <div class="month-navigation-limpieza">
+          <button class="btn-nav" (click)="changeMonthLimpieza(-1)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+          <span class="month-label">{{ currentMonthLabelLimpieza }}</span>
+          <button class="btn-nav" (click)="changeMonthLimpieza(1)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </button>
+        </div>
+        <div *ngIf="cleaningSchedule.length > 0; else noCleaningSchedule" class="cleaning-schedule-list">
+          <div *ngFor="let day of cleaningSchedule" class="cleaning-day-card">
+            <div class="cleaning-day-header">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+              <span class="day-label">{{ day.date | date:'EEEE, d MMMM' }}</span>
+            </div>
+            <div class="cleaning-tasks-list">
+              <div *ngFor="let task of day.tasks; let last = last" class="cleaning-task-item" [style.border-bottom]="!last ? '1px dashed #f1f5f9' : 'none'">
+                <div class="task-left">
+                  <div [class]="task.emp.includes('1') ? 'employee-tag emp1' : 'employee-tag emp2'">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                    {{ task.emp }}
+                  </div>
+                  <div class="task-details">
+                    <span class="task-time-range">{{ task.inicio }} — {{ task.fin }}</span>
+                    <span class="task-sub">Servicio de limpieza ordinario</span>
+                  </div>
+                </div>
+                <div class="task-right">
+                  <span class="hours-badge">{{ task.horas }} horas</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <ng-template #noCleaningSchedule>
+          <div class="empty-state-tab">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+            <p>No hay turnos de limpieza programados para este mes.</p>
+          </div>
+        </ng-template>
+      </div>
+
+      <!-- Contenido de Mis Recibos -->
+      <div *ngIf="seccionPrincipalActiva === 'mis-recibos'" class="tab-content">
+        <div style="max-width: 700px; margin: 0 auto; padding: 0 20px;">
+          
+          <!-- Botón de Recibos Pendientes -->
+          <div style="display: flex; justify-content: center; margin-bottom: 25px;">
+            <button class="btn" [ngClass]="mostrarPendientes ? 'btn-secondary' : 'btn-danger'" 
+                    (click)="togglePendientes()"
+                    style="padding: 10px 24px; border-radius: 25px; font-weight: 700; display: flex; align-items: center; gap: 10px; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2); transition: all 0.2s;">
+              <svg *ngIf="!mostrarPendientes" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+              <svg *ngIf="mostrarPendientes" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              {{ mostrarPendientes ? 'Volver al Historial Completo' : 'Ver Mis Recibos Pendientes' }}
+            </button>
+          </div>
+
+          <!-- VISTA 1: CALENDARIO ANUAL (Historial Completo) -->
+          <div *ngIf="!mostrarPendientes">
+            <div class="month-navigation-recibos" style="margin-bottom: 35px; display: flex; align-items: center; justify-content: center; gap: 20px;">
+              <button class="btn-nav" (click)="changeMonthRecibos(-12)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              </button>
+              <span class="month-label">{{ currentMonthLabelRecibos }}</span>
+              <button class="btn-nav" (click)="changeMonthRecibos(12)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
+            </div>
+
+            <div *ngFor="let monthGroup of allRecibosGrouped" class="property-receipts-group" style="margin-bottom: 30px; background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #e2e8f0;">
+              <h3 class="section-subtitle" style="margin: 0; border-left: 0; background: #f8fafc; padding: 15px 20px; border-bottom: 1px solid #e2e8f0; color: #1e293b; font-weight: 700;">
+                {{ monthGroup.mesNombre }}
+              </h3>
+              <table class="movimientos-table" style="margin-top: 0; border: none;">
+                <thead>
+                  <tr>
+                    <th style="width: 45%; background: white;">Propiedad</th>
+                    <th style="text-align: center; background: white;">Fecha de Pago</th>
+                    <th style="text-align: right; background: white;">Importe Recibido</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let item of monthGroup.detalles" [style.background]="item.vencido ? '#fff5f5' : 'transparent'">
+                    <td style="font-weight: 600; color: #1e293b; padding: 15px 20px;">
+                      {{ formatearPiso(item.piso) }}
+                      <small style="display: block; font-weight: 400; color: #94a3b8; font-size: 0.75rem;">{{ item.comunidad }}</small>
+                    </td>
+                    <td style="text-align: center; color: #475569;">
+                      {{ item.fecha ? (item.fecha | date:'dd/MM/yyyy') : (item.vencido ? 'Pendiente' : '-') }}
+                    </td>
+                    <td style="text-align: right; font-weight: 700; padding: 15px 20px;">
+                      <span [style.color]="item.pagado ? '#10b981' : (item.vencido ? '#ef4444' : '#94a3b8')">
+                        {{ item.pagado ? (item.importe | number:'1.2-2') + '€' : '0,00€' }}
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- VISTA 2: LISTADO DE PENDIENTES -->
+          <div *ngIf="mostrarPendientes" style="animation: fadeIn 0.3s ease;">
+            <div style="background: #fff5f5; border: 1px solid #feb2b2; padding: 15px; border-radius: 10px; margin-bottom: 20px; text-align: center;">
+              <h3 style="margin: 0; color: #c53030; font-size: 1.1rem; font-weight: 800;">
+                Tienes {{ pendingReceiptsList?.length || 0 }} recibos pendientes de pago
+              </h3>
+            </div>
+
+            <div *ngIf="!pendingReceiptsList || pendingReceiptsList.length === 0" style="text-align: center; padding: 40px; color: #64748b; background: #f0fdf4; border-radius: 12px; border: 2px dashed #bbf7d0;">
+              <p>¡Todo al día! No tienes pagos pendientes en este ejercicio.</p>
+            </div>
+
+            <div *ngFor="let item of pendingReceiptsList" class="property-receipts-group" style="margin-bottom: 12px; background: white; border-radius: 10px; border: 1px solid #fee2e2; padding: 16px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+              <div>
+                <div style="font-weight: 700; color: #1e293b;">{{ formatearPiso(item.piso) }}</div>
+                <div style="font-size: 0.8rem; color: #64748b;">{{ item.comunidad }}</div>
+                <div style="margin-top: 4px;">
+                  <span style="background: #f1f5f9; color: #475569; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">
+                    {{ item.mesNombre }} {{ item.anio }}
+                  </span>
+                </div>
+              </div>
+              <div style="text-align: right;">
+                <div style="color: #ef4444; font-weight: 800; font-size: 1.1rem;">0,00€</div>
+                <div style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; font-weight: 600;">Pendiente</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="userPisos.length === 0" class="empty-state">
+      <div class="empty-icon">🏠</div>
+      <p>No se encontraron propiedades vinculadas a este correo electrónico.</p>
+      <small>Contacte con su administrador si cree que esto es un error.</small>
+    </div>
+  </section>
+</div>
+
+<div class="portal-loading" *ngIf="loading">
+  <div class="spinner"></div>
+  <p>Cargando tu información...</p>
 </div>
