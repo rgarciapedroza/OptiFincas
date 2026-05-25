@@ -27,7 +27,12 @@ const routes: Routes = [
   },
   { path: 'clasificador', component: ClasificadorComponent },
   { path: 'optimizacion', component: OptimizacionComponent },
-  { path: 'portal-propietario', component: PortalPropietarioComponent },
+  { path: 'portal-propietario', redirectTo: 'portal-propietario/mis-propiedades', pathMatch: 'full' },
+  { path: 'portal-propietario/mis-propiedades', component: PortalPropietarioComponent },
+  { path: 'portal-propietario/mis-recibos', component: PortalPropietarioComponent },
+  { path: 'portal-propietario/finanzas', component: PortalPropietarioComponent },
+  { path: 'portal-propietario/limpieza', component: PortalPropietarioComponent },
+  { path: 'portal-propietario/contactar', component: PortalPropietarioComponent },
   { path: '', redirectTo: '/login', pathMatch: 'full' }
 ];
 

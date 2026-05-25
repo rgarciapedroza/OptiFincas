@@ -86,7 +86,7 @@ export class ComunidadesComponent implements OnInit {
       return res || ciphertext;
     } catch (e) {
       console.warn('Error desencriptando valor:', ciphertext);
-      return ciphertext;
+      return ''; // Return empty string on error
     }
   }
 
