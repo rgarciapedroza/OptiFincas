@@ -109,18 +109,17 @@ def importar_censo_pisos_controller(community_id: int, file: UploadFile, user_id
 
             # Encriptamos los datos sensibles
             encrypted_propietario = encriptar_dato(nombre_completo, cipher) if nombre_completo else None
-            encrypted_email = encriptar_dato(debug_email_val, cipher) if debug_email_val else None
             encrypted_tel1 = encriptar_dato(val_tel1, cipher) if val_tel1 else None
             encrypted_tel2 = encriptar_dato(val_tel2, cipher) if val_tel2 else None
             encrypted_obs = encriptar_dato(debug_obs_val, cipher) if debug_obs_val else None
-            print(f"DEBUG: Valores encriptados - Propietario: {encrypted_propietario[:30] if encrypted_propietario else None}..., Email: {encrypted_email[:30] if encrypted_email else None}...")
+            print(f"DEBUG: Procesando - Codigo: {codigo}, Propietario Encriptado: {encrypted_propietario[:30] if encrypted_propietario else None}...")
 
             pisos_a_insertar.append({
                 "community_id": community_id,
                 "codigo": codigo,
                 # Encriptamos los datos sensibles antes de enviarlos a la base de datos
                 "propietario": encrypted_propietario,
-                "email": encrypted_email,
+                "email": debug_email_val.strip().lower() if debug_email_val else None,
                 "telefono1": encrypted_tel1,
                 "telefono2": encrypted_tel2,
                 "observaciones": encrypted_obs,
@@ -158,7 +157,6 @@ def get_piso_controller(piso_id: int):
     cipher = Cipher(algorithms.AES(ENCRYPT_KEY), modes.CBC(ENCRYPT_IV), backend=default_backend())
     piso = response.data
     piso["propietario"] = desencriptar_dato(piso["propietario"], cipher)
-    piso["email"] = desencriptar_dato(piso["email"], cipher)
     piso["telefono1"] = desencriptar_dato(piso["telefono1"], cipher)
     piso["telefono2"] = desencriptar_dato(piso["telefono2"], cipher)
     piso["observaciones"] = desencriptar_dato(piso["observaciones"], cipher)
@@ -169,7 +167,7 @@ def create_piso_controller(piso_data: dict, user_id: str = None):
     cipher = Cipher(algorithms.AES(ENCRYPT_KEY), modes.CBC(ENCRYPT_IV), backend=default_backend())
     if user_id: piso_data["user_id"] = user_id
     
-    for field in ["propietario", "email", "telefono1", "telefono2", "observaciones"]:
+    for field in ["propietario", "telefono1", "telefono2", "observaciones"]:
         if field in piso_data and piso_data[field]:
             piso_data[field] = encriptar_dato(piso_data[field], cipher)
 
@@ -183,7 +181,7 @@ def update_piso_controller(piso_id: int, piso_data: dict, user_id: str = None):
     cipher = Cipher(algorithms.AES(ENCRYPT_KEY), modes.CBC(ENCRYPT_IV), backend=default_backend())
     
     updates = {}
-    for field in ["propietario", "email", "telefono1", "telefono2", "observaciones"]:
+    for field in ["propietario", "telefono1", "telefono2", "observaciones"]:
         if field in piso_data:
             updates[field] = encriptar_dato(str(piso_data[field]), cipher) if piso_data[field] else None
             
@@ -208,7 +206,7 @@ def update_piso_controller(piso_id: int, piso_data: dict, user_id: str = None):
 
     if response.data:
         updated = response.data[0]
-        for field in ["propietario", "email", "telefono1", "telefono2", "observaciones"]:
+        for field in ["propietario", "telefono1", "telefono2", "observaciones"]:
             updated[field] = desencriptar_dato(updated.get(field), cipher)
         return updated
     raise HTTPException(status_code=403, detail="No tienes permiso para editar este piso")

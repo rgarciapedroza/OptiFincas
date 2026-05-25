@@ -1,0 +1,137 @@
+<div class="container" style="padding-top: 20px;">
+  <div class="calendar-header">
+    <div style="display: flex; align-items: center; gap: 20px;">
+      <button class="btn-action" (click)="changeMonth(-1)" style="background: #f1f5f9; border-radius: 50%; padding: 8px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </button>
+      <h2 class="month-title" style="margin: 0; min-width: 180px; text-align: center;">{{ getViewDateLabel() }}</h2>
+      <button class="btn-action" (click)="changeMonth(1)" style="background: #f1f5f9; border-radius: 50%; padding: 8px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+      </button>
+    </div>
+    <div style="display: flex; gap: 15px; align-items: center;">
+      <div *ngIf="optimizationResult" style="text-align: right; margin-right: 10px;">
+        <span style="font-size: 0.85rem; color: #10b981; font-weight: 600; display: block;">✓ Guardado en sistema</span>
+      </div>
+      <button class="btn btn-secondary" (click)="mostrarConfiguracionOptimizacion = true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+        Modificar rutas y horarios
+      </button>
+    </div>
+  </div>
+
+  <div class="calendar-grid">
+    <div class="calendar-day-header" *ngFor="let dia of ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']">{{ dia }}</div>
+    <div class="calendar-day" *ngFor="let date of calendarDays" [class.empty]="!date" [class.past]="isPast(date)" [class.today]="isToday(date)" [class.holiday]="isHoliday(date)">
+      <span class="day-number" *ngIf="date">{{ date.getDate() }}</span>
+      <div *ngFor="let task of getTasksForDate(date)" class="calendar-task" [ngClass]="task.cssClass">
+        <small>{{ task.inicio }} - {{ task.emp }}</small>
+        <b>{{ task.comunidad }}</b>
+      </div>
+    </div>
+  </div>
+
+  <div class="actions" *ngIf="optimizationResult" style="margin-top: 20px; display: flex; justify-content: center;">
+    <button class="btn btn-success" (click)="descargarExcelOptimizacion()">Descargar Excel de Rutas</button>
+  </div>
+</div>
+
+<!-- MODAL CONFIGURACIÓN -->
+<div class="modal-overlay" *ngIf="mostrarConfiguracionOptimizacion">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div style="display: flex; align-items: center; gap: 15px;">
+        <h3 style="margin: 0;">Gestión de Rutas y Fincas</h3>
+        <button class="btn btn-success" style="padding: 6px 12px; font-size: 0.8rem; display: flex; align-items: center; gap: 5px;" (click)="prepararNuevaFinca()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          Añadir Finca
+        </button>
+      </div>
+      <button class="btn-action" (click)="mostrarConfiguracionOptimizacion = false; editandoId = null;">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+        <div class="form-group-opt">
+          <label>Nº Empleadas</label>
+          <input type="number" [(ngModel)]="numEmployees" min="1" max="10" class="input-concepto-edit" style="width: 80px;">
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button class="btn btn-danger" (click)="clearAllCommunities()" [disabled]="communities.length === 0">Borrar Lista</button>
+          <input type="file" #fileInput style="display: none" (change)="importarExcelComunidades($event)">
+          <button class="btn btn-secondary" (click)="fileInput.click()">Importar Excel</button>
+        </div>
+      </div>
+
+      <table class="movimientos-table" style="font-size: 0.85rem; margin-top: 20px;">
+        <thead>
+          <tr>
+            <th>NOMBRE / DIRECCIÓN</th>
+            <th style="text-align: center;">HORAS</th>
+            <th style="text-align: center;">DÍAS/SEM</th>
+            <th style="text-align: center;">UBICACIÓN</th>
+            <th style="text-align: center;">ACCIONES</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let c of comunidadesLimpieza">
+            <td><b>{{ c.nombre }}</b><br><small style="color: #64748b;">{{ c.direccion }}</small></td>
+            <td style="text-align: center;">{{ c.cleaning_hours }}h</td>
+            <td style="text-align: center;">{{ c.cleaning_days_per_week }}</td>
+            <td style="text-align: center;"><code style="font-size: 0.7rem;">{{ c.latitude | number:'1.2-2' }}, {{ c.longitude | number:'1.2-2' }}</code></td>
+            <td style="text-align: center;">
+              <button class="btn-action btn-edit" (click)="prepararEdicion(c)">✎</button>
+              <button class="btn-action btn-delete" (click)="eliminarComunidad(c.id)">🗑</button>
+            </td>
+          </tr>
+          <tr *ngFor="let c of communities" style="background: #fffcf0;">
+            <td><b>{{ c.address }}</b><br><small style="color: #92400e;">Importado de Excel</small></td>
+            <td style="text-align: center;">{{ c.cleaningHours }}h</td>
+            <td style="text-align: center;">{{ c.cleaningDaysPerWeek }}</td>
+            <td style="text-align: center;">-</td>
+            <td style="text-align: center;"><button class="btn-action btn-delete" (click)="removeCommunity(c.id)">×</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="modal-footer" style="justify-content: flex-end;">
+      <button class="btn-primary" (click)="calcularOptimizacion()" style="padding: 12px 30px; font-size: 0.95rem;">
+        PLANIFICAR Y ACTUALIZAR CALENDARIO
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL EDICIÓN COMUNIDAD -->
+<div class="modal-overlay" *ngIf="mostrarModalEdicionComunidad" style="z-index: 1200;">
+  <div class="modal-card" style="max-width: 600px;">
+    <div class="modal-header"><h3>{{ editandoId ? 'Editar' : 'Nueva' }} Finca</h3></div>
+    <div class="modal-body">
+      <div class="form-grid-2">
+        <div class="form-group" style="grid-column: span 2;">
+          <label>Nombre Comunidad *</label>
+          <input [(ngModel)]="nuevaComunidadForm.nombre" class="input-concepto-edit">
+        </div>
+        <div class="form-group" style="grid-column: span 2;">
+          <label>Dirección *</label>
+          <div style="display: flex; gap: 8px;">
+            <input [(ngModel)]="nuevaComunidadForm.direccion" class="input-concepto-edit" style="flex: 1;">
+            <button class="btn btn-info" (click)="buscarCoordenadas()">📍</button>
+          </div>
+        </div>
+        <div class="form-group"><label>Horas</label><input type="number" [(ngModel)]="nuevaComunidadForm.cleaningHours" class="input-concepto-edit"></div>
+        <div class="form-group"><label>Días/Semana</label><input type="number" [(ngModel)]="nuevaComunidadForm.cleaningDaysPerWeek" class="input-concepto-edit"></div>
+        <div class="form-group"><label>Latitud</label><input type="number" [(ngModel)]="nuevaComunidadForm.latitude" class="input-norm"></div>
+        <div class="form-group"><label>Longitud</label><input type="number" [(ngModel)]="nuevaComunidadForm.longitude" class="input-norm"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" (click)="mostrarModalEdicionComunidad = false">Cancelar</button>
+      <button class="btn btn-success" (click)="guardarComunidad()">Guardar Finca</button>
+    </div>
+  </div>
+</div>
+
+<div *ngIf="loading" class="loading-overlay" style="z-index: 9999;">
+  <div class="spinner"></div>
+  <p>{{ loadingMessage }}</p>
+</div>

@@ -1,0 +1,91 @@
+<div class="censo-container">
+  <div class="header-actions" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 1px solid #f1f5f9;">
+    <h3 style="margin: 0; color: #1e293b; font-weight: 700; font-size: 1.1rem;">Censo de Propietarios</h3>
+    <button class="btn btn-primary" (click)="prepararNuevoPiso()" 
+            style="padding: 8px 16px; font-size: 0.85rem; border-radius: 20px; display: flex; align-items: center; gap: 8px; background: #6366f1; box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.2);">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      Añadir Propietario
+    </button>
+  </div>
+
+  <div class="table-responsive" *ngIf="pisos.length > 0; else noPisos">
+    <table class="table">
+      <thead>
+        <tr>
+          <th style="color: #64748b; font-size: 0.75rem; text-transform: uppercase; width: 15%;">Inmueble</th>
+          <th style="color: #64748b; font-size: 0.75rem; text-transform: uppercase; width: 35%;">Propietario</th>
+          <th style="color: #64748b; font-size: 0.75rem; text-transform: uppercase; width: 20%;">Contacto</th>
+          <th style="color: #64748b; font-size: 0.75rem; text-transform: uppercase; width: 20%;">Email</th>
+          <th style="text-align: center; color: #64748b; font-size: 0.75rem; text-transform: uppercase; width: 10%;">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let p of pisos" style="transition: background 0.2s;">
+          <td style="font-weight: 700; color: #4f46e5;">{{ p.codigo }}</td>
+          <td style="font-weight: 500; color: #334155;">{{ p.propietario || '-' }}</td>
+          <td style="color: #64748b; font-size: 0.9rem;">
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+              {{ p.telefono1 }}
+            </div>
+          </td>
+          <td style="color: #64748b; font-size: 0.9rem;">{{ p.email || '-' }}</td>
+          <td style="text-align: center;">
+            <button class="btn-action btn-edit" (click)="prepararEdicionPiso(p)" title="Editar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            </button>
+            <button class="btn-action btn-delete" (click)="eliminarPiso(p.id || 0)" title="Eliminar" style="margin-left: 8px;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ng-template #noPisos>
+    <div class="empty-state">No hay propietarios registrados en esta comunidad.</div>
+  </ng-template>
+
+  <!-- Modal de Edición -->
+  <div class="modal-overlay" *ngIf="mostrarModalEdicionPiso">
+    <div class="modal-content">
+      <h4>{{ editandoPisoId ? 'Editar' : 'Nuevo' }} Propietario</h4>
+      <form (ngSubmit)="guardarPiso()">
+        <div class="form-group">
+          <label>Código (ej: 1A, 2B)</label>
+          <input type="text" [(ngModel)]="pisoForm.codigo" name="codigo" required>
+        </div>
+        <div class="form-group">
+          <label>Nombre Propietario</label>
+          <input type="text" [(ngModel)]="pisoForm.propietario" name="propietario">
+        </div>
+        <div class="form-group">
+          <label>Teléfono 1</label>
+          <input type="text" [(ngModel)]="pisoForm.telefono1" name="tel1">
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" [(ngModel)]="pisoForm.email" name="email">
+        </div>
+        <div class="form-group">
+          <label>Observaciones</label>
+          <textarea [(ngModel)]="pisoForm.observaciones" name="obs"></textarea>
+        </div>
+        <div class="modal-buttons">
+          <button type="button" class="btn btn-secondary" (click)="mostrarModalEdicionPiso = false">Cancelar</button>
+          <button type="submit" class="btn btn-primary" [disabled]="loading">
+            {{ loading ? 'Guardando...' : 'Guardar' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<style>
+  .table { width: 100%; border-collapse: collapse; margin-top: 10px; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .table th, .table td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #f1f5f9; }
+  .table th { background: #f8fafc; font-weight: 600; color: #475569; }
+  .empty-state { padding: 40px; text-align: center; color: #64748b; background: white; border-radius: 8px; border: 2px dashed #e2e8f0; }
+</style>

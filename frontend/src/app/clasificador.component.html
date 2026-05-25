@@ -1,0 +1,118 @@
+<div class="container">
+  <div *ngIf="error" class="error show">{{ error }}</div>
+
+  <!-- PANTALLA 1: UPLOAD -->
+  <div *ngIf="pantallaActual === 1" class="pantalla show card-container">
+    <h2 class="section-title">Carga de Extractos Bancarios</h2>
+    
+    <!-- Selector de Comunidad de Referencia -->
+    <div class="info-section-professional">
+      <div class="form-group-opt">
+        <label class="form-label-professional">1. Seleccione una comunidad *</label>
+        <select [(ngModel)]="clasificadorCommunityId" class="select-professional" style="max-width: 500px;">
+          <option [ngValue]="null">--- Seleccione una comunidad ---</option>
+          <option *ngFor="let com of comunidadesDB" [ngValue]="com.id">{{ com.nombre }}</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="upload-grid">
+      <!-- Zona Extracto -->
+      <div class="upload-zone" [class.has-file]="selectedFileExtracto" (click)="extInput.click()" style="max-width: 600px; margin: 0 auto; min-height: 220px;">
+        <div class="upload-icon-pulse" *ngIf="!selectedFileExtracto">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        </div>
+        <div class="upload-text" *ngIf="!selectedFileExtracto" style="margin-top: 15px;">
+          <b style="font-size: 1.1rem; color: #1e293b;">Sube el extracto bancario</b>
+          <span style="display: block; margin-top: 5px; color: #94a3b8;">Haz clic para buscar o arrastra el PDF/Excel aquí</span>
+        </div>
+        
+        <div class="file-upload-badge success" *ngIf="selectedFileExtracto" (click)="$event.stopPropagation()">
+          <div class="file-icon-bg">📄</div>
+          <div class="file-details" style="padding-left: 10px;">
+            <span class="file-name">{{ selectedFileExtracto.name }}</span>
+            <span class="file-status">Listo para procesar</span>
+          </div>
+          <button class="remove-file-btn" (click)="selectedFileExtracto = null">×</button>
+        </div>
+        <input #extInput type="file" style="display:none" (change)="onFileSelected($event)">
+      </div>
+    </div>
+
+    <div class="btn-container" style="justify-content: center; margin-top: 20px;">
+      <button class="btn-primary-action" [disabled]="!selectedFileExtracto || !clasificadorCommunityId || loading" (click)="procesar()">
+        <span *ngIf="!loading">Comenzar</span>
+        <span *ngIf="loading">Analizando...</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- PANTALLA 2: REVISIÓN -->
+  <div *ngIf="pantallaActual === 2" class="pantalla show">
+    <div class="summary-cards">
+      <div class="card card-ingreso">
+        <small>INGRESOS</small>
+        <span class="val">{{ resumen.total_ingresos | number:'1.2-2' }}€</span>
+      </div>
+      <div class="card card-gasto">
+        <small>GASTOS</small>
+        <span class="val">{{ resumen.total_gastos | number:'1.2-2' }}€</span>
+      </div>
+      <div class="card card-neto">
+        <small>NETO</small>
+        <span class="val">{{ resumen.saldo_neto | number:'1.2-2' }}€</span>
+      </div>
+    </div>
+
+    <table class="movimientos-table">
+      <thead>
+        <tr>
+          <th>FECHA</th>
+          <th *ngIf="!isCsv">ORDENANTE</th>
+          <th>OBSERVACIONES</th>
+          <th style="text-align: right;">IMPORTE</th>
+          <th style="text-align: right;">SALDO</th>
+          <th style="text-align: center;">CONCEPTO</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let mov of movimientos">
+          <td>{{ mov.FECHA }}</td>
+          <td *ngIf="!isCsv">{{ mov.ORDENANTE }}</td>
+          <td style="font-size: 0.9em; max-width: 300px;">{{ mov.OBSERVACIONES }}</td>
+          <td [style.color]="mov.IMPORTE > 0 ? '#27ae60' : '#e74c3c'" style="text-align: right; font-weight: bold;">
+            {{ mov.IMPORTE | number:'1.2-2' }}€
+          </td>
+          <td style="text-align: right; color: #7f8c8d;">{{ mov.SALDO | number:'1.2-2' }}€</td>
+          <td style="text-align: center; min-width: 160px;">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;">
+              <svg *ngIf="mov.es_historico" width="14" height="14" viewBox="0 0 24 24" fill="#6366f1" style="flex-shrink: 0; cursor: pointer; transition: transform 0.2s;">
+                <circle cx="12" cy="12" r="10"/>
+              </svg>
+              <input [(ngModel)]="mov.CONCEPTO" class="input-concepto-edit" style="text-align: center;">
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="actions">
+      <button class="btn btn-info" (click)="guardarEnBaseDeDatos()">Guardar</button>
+      <button class="btn btn-secondary" (click)="pantallaActual = 1">Volver</button>
+    </div>
+  </div>
+
+  <!-- PANTALLA 3: ÉXITO -->
+  <div *ngIf="pantallaActual === 3" class="success-card">
+    <div class="success-icon">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+        <path d="M5 13l4 4L19 7"/>
+      </svg>
+    </div>
+    <h2>¡Procesado con éxito!</h2>
+    <p>Los movimientos han sido clasificados y guardados correctamente en la base de datos.</p>
+    <div class="actions">
+      <button class="btn btn-primary" (click)="pantallaActual = 1">Nuevo proceso</button>
+    </div>
+  </div>
+</div>
