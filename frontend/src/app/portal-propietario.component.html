@@ -1,0 +1,13 @@
+<div class="container" *ngIf="userPiso">
+  <div class="card-container">
+    <div style="border-bottom: 1px solid #eee; padding-bottom: 20px; margin-bottom: 20px;">
+        <h2 style="margin: 0; color: #2c3e50;">Bienvenido, {{ userPiso.propietario }}</h2>
+        <p style="color: #666;">Portal del propietario - Vivienda: <strong>{{ userPiso.codigo }}</strong></p>
+    </div>
+    
+    <div class="info-section" style="background: #f0f7ff; border-left-color: #3498db;">
+        <h3 style="margin-top: 0; font-size: 1.1rem; color: #2980b9;">Información de su comunidad</h3>
+        <p>Aquí podrá consultar los próximos turnos de limpieza y el estado de las cuentas de su edificio.</p>
+    </div>
+  </div>
+</div>

@@ -96,12 +96,37 @@ export class AuthComponent {
         const { error } = await this.supabase.signInWithPassword(this.email, this.password);
         if (error) throw error;
       } else {
+        // VALIDACIÓN PREVIA: Verificar si el email está en la base de datos de propietarios
+        const emailNorm = this.email.toLowerCase().trim();
+        const resAuth = await this.supabase.verificarEmailAutorizado(emailNorm);
+        
+        if (resAuth.error) {
+          console.error('[RPC ERROR]', resAuth.error);
+          this.error = 'Error de conexión con el servidor de validación.';
+          this.loading = false;
+          return;
+        }
+
+        // Verificamos explícitamente que el resultado sea true
+        if (resAuth.data !== true) {
+          this.error = 'Su correo no está registrado en ninguna comunidad. Por favor, póngase en contacto con el administrador.';
+          this.loading = false;
+          return;
+        }
+
         const { error } = await this.supabase.signUp(this.email, this.password);
         if (error) throw error;
         alert('¡Registro exitoso! Por favor, revisa tu correo electrónico para confirmar tu cuenta.');
       }
     } catch (err: any) {
-      this.error = err.message || 'Ocurrió un error inesperado';
+      console.error('[AUTH ERROR]', err);
+      
+      if (err.message?.includes('rate limit')) {
+        this.error = 'Límite de seguridad alcanzado: Supabase no permite enviar más correos de confirmación por ahora. Por favor, espera una hora o contacta al administrador.';
+      } else {
+        this.error = err.error_description || err.message || 'Error de validación: Verifique los datos.';
+      }
+
     } finally {
       this.loading = false;
     }
