@@ -16,8 +16,13 @@ export class SupabaseService {
         detectSessionInUrl: true,
         flowType: 'pkce',
         storageKey: 'optifincas-auth-token',
-        lockType: 'memory'
-      } as any
+        // Forzamos el uso de localStorage para evitar pérdidas de sesión en navegadores
+        // con políticas de cookies estrictas o LockManager bloqueado.
+        storage: window.localStorage,
+        // Implementación No-op del Lock para evitar el error "immediately failed" en localhost.
+        // Esto evita que Supabase intente usar navigator.locks que falla en algunos navegadores/entornos.
+        lock: async (name: any, acquireTimeout: any, fn: any) => await fn(),
+      }
     });
   }
 
@@ -153,6 +158,18 @@ export class SupabaseService {
       .eq('community_id', communityId)
       .order('codigo', { ascending: true });
     return { data, error };
+  }
+
+  async verificarEmailAutorizado(email: string) {
+    // Llamamos a una función segura en la base de datos
+    return await this.supabase.rpc('verificar_email_autorizado', { email_a_buscar: email });
+  }
+
+  async buscarPisoPorEmail(email: string) {
+    return await this.supabase
+      .from('pisos')
+      .select('*')
+      .ilike('email', email.trim());
   }
 
   async borrarCensoComunidad(communityId: number) {
@@ -314,15 +331,11 @@ export class SupabaseService {
   }
 
   async getPlanificacion(mes: number, anio: number) {
-    const { data: { session } } = await this.supabase.auth.getSession();
-    if (!session) return { data: null, error: new Error("No hay sesión activa") };
-
     return await this.supabase
       .from('planificaciones')
       .select('datos')
       .eq('mes', mes)
       .eq('anio', anio)
-      .eq('user_id', session.user.id)
       .maybeSingle();
   }
 
