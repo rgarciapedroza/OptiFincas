@@ -122,18 +122,22 @@ async def confirmar_route(
 
 @router.post("/descargar")
 async def descargar_route(
-    movimientos_actualizados: List[Dict],
-    formato: str
+    movimientos_actualizados: List[Dict] = Body(...),
+    formato: str = "csv",
+    mes: int = 1,
+    anio: int = 2024
 ):
     """Descarga los movimientos en el formato especificado."""
-    return await descargar_controller(movimientos_actualizados, formato)
+    return await descargar_controller(movimientos_actualizados, formato, mes, anio)
 
 @router.post("/descargar-excel")
 async def descargar_excel_route(
-    movimientos_actualizados: List[Dict]
+    movimientos_actualizados: List[Dict] = Body(...),
+    mes: int = 1,
+    anio: int = 2024
 ):
     """Descarga los movimientos en formato Excel."""
-    return await descargar_excel_controller(movimientos_actualizados)
+    return await descargar_excel_controller(movimientos_actualizados, mes, anio)
 
 @router.post("/entrenar")
 async def entrenar_route(
