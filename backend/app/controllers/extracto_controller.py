@@ -16,7 +16,7 @@ from app.servicios.supabase_db import supabase_client, supabase_service_role_cli
 from app.procesamiento.generar_excel import crear_excel_actualizado, crear_excel_informe_finanzas
 from app.procesamiento.procesar_excel_contable import obtener_nombre_hoja
 from .security import encriptar_dato, desencriptar_dato
-from app.schemas.extracto import FinanzasReportRequest, MovimientoClasificado
+from app.schemas import FinanzasReportRequest, MovimientoClasificadoExtracto
 
 # Configuración de logging profesional
 logger = logging.getLogger(__name__)
@@ -185,7 +185,7 @@ async def procesar_extracto_db_controller(
     }
 
 async def confirmar_controller(
-    data: Union[FinanzasReportRequest, List[MovimientoClasificado]], 
+    data: Union[FinanzasReportRequest, list[MovimientoClasificadoExtracto]], 
     modo: str = "mensual", 
     community_name: Optional[str] = None, 
     mes: Optional[int] = None, 

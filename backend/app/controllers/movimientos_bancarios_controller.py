@@ -1,4 +1,5 @@
 import io
+import logging
 import pandas as pd
 from fastapi import UploadFile, HTTPException, BackgroundTasks
 from typing import List, Dict
@@ -7,6 +8,8 @@ from app.servicios.procesar_extracto import limpiar_importe, normalizar_fecha, l
 import re
 from datetime import datetime
 from .security import encriptar_dato
+
+logger = logging.getLogger(__name__)
 
 async def importar_movimientos_controller(community_id: str, file: UploadFile, user_id: str):
     """
@@ -37,7 +40,7 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
     skipped_sheets_info = []
 
     for sheet_name in excel_file.sheet_names:
-        print(f"Analizando hoja: '{sheet_name}'...")
+        logger.info(f"Analizando hoja: '{sheet_name}'...")
         # Extraer mes y año del nombre de la hoja (ej: "Enero 2024")
         mes_contable = None
         anio_contable = None
@@ -54,7 +57,7 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
         # VALIDACIÓN: Si no se detecta Mes y Año, se omite la hoja por completo
         if mes_contable is None or anio_contable is None:
             skipped_sheets_info.append({"name": sheet_name, "reason": "No cumple con el formato 'Mes Año' o no se pudo extraer mes/año."})
-            print(f"Omitiendo hoja '{sheet_name}': No cumple con el formato 'Mes Año' o no se pudo extraer mes/año.")
+            logger.warning(f"Omitiendo hoja '{sheet_name}': No cumple con el formato 'Mes Año' o no se pudo extraer mes/año.")
             continue
 
         try:
@@ -62,7 +65,7 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
             df = load_df_from_excel_sheet_robust(excel_file, sheet_name)
             if df.empty:
                 skipped_sheets_info.append({"name": sheet_name, "reason": "DataFrame vacío o no se detectaron columnas válidas."})
-                print(f"Omitiendo hoja '{sheet_name}': DataFrame vacío o no se detectaron columnas válidas.")
+                logger.warning(f"Omitiendo hoja '{sheet_name}': DataFrame vacío o no se detectaron columnas válidas.")
                 continue
             
             movimientos_hoja = []
@@ -78,7 +81,7 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
 
             if not all([col_fecha, col_importe]):
                 skipped_sheets_info.append({"name": sheet_name, "reason": f"Columnas esenciales no encontradas (Fecha='{col_fecha}', Importe='{col_importe}')."})
-                print(f"Omitiendo hoja '{sheet_name}': Columnas esenciales no encontradas. Detectadas: Fecha='{col_fecha}', Importe='{col_importe}'")
+                logger.warning(f"Omitiendo hoja '{sheet_name}': Columnas esenciales no encontradas. Detectadas: Fecha='{col_fecha}', Importe='{col_importe}'")
                 continue
 
             validas_en_hoja = 0
@@ -162,7 +165,7 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
                     validas_en_hoja += 1
 
             if movimientos_hoja:
-                print(f"Insertando {validas_en_hoja} movimientos de la hoja '{sheet_name}'...")
+                logger.info(f"Insertando {validas_en_hoja} movimientos de la hoja '{sheet_name}'...")
                 # Borramos registros previos para el mismo periodo y comunidad para evitar duplicados.
                 # Gracias al ON DELETE CASCADE configurado en la base de datos, esto eliminará 
                 # automáticamente también los movimientos antiguos vinculados a esos extractos.
@@ -199,7 +202,7 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
             processed_sheets_info.append({"name": sheet_name, "count": validas_en_hoja})
         except Exception as e:
             skipped_sheets_info.append({"name": sheet_name, "reason": f"Error interno: {str(e)}"})
-            print(f"Error procesando hoja '{sheet_name}': {e}")
+            logger.error(f"Error procesando hoja '{sheet_name}': {e}")
 
     return {
         "status": "success",
