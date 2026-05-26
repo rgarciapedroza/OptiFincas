@@ -25,6 +25,8 @@ El sistema se compone de dos partes principales:
 
 La comunicación entre el Frontend y el Backend se realiza a través de la API REST.
 
+El sistema está completamente **contenedorizado** con Docker, lo que garantiza su portabilidad.
+
 ```
 OptiFincas/
 ├── backend/        # Contiene la aplicación FastAPI (Python)
