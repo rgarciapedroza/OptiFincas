@@ -1,17 +1,26 @@
-from fastapi import FastAPI
+import logging
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from app.api.rutas import router as api_router
 from app.api.optimizacion import router as optimizacion_router
 from app.api.contacto import router as contacto_router
-import os, fastapi, logging
 
 # Configuración de Logging Profesional
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger("OptiFincas")
 
-app = FastAPI(title="API Procesador de Extractos")
+app = FastAPI(
+    title="OptiFincas API",
+    description="Sistema inteligente de gestión de comunidades y optimización de recursos.",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,51 +32,44 @@ app.add_middleware(
 
 app.include_router(api_router, prefix="/api")
 app.include_router(contacto_router, prefix="/api/contacto")
-# El router de movimientos bancarios ya está incluido en api_router
 app.include_router(optimizacion_router, prefix="/api/optimizacion")
 
-# --- Servir archivos estáticos de Angular (tras hacer npm run build) ---
-# Calculamos la ruta absoluta a la carpeta 'dist' del frontend
-base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-frontend_dist_root = os.path.join(base_dir, "frontend", "dist")
+# --- Manejador Global de Excepciones ---
 
-frontend_path = None
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Captura cualquier error no controlado y devuelve un JSON estándar."""
+    logger.error(f"Error no controlado en {request.url}: {str(exc)}", exc_info=True)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "status": "error",
+            "message": "Ocurrió un error interno en el servidor de OptiFincas.",
+            "detail": str(exc) if app.debug else "Consulte los logs para más información."
+        }
+    )
 
-logger.info("--- Diagnóstico de Frontend ---")
-logger.info(f"Ruta raíz buscada: {frontend_dist_root}")
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Maneja errores de validación de Pydantic (Datos mal formados)."""
+    logger.warning(f"Error de validación en {request.url}: {exc.errors()}")
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "status": "error",
+            "message": "Los datos enviados no son válidos.",
+            "errors": exc.errors()
+        }
+    )
 
-# Estrategias para encontrar el 'index.html' dentro de la carpeta 'dist'
-# 1. Directamente en 'dist/' (ej: frontend/dist/index.html)
-if os.path.exists(os.path.join(frontend_dist_root, "index.html")):
-    frontend_path = frontend_dist_root
-# 2. En un subdirectorio de 'dist/' (ej: frontend/dist/optifincas/index.html)
-elif os.path.isdir(frontend_dist_root):
-    print(f"Contenido de dist: {os.listdir(frontend_dist_root)}")
-    for entry in os.listdir(frontend_dist_root):
-        potential_dir = os.path.join(frontend_dist_root, entry)
-        if os.path.isdir(potential_dir) and os.path.exists(os.path.join(potential_dir, "index.html")):
-            frontend_path = potential_dir
-            break
-        # 3. En un subdirectorio 'browser' dentro de un subdirectorio (ej: frontend/dist/optifincas/browser/index.html)
-        if os.path.isdir(potential_dir):
-            browser_path = os.path.join(potential_dir, "browser")
-            if os.path.exists(os.path.join(browser_path, "index.html")):
-                frontend_path = browser_path
-                break
-
-if frontend_path and os.path.exists(os.path.join(frontend_path, "index.html")):
-    logger.info(f"✅ Frontend detectado y listo en: {frontend_path}")
-    app.mount("/", StaticFiles(directory=frontend_path, html=True), name="static")
-
-    @app.get("/{full_path:path}")
-    async def serve_frontend(full_path: str):
-        # Si la ruta empieza por api/, no devolvemos el index.html
-        if full_path.startswith("api/"):
-            raise fastapi.HTTPException(status_code=404, detail="API route not found")
-        return FileResponse(os.path.join(frontend_path, "index.html"))
-else:
-    logger.warning(f"⚠️  ERROR: No se encontró index.html en {frontend_dist_root} o sus subdirectorios.")
-    logger.info("Asegúrate de haber ejecutado 'npm run build' en la carpeta frontend.")
+@app.get("/", tags=["Estado"])
+async def root():
+    """Endpoint de comprobación de salud de la API."""
+    return {
+        "app": "OptiFincas API",
+        "status": "online",
+        "documentation": "/docs"
+    }
 
 if __name__ == "__main__":
     import uvicorn
