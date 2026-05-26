@@ -1,11 +1,17 @@
 const express = require('express');
 const path = require('path');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 const app = express();
 const fs = require('fs'); // Import fs module
 
 const PORT = process.env.PORT || 4200;
 
-// Serve static files from the 'dist' directory
+// Proxy config: Forward /api requests to the backend container
+app.use('/api', createProxyMiddleware({
+    target: 'http://backend:8000',
+    changeOrigin: true
+}));
+
 app.use(express.static(path.join(__dirname, 'dist')));
 
 // Determine the actual path to the Angular app within 'dist'
