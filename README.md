@@ -31,7 +31,7 @@ El sistema está completamente **contenedorizado** con Docker, lo que garantiza 
 OptiFincas/
 ├── backend/        # Contiene la aplicación FastAPI (Python)
 ├── frontend/       # Contiene la aplicación Angular (TypeScript/Node.js)
-├── iniciar_proyecto.py # Script para iniciar ambos servidores en desarrollo
+├── docker-compose.yml # Orquestación de contenedores
 └── README.md
 ```
 
@@ -89,18 +89,15 @@ Categorías por defecto:
 
 ## Ejecutar el Sistema
 
-Para iniciar el sistema completo (Backend y Frontend) en modo desarrollo:
+Para iniciar el sistema completo (Backend, Frontend y Base de Datos) de forma profesional:
 
-1.  **Abre una terminal** en la carpeta raíz del proyecto (`OptiFincas/`).
-2.  **Ejecuta el script de inicio:**
+1.  Asegúrate de tener instalado **Docker Desktop**.
+2.  Abre una terminal en la carpeta raíz del proyecto (`OptiFincas/`).
+3.  Ejecuta el comando:
     ```bash
-    python iniciar_proyecto.py
+    docker compose up --build
     ```
-    Este script se encargará de:
-    *   Verificar e instalar las dependencias de Python y Node.js.
-    *   Iniciar el servidor Backend de FastAPI en `http://127.0.0.1:8000`.
-    *   Iniciar el servidor de desarrollo de Angular en `http://localhost:4200`.
-    *   Abrir automáticamente tu navegador en la URL del Frontend.
+4.  Accede a la aplicación en `http://localhost:4200` y a la documentación de la API en `http://localhost:8000/docs`.
 
 ## API Endpoints
 

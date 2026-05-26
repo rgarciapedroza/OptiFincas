@@ -2,20 +2,9 @@ import { Component, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { SupabaseService } from './supabase.service';
 import { Router } from '@angular/router';
-import * as CryptoJS from 'crypto-js';
 import {
-  Piso,
-  ComunidadDB,
-  ExtractoProcesado,
-  MovimientoBancario,
-  FinanzasData,
-  ImportProgress,
-  DetalleHistorico
+  ComunidadDB
 } from './models'; // Importamos las interfaces
-
-// Mismas claves que en el backend
-const ENCRYPT_KEY = CryptoJS.enc.Utf8.parse('OptiFincasSecretKey2024_Security');
-const ENCRYPT_IV = CryptoJS.enc.Utf8.parse('OptiFincas_IV_16');
 
 @Component({
   selector: 'app-comunidades',
@@ -37,29 +26,6 @@ export class ComunidadesComponent implements OnInit {
   editandoId: string | null = null;
   mostrarModalEdicionComunidad = false;
 
-  // Dashboard State (Stubs to fix compilation errors)
-  comunidadSeleccionada: ComunidadDB | null = null;
-  seccionDashboard: string = 'propietarios';
-  pisos: Piso[] = [];
-  pisoForm: any = {};
-  editandoPisoId: number | null = null;
-  mostrarModalEdicionPiso = false;
-  extractoSeleccionado: ExtractoProcesado | null = null;
-  selectedMovimientosFile: File | null = null;
-  cargandoMovimientos = false;
-  importProgress: ImportProgress | null = null;
-  currentYearDashboard: number = new Date().getFullYear();
-  filteredExtractosList: ExtractoProcesado[] = [];
-  filteredMovimientosBancarios: MovimientoBancario[] = [];
-  movimientosBancarios: MovimientoBancario[] = [];
-  cambiosRealizados = false;
-  finanzasData: FinanzasData = { 
-    ingresosPorPiso: [], 
-    gastos: [], 
-    resumenCuentas: { saldoAnterior: 0, ingresosMes: 0, gastosMes: 0, saldoTotal: 0 } 
-  };
-  extractos: ExtractoProcesado[] = [];
-
   constructor(private http: HttpClient, private supabase: SupabaseService, private router: Router) {}
 
   async ngOnInit() {
@@ -73,39 +39,6 @@ export class ComunidadesComponent implements OnInit {
   }
 
   // --- Métodos de Utilidad ---
-  // Función para desencriptar datos de la base de datos
-  decryptVal(ciphertext: string): string {
-    if (!ciphertext || ciphertext === '-' || ciphertext === 'nan') return '';
-    try {
-      const decrypted = CryptoJS.AES.decrypt(ciphertext, ENCRYPT_KEY, {
-        iv: ENCRYPT_IV,
-        mode: CryptoJS.mode.CBC,
-        padding: CryptoJS.pad.Pkcs7
-      });
-      const res = decrypted.toString(CryptoJS.enc.Utf8);
-      return res || ciphertext;
-    } catch (e) {
-      console.warn('Error desencriptando valor:', ciphertext);
-      return ''; // Return empty string on error
-    }
-  }
-
-  // Función para encriptar datos antes de enviarlos a la base de datos
-  encryptVal(plaintext: string): string {
-    if (!plaintext) return '';
-    try {
-      const encrypted = CryptoJS.AES.encrypt(plaintext, ENCRYPT_KEY, {
-        iv: ENCRYPT_IV,
-        mode: CryptoJS.mode.CBC,
-        padding: CryptoJS.pad.Pkcs7
-      });
-      return encrypted.toString();
-    } catch (e) {
-      console.error('Error encriptando valor:', plaintext, e);
-      return plaintext;
-    }
-  }
-
   // Función para convertir el formato de piso visual (ej. "2º J") a su formato raw (ej. "2J")
   unformatPiso(formattedPiso: string): string {
     if (!formattedPiso || formattedPiso.toLowerCase().includes('desconocido') || formattedPiso.toLowerCase().includes('identificar') || formattedPiso.toLowerCase().includes('asignar')) return '';
@@ -281,30 +214,4 @@ export class ComunidadesComponent implements OnInit {
     this.router.navigate(['/comunidades', com.id]);
   }
 
-  // Dashboard Methods (Stubs to fix compilation errors)
-  setSeccion(seccion: string) { this.seccionDashboard = seccion; }
-  onCensoFileSelected(event: any) {}
-  onMovimientosFileSelected(event: any) {}
-  prepararNuevoPiso() { this.mostrarModalEdicionPiso = true; }
-  borrarCensoCompleto() {}
-  prepararEdicionPiso(p: Piso) {
-    this.pisoForm = { ...p };
-    this.editandoPisoId = p.id || null;
-    this.mostrarModalEdicionPiso = true;
-  }
-  eliminarPiso(id: number) {}
-  cancelarEdicionPiso() { this.mostrarModalEdicionPiso = false; }
-  guardarPiso() {}
-  importarMovimientosParaComunidad(id: string) {}
-  navegarExtractos(dir: number) {}
-  canNavigateExtractos(dir: number): boolean { return true; }
-  seleccionarExtracto(ext: any) { this.extractoSeleccionado = ext; }
-  eliminarExtracto(ext: any) {}
-  generarReportePDF(tipo: string) {}
-  actualizarMovimientosDashboard() {}
-  cerrarDashboard() {
-    this.comunidadSeleccionada = null;
-    this.extractoSeleccionado = null;
-    this.router.navigate(['/comunidades']);
-  }
 }

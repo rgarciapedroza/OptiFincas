@@ -7,11 +7,11 @@ from app.servicios.supabase_db import supabase_client, supabase_service_role_cli
 from app.servicios.procesar_extracto import limpiar_importe, normalizar_fecha, load_df_from_excel_sheet_robust, detectar_columnas, buscar_piso_regex_en_fila
 import re
 from datetime import datetime
-from app.controllers.security import encriptar_dato
+from app.controllers.security import encriptar_dato, desencriptar_dato
 
 logger = logging.getLogger(__name__)
 
-async def importar_movimientos_controller(community_id: str, file: UploadFile, user_id: str):
+async def importar_movimientos_controller(community_id: int, file: UploadFile, user_id: str):
     """
     Importa movimientos bancarios desde un archivo Excel (con múltiples hojas)
     y los asocia a una comunidad específica, registrando el extracto.
@@ -149,7 +149,7 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
                         piso_detectado = None
 
                     movimientos_hoja.append({
-                        "community_id": int(community_id),
+                        "community_id": community_id,
                         "fecha": fecha_db,
                         # Encriptamos datos sensibles durante la importación, sin pasar el objeto cipher
                         "concepto_original": encriptar_dato(obs_str) if obs_str and obs_str.lower() != "nan" else None,
@@ -213,7 +213,7 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
     }
 
 
-async def get_movimientos_by_community_controller(community_id: str, user_id: str):
+async def get_movimientos_by_community_controller(community_id: int, user_id: str):
     """
     Obtiene todos los movimientos bancarios asociados a una comunidad específica
     para el usuario autenticado.
@@ -222,13 +222,16 @@ async def get_movimientos_by_community_controller(community_id: str, user_id: st
         response = supabase_client.table("movimientos") \
             .select("*") \
             .eq("community_id", community_id) \
-            .eq("user_id", user_id) \
             .order("fecha", desc=True) \
             .execute()
 
         if response.data:
             # Convertir Decimal a float para JSON serialización
             for mov in response.data:
+                # DESENCRIPTACIÓN EN BACKEND: El frontend ya no necesita las llaves
+                mov["concepto_original"] = desencriptar_dato(mov.get("concepto_original"))
+                mov["ordenante"] = desencriptar_dato(mov.get("ordenante"))
+                
                 if 'importe' in mov and isinstance(mov['importe'], str):
                     try:
                         mov['importe'] = float(mov['importe'])
@@ -240,7 +243,7 @@ async def get_movimientos_by_community_controller(community_id: str, user_id: st
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al obtener movimientos: {e}")
 
-async def get_extractos_by_community_controller(community_id: str, user_id: str):
+async def get_extractos_by_community_controller(community_id: int, user_id: str):
     """
     Obtiene todos los extractos procesados asociados a una comunidad específica.
     """
@@ -269,3 +272,78 @@ async def eliminar_extracto_controller(extracto_id: int):
         return {"status": "success", "message": "Registro eliminado correctamente"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al eliminar registro: {e}")
+
+async def get_finanzas_comunidad_controller(community_id: int, mes: int, anio: int):
+    """
+    Calcula el estado financiero de una comunidad para un mes dado.
+    Lógica centralizada en el backend para Matrícula de Honor.
+    """
+    try:
+        # 1. Obtener el extracto correspondiente
+        ext_res = supabase_client.table("extractos_procesados") \
+            .select("id") \
+            .eq("comunidad_id", community_id) \
+            .eq("mes_contable", mes) \
+            .eq("anio_contable", anio) \
+            .maybeSingle().execute()
+        
+        if not ext_res.data:
+            return None
+            
+        extracto_id = ext_res.data['id']
+
+        # 2. Obtener movimientos y pisos
+        movs_res = supabase_client.table("movimientos").select("*").eq("extracto_id", extracto_id).execute()
+        pisos_res = supabase_client.table("pisos").select("codigo").eq("community_id", community_id).execute()
+        
+        if not movs_res.data:
+            return None
+
+        df = pd.DataFrame(movs_res.data)
+        # Asegurar tipos
+        df['importe'] = df['importe'].apply(limpiar_importe)
+        
+        ingresos = df[df['importe'] > 0]
+        gastos = df[df['importe'] < 0]
+
+        # 3. Resumen de Ingresos por Piso
+        resumen_pisos = []
+        for p in pisos_res.data:
+            codigo = p['codigo']
+            # Filtrar movimientos que coincidan con el piso (insensible a formato)
+            # Usamos una lógica similar a la del buscador de pisos
+            movs_piso = ingresos[ingresos['piso_detectado'].str.contains(codigo, na=False, case=False)]
+            total = float(movs_piso['importe'].sum())
+            
+            resumen_pisos.append({
+                "codigo": codigo,
+                "importe": total,
+                "pagado": len(movs_piso) > 0,
+                "fecha": movs_piso.iloc[0]['fecha'] if len(movs_piso) > 0 else None
+            })
+
+        # 4. Resumen de Gastos
+        resumen_gastos = gastos.groupby('categoria')['importe'].sum().abs().reset_index()
+        resumen_gastos = resumen_gastos.rename(columns={'categoria': 'concepto', 'importe': 'importe'})
+        resumen_gastos = resumen_gastos.to_dict('records')
+
+        # 5. Totales
+        total_ingresos = float(ingresos['importe'].sum())
+        total_gastos = float(gastos['importe'].sum().abs())
+        # Saldo final (del último movimiento si existe saldo_resultante)
+        df_sorted = df.sort_values('fecha', ascending=False)
+        saldo_total = float(df_sorted.iloc[0]['saldo_resultante']) if 'saldo_resultante' in df.columns else 0
+
+        return {
+            "ingresosPorPiso": resumen_pisos,
+            "gastos": resumen_gastos,
+            "resumenCuentas": {
+                "saldoAnterior": round(saldo_total - total_ingresos + total_gastos, 2),
+                "ingresosMes": round(total_ingresos, 2),
+                "gastosMes": round(total_gastos, 2),
+                "saldoTotal": round(saldo_total, 2)
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error calculando finanzas: {e}")
+        raise HTTPException(status_code=500, detail="Error al calcular el informe financiero")

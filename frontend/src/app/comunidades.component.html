@@ -1,8 +1,8 @@
 <!-- Mensaje de error global para este componente -->
 <div *ngIf="error" class="error show">{{ error }}</div>
 
-<!-- VISTA LISTADO Y ALTA (Solo si no hay comunidad seleccionada) -->
-<div class="card-container" *ngIf="!comunidadSeleccionada">
+<!-- VISTA LISTADO Y ALTA -->
+<div class="card-container">
   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid #f1f5f9; padding-bottom: 15px;">
     <h2 class="section-title" style="margin: 0;">Gestión de Comunidades</h2>
     <button class="btn btn-success" (click)="prepararNuevaFinca()" style="border-radius: 20px; padding: 8px 20px; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2);">
