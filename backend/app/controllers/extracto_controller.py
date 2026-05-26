@@ -111,10 +111,10 @@ async def procesar_extracto_db_controller(
             print(f"[DEBUG extracto_controller] Cargados {len(response_movs.data)} movimientos históricos de la base de datos para la comunidad {community_id}")
             
             # DESENCRIPTAR datos históricos para que el buscador pueda trabajar con texto plano
-            movs_desencriptados = []
+            movs_desencriptados = [] # Ya no necesitamos crear el objeto cipher aquí
             for m in response_movs.data:
-                m["concepto_original"] = desencriptar_dato(m.get("concepto_original"))
-                m["ordenante"] = desencriptar_dato(m.get("ordenante"))
+                m["concepto_original"] = desencriptar_dato(m.get("concepto_original")) # Sin pasar el objeto cipher
+                m["ordenante"] = desencriptar_dato(m.get("ordenante")) # Sin pasar el objeto cipher
                 movs_desencriptados.append(m)
             
             df_historico = pd.DataFrame(movs_desencriptados)

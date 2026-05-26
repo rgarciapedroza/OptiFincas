@@ -148,11 +148,11 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
                     movimientos_hoja.append({
                         "community_id": int(community_id),
                         "fecha": fecha_db,
-                        # Encriptamos datos sensibles durante la importación
-                        "concepto_original": encriptar_dato(obs_str) if obs_str != "nan" else "",
+                        # Encriptamos datos sensibles durante la importación, sin pasar el objeto cipher
+                        "concepto_original": encriptar_dato(obs_str) if obs_str and obs_str.lower() != "nan" else None,
                         "importe": importe_limpio,
                         "saldo_resultante": limpiar_importe(row.get(col_saldo)) if col_saldo else None,
-                        "ordenante": encriptar_dato(ordenante_final) if ordenante_final else None,
+                        "ordenante": encriptar_dato(ordenante_final) if ordenante_final else None, # Sin pasar el objeto cipher
                         "piso_detectado": piso_detectado,
                         "tipo": tipo,
                         "categoria": categoria,
