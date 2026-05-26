@@ -18,6 +18,7 @@ from typing import Dict, List, Tuple, Optional
 from collections import Counter
 import logging
 from difflib import SequenceMatcher
+from app.servicios.supabase_db import supabase_client
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -27,6 +28,42 @@ logger = logging.getLogger(__name__)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 MODELS_DIR = os.path.join(DATA_DIR, "models")
+
+# Reglas de respaldo (Fallback) definidas como constante de configuración
+REGLAS_FALLBACK = {
+    "ADMINISTRACION": {
+        "palabras": ["comunidad", "cuota", "derrama", "mensualidad"],
+        "tipo": "ingreso"
+    },
+    "ENERGIA ASCENSOR": {
+        "palabras": ["energia", "endesa", "luz", "electricidad", "iberdrola"],
+        "tipo": "gasto"
+    },
+    "LUZ PORTAL Y ESCALERA": {
+        "palabras": ["portal", "escalera", "limpieza portal"],
+        "tipo": "gasto"
+    },
+    "SEGURO COMUNIDAD": {
+        "palabras": ["generali", "seguro", "poliza", "mapfre", "allianz"],
+        "tipo": "gasto"
+    },
+    "MANTENIMIENTO ASCENSOR": {
+        "palabras": ["otis", "ascensor", "mantenimiento"],
+        "tipo": "gasto"
+    },
+    "LIMPIEZA": {
+        "palabras": ["limpieza", "productos"],
+        "tipo": "gasto"
+    },
+    "GASTOS VARIOS": {
+        "palabras": ["comision", "cargo", "notificacion"],
+        "tipo": "gasto"
+    },
+    "INGRESOS SIN IDENTIFICAR": {
+        "palabras": [],
+        "tipo": "ingreso"
+    }
+}
 
 
 class ClasificadorML:
@@ -52,43 +89,30 @@ class ClasificadorML:
             r'\b(\d{1,2}[ºª]\s*[A-Z]?)\b',                    # 4º, 4ª, 4ºJ
     ]
 
-        self.reglas = {
-            "ADMINISTRACION": {
-                "palabras": ["comunidad", "cuota", "derrama", "gasto comunidad", "mensualidad"],
-                "tipo": "ingreso"
-            },
-            "ENERGIA ASCENSOR": {
-                "palabras": ["energia", "endesa", "luz", "electricidad", "iberdrola", "naturgy", "cpvr", "suministro"],
-                "tipo": "gasto"
-            },
-            "LUZ PORTAL Y ESCALERA": {
-                "palabras": ["energia", "endesa", "luz", "electricidad", "iberdrola", "naturgy", "portal", "escalera"],
-                "tipo": "gasto"
-            },
-            "SEGURO COMUNIDAD": {
-                "palabras": ["generali", "seguro", "seguros", "poliza", "aseguradora" "mapfre", "allianz", "santa lucia"],
-                "tipo": "gasto"
-            },
-            "MANTENIMIENTO ASCENSOR": {
-                "palabras": ["zardoya", "otis", "ascensor", "mantenimiento", "instalacion", "reparacion", "tecnico", "hidro", "tecno"],
-                "tipo": "gasto"
-            },
-            "LIMPIEZA": {
-                "palabras": ["limpieza", "limp", "productos", "portal", "escalera"],
-                "tipo": "gasto"
-            },
-            "GASTOS VARIOS": {
-                "palabras": ["deh", "notificacion", "electronica", "comision", "cargo"],
-                "tipo": "gasto"
-            },
-            "INGRESOS SIN IDENTIFICAR": {
-                "palabras": [],
-                "tipo": "ingreso"
-            }
-        }
-
-        
+        self.reglas = {}
+        self.cargar_reglas_desde_db()
         self._inicializar_palabras()
+
+    def cargar_reglas_desde_db(self):
+        """Carga las reglas de clasificación desde la DB con un fallback estático."""
+        try:
+            res = supabase_client.table("categorias_reglas").select("*").execute()
+            if res.data and len(res.data) > 0:
+                nuevas_reglas = {}
+                for r in res.data:
+                    cat = r['categoria_asignada']
+                    if cat not in nuevas_reglas:
+                        nuevas_reglas[cat] = {"palabras": [], "tipo": r['tipo']}
+                    nuevas_reglas[cat]["palabras"].append(r['palabra_clave'])
+                
+                self.reglas = nuevas_reglas
+                logger.info(f"✅ [Configuración Dinámica] Cargadas {len(res.data)} reglas desde la base de datos.")
+                return
+        except Exception as e:
+            logger.warning(f"⚠️ [Resiliencia] Error al conectar con la DB ({e}). Activando reglas de respaldo (Fallback) para garantizar operatividad.")
+
+        # Uso de la constante de respaldo
+        self.reglas = REGLAS_FALLBACK
     
     def _inicializar_palabras(self):
         """Inicializa el diccionario de palabras por categoría"""

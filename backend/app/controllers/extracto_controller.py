@@ -14,7 +14,7 @@ from app.servicios.resumen import calcular_resumen_categorias_con_tipo
 from app.servicios.supabase_db import supabase_client, supabase_service_role_client # Importar supabase_service_role_client
 from app.procesamiento.generar_excel import crear_excel_actualizado, crear_excel_informe_finanzas
 from app.procesamiento.procesar_excel_contable import obtener_nombre_hoja
-from app.controllers.security import encriptar_dato, desencriptar_dato
+from .security import encriptar_dato, desencriptar_dato
 
 clasificador = crear_clasificador()
 

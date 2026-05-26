@@ -1,17 +1,7 @@
 from typing import List, Dict, Tuple, Iterable
 import re
 import pandas as pd
-from app.procesamiento.buscar_pisos import detectar_fila_cabecera, similar, es_nombre_o_apellido
-
-def extraer_nombres_desde_concepto(concepto: str) -> List[str]:
-    concepto = concepto.upper()
-    partes = concepto.split()
-    nombres = []
-    # Recorremos todas las partes y filtramos las que parecen nombres (solo letras y longitud > 2)
-    for p in partes:
-        if es_nombre_o_apellido(p):
-            nombres.append(p)
-    return nombres
+from app.procesamiento.buscar_pisos import detectar_fila_cabecera, similar, es_nombre_o_apellido, extraer_nombres_desde_concepto
 
 
 def iterar_hojas_excel(excel_registros) -> Iterable[Tuple[str, pd.DataFrame]]:
