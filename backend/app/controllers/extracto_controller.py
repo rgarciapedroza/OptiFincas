@@ -248,6 +248,54 @@ async def confirmar_controller(
         "nombre_archivo": nombre_archivo
     }
 
+async def persistir_extracto_db_controller(data: dict):
+    """
+    Recibe los resultados de la IA y los guarda en la DB de forma segura.
+    Centraliza la encriptación para que el frontend no necesite conocer las llaves.
+    """
+    try:
+        community_id = data.get("community_id")
+        movimientos = data.get("movimientos", [])
+        
+        # 1. Crear el extracto padre
+        extracto_payload = {
+            "comunidad_id": community_id,
+            "nombre_archivo": data.get("nombre_archivo", "Extracto IA"),
+            "mes_contable": data.get("mes"),
+            "anio_contable": data.get("anio"),
+            "fecha_subida": datetime.now().isoformat()
+        }
+        
+        ext_res = supabase_service_role_client.table("extractos_procesados").insert(extracto_payload).execute()
+        if not ext_res.data:
+            raise HTTPException(status_code=500, detail="No se pudo crear el registro del extracto.")
+        
+        extracto_id = ext_res.data[0]['id']
+        
+        # 2. Procesar y encriptar movimientos
+        movs_a_insertar = []
+        for m in movimientos:
+            movs_a_insertar.append({
+                "community_id": community_id,
+                "extracto_id": extracto_id,
+                "fecha": m.get("fecha"),
+                # ENCRIPTACIÓN AUTOMÁTICA EN BACKEND
+                "concepto_original": encriptar_dato(m.get("concepto_original")),
+                "importe": m.get("importe"),
+                "saldo_resultante": m.get("saldo_resultante"),
+                "ordenante": encriptar_dato(m.get("ordenante")),
+                "piso_detectado": m.get("piso_detectado"),
+                "tipo": m.get("tipo"),
+                "categoria": m.get("categoria"),
+                "editado_manualmente": True
+            })
+        
+        supabase_service_role_client.table("movimientos").insert(movs_a_insertar).execute()
+        return {"status": "success", "message": "Extracto persistido y datos encriptados correctamente."}
+    except Exception as e:
+        logger.error(f"Error persistiendo extracto: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 async def descargar_controller(movimientos_actualizados: list[dict], formato: str, mes: int = 1, anio: int = 2024):
     df = pd.DataFrame(movimientos_actualizados)
 

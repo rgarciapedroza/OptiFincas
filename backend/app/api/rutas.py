@@ -1,12 +1,17 @@
 from fastapi import APIRouter, Depends, UploadFile, File, Form, Body
 from typing import List, Dict, Optional, Any, Union
-from app.controllers.movimientos_bancarios_controller import importar_movimientos_controller, get_movimientos_by_community_controller, eliminar_extracto_controller, get_extractos_by_community_controller
-from app.controllers.pisos_controller import importar_censo_pisos_controller, get_piso_controller, create_piso_controller, update_piso_controller, delete_piso_controller, borrar_censo_comunidad_controller
-from app.controllers.extracto_controller import procesar_extracto_db_controller, confirmar_controller, descargar_controller, descargar_excel_controller, entrenar_controller, opciones_controller
+from app.controllers.movimientos_bancarios_controller import importar_movimientos_controller, get_movimientos_by_community_controller, eliminar_extracto_controller, get_extractos_by_community_controller, get_finanzas_comunidad_controller
+from app.controllers.pisos_controller import importar_censo_pisos_controller, get_piso_controller, create_piso_controller, update_piso_controller, delete_piso_controller, borrar_censo_comunidad_controller, get_pisos_by_community_controller
+from app.controllers.extracto_controller import procesar_extracto_db_controller, confirmar_controller, descargar_controller, descargar_excel_controller, entrenar_controller, opciones_controller, persistir_extracto_db_controller
 from app.servicios.auth_supabase import get_current_user
-from app.schemas.models import PisoCreate, PisoUpdate
+from app.schemas import PisoCreate, PisoUpdate, FinanzasReportRequest, MovimientoClasificado
 
 router = APIRouter()
+
+@router.get("/comunidades/{community_id}/pisos", tags=["Pisos"], summary="Listar censo desencriptado")
+async def get_pisos_comunidad_route(community_id: int, user_id: str = Depends(get_current_user)):
+    """Obtiene el censo completo de una comunidad con datos legibles."""
+    return get_pisos_by_community_controller(community_id)
 
 # --- Rutas para Movimientos Bancarios (Funcionalidad 2 - Dashboard de Comunidad) ---
 @router.post(
@@ -23,7 +28,7 @@ async def importar_movimientos_route(
     """
     Importa movimientos bancarios desde un archivo Excel para una comunidad específica.
     """
-    return await importar_movimientos_controller(str(community_id), file, user_id)
+    return await importar_movimientos_controller(community_id, file, user_id)
 
 @router.get(
     "/comunidades/{community_id}/movimientos",
@@ -32,13 +37,23 @@ async def importar_movimientos_route(
     description="Obtiene todos los movimientos bancarios registrados para una comunidad específica."
 )
 async def get_movimientos_by_community_route(
-    community_id: str,
+    community_id: int,
     user_id: str = Depends(get_current_user)
 ):
     """
     Obtiene todos los movimientos bancarios de una comunidad específica.
     """
     return await get_movimientos_by_community_controller(community_id, user_id)
+
+@router.get(
+    "/comunidades/{community_id}/finanzas",
+    tags=["Movimientos"],
+    summary="Informe financiero mensual",
+    description="Calcula el balance, resumen de ingresos por piso y detalle de gastos para un mes específico."
+)
+async def get_finanzas_comunidad_route(community_id: int, mes: int, anio: int, user_id: str = Depends(get_current_user)):
+    """Obtiene el resumen financiero calculado por el servidor."""
+    return await get_finanzas_comunidad_controller(community_id, mes, anio)
 
 @router.delete(
     "/extractos/{extracto_id}",
@@ -137,7 +152,7 @@ async def delete_piso_route(
     summary="Listar extractos por comunidad"
 )
 async def get_extractos_by_community_route(
-    community_id: str,
+    community_id: int,
     user_id: str = Depends(get_current_user)
 ):
     """Obtiene todos los extractos procesados de una comunidad específica."""
@@ -164,7 +179,7 @@ async def procesar_extracto_db_route(
     description="Recibe los movimientos editados por el usuario y genera el archivo Excel final de contabilidad."
 )
 async def confirmar_route(
-    data: Any = Body(...), # Body(...) es obligatorio para evitar el error 422 con Any
+    data: Union[FinanzasReportRequest, List[MovimientoClasificado]] = Body(...),
     modo: str = "mensual",
     community_name: Optional[str] = None,
     mes: Optional[int] = None,
@@ -172,6 +187,15 @@ async def confirmar_route(
 ):
     """Confirma los movimientos actualizados y genera un archivo."""
     return await confirmar_controller(data, modo, community_name, mes, anio)
+
+@router.post(
+    "/persistir-extracto",
+    tags=["Inteligencia Artificial"],
+    summary="Guardar resultados en DB",
+    description="Persiste los movimientos clasificados en la base de datos, encriptando automáticamente los datos sensibles."
+)
+async def persistir_extracto_route(data: Dict = Body(...)):
+    return await persistir_extracto_db_controller(data)
 
 @router.post("/descargar", tags=["Inteligencia Artificial"], summary="Descargar CSV")
 async def descargar_route(

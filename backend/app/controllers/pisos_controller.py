@@ -116,6 +116,21 @@ def importar_censo_pisos_controller(community_id: int, file: UploadFile, user_id
 
 # --- Nuevas funciones CRUD para Pisos ---
 
+def get_pisos_by_community_controller(community_id: int):
+    """Obtiene todos los pisos de una comunidad y desencripta los datos."""
+    client = supabase_service_role_client if supabase_service_role_client else supabase_client
+    response = client.table("pisos").select("*").eq("community_id", community_id).execute()
+    
+    if not response.data:
+        return []
+
+    for piso in response.data:
+        piso["propietario"] = desencriptar_dato(piso.get("propietario"))
+        piso["telefono1"] = desencriptar_dato(piso.get("telefono1"))
+        piso["telefono2"] = desencriptar_dato(piso.get("telefono2"))
+        piso["observaciones"] = desencriptar_dato(piso.get("observaciones"))
+    return response.data
+
 def get_piso_controller(piso_id: int):
     """Obtiene un piso por su ID y desencripta los datos sensibles."""
     client = supabase_service_role_client if supabase_service_role_client else supabase_client

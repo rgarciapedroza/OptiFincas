@@ -1,11 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { SupabaseService } from './supabase.service';
-import * as CryptoJS from 'crypto-js';
 import { ComunidadDB } from './models';
-
-const ENCRYPT_KEY = CryptoJS.enc.Utf8.parse('OptiFincasSecretKey2024_Security');
-const ENCRYPT_IV = CryptoJS.enc.Utf8.parse('OptiFincas_IV_16');
 
 @Component({
   selector: 'app-clasificador',
@@ -76,36 +72,26 @@ export class ClasificadorComponent implements OnInit {
     if (!this.clasificadorCommunityId) return;
     this.loading = true;
     this.loadingMessage = 'Guardando...';
-    
+
     try {
-      const nombreArchivo = this.selectedFileExtracto?.name || 'Extracto Clasificado';
-      
-      // 1. Registrar extracto
-      const extractoRes = await this.supabase.crearExtracto(
-        this.clasificadorCommunityId,
-        nombreArchivo,
-        this.currentExtractoMes,
-        this.currentExtractoAnio
-      );
-      if (extractoRes.error) throw extractoRes.error;
-      const extractoId = extractoRes.data[0].id;
-
-      // 2. Mapear movimientos (encriptando datos sensibles)
-      const movimientosParaDB = this.movimientos.map(m => ({
+      const payload = {
         community_id: this.clasificadorCommunityId,
-        extracto_id: extractoId,
-        fecha: this.formatDate(m.FECHA),
-        concepto_original: this.encryptVal(m.OBSERVACIONES || ''),
-        importe: m.IMPORTE,
-        saldo_resultante: m.SALDO,
-        ordenante: this.encryptVal(m.ORDENANTE || ''),
-        piso_detectado: m.IMPORTE > 0 ? this.unformatPiso(m.CONCEPTO) : 'piso sin identificar',
-        tipo: m.IMPORTE > 0 ? 'ingreso' : 'gasto',
-        categoria: m.IMPORTE < 0 ? m.CONCEPTO : 'Ingreso Cuota',
-        editado_manualmente: true
-      }));
+        nombre_archivo: this.selectedFileExtracto?.name || 'Extracto IA',
+        mes: this.currentExtractoMes,
+        anio: this.currentExtractoAnio,
+        movimientos: this.movimientos.map(m => ({
+          fecha: this.formatDate(m.FECHA),
+          concepto_original: m.OBSERVACIONES || '',
+          importe: m.IMPORTE,
+          saldo_resultante: m.SALDO,
+          ordenante: m.ORDENANTE || '',
+          piso_detectado: m.IMPORTE > 0 ? this.unformatPiso(m.CONCEPTO) : 'piso sin identificar',
+          tipo: m.IMPORTE > 0 ? 'ingreso' : 'gasto',
+          categoria: m.IMPORTE < 0 ? m.CONCEPTO : 'Ingreso Cuota'
+        }))
+      };
 
-      await this.supabase.insertarMovimientos(movimientosParaDB);
+      await this.http.post('/api/persistir-extracto', payload).toPromise();
       this.pantallaActual = 3;
     } catch (err) {
       this.error = 'Error al persistir los datos.';
@@ -163,20 +149,6 @@ export class ClasificadorComponent implements OnInit {
     const match = formattedPiso.match(/^(\d+)º\s*([A-Z])$/i);
     if (match) return `${match[1]}${match[2]}`.toUpperCase();
     return formattedPiso.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  }
-
-  private encryptVal(plaintext: string): string {
-    if (!plaintext) return '';
-    try {
-      const encrypted = CryptoJS.AES.encrypt(plaintext, ENCRYPT_KEY, {
-        iv: ENCRYPT_IV,
-        mode: CryptoJS.mode.CBC,
-        padding: CryptoJS.pad.Pkcs7
-      });
-      return encrypted.toString();
-    } catch (e) {
-      return plaintext;
-    }
   }
 
   reiniciar() {

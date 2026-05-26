@@ -2,15 +2,18 @@ import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { SupabaseService } from './supabase.service';
 import { FinanzasData } from './models';
-import * as CryptoJS from 'crypto-js';
-
-const ENCRYPT_KEY = CryptoJS.enc.Utf8.parse('OptiFincasSecretKey2024_Security');
-const ENCRYPT_IV = CryptoJS.enc.Utf8.parse('OptiFincas_IV_16');
+import { HttpClient } from '@angular/common/http';
+import { lastValueFrom } from 'rxjs';
 
 @Component({
   selector: 'app-comunidad-finanzas',
   template: `
     <div class="container" style="padding-top: 10px;">
+      <!-- Alerta de Error -->
+      <div *ngIf="error" class="error-banner" style="margin-bottom: 20px; padding: 12px; background: #fff5f5; border: 1px solid #feb2b2; color: #c53030; border-radius: 8px; font-size: 0.9rem;">
+        {{ error }}
+      </div>
+
       <!-- Navegación de Mes -->
       <div style="display: flex; align-items: center; justify-content: center; gap: 20px; margin-bottom: 25px; background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #edf2f7;">
         <button class="btn-action" (click)="changeMonth(-1)" style="background: white; border-radius: 50%; padding: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
@@ -144,6 +147,7 @@ const ENCRYPT_IV = CryptoJS.enc.Utf8.parse('OptiFincas_IV_16');
 export class ComunidadFinanzasComponent implements OnInit {
   communityId: string | null = null;
   loading = false;
+  error = '';
   comunidad: any = null;
   extractoActual: any = null;
   viewDate: Date = new Date();
@@ -153,20 +157,24 @@ export class ComunidadFinanzasComponent implements OnInit {
     resumenCuentas: { saldoAnterior: 0, ingresosMes: 0, gastosMes: 0, saldoTotal: 0 }
   };
 
-  constructor(private route: ActivatedRoute, private supabase: SupabaseService, private router: Router) {}
+  constructor(private route: ActivatedRoute, private supabase: SupabaseService, private router: Router, private http: HttpClient) {}
 
   async ngOnInit() {
     this.communityId = this.route.parent?.snapshot.paramMap.get('id') || null;
     if (this.communityId) {
-      this.cargarDatos();
+      await this.cargarDatos();
     }
-    // Cargar info de comunidad para el reporte
     const { data: coms } = await this.supabase.getComunidades();
     this.comunidad = coms?.find(c => c.id == this.communityId);
   }
 
+  /**
+   * Cambia el mes de visualización y recarga los cálculos desde el servidor.
+   * @param delta -1 para mes anterior, 1 para mes siguiente.
+   */
   async changeMonth(delta: number) {
     this.viewDate = new Date(this.viewDate.getFullYear(), this.viewDate.getMonth() + delta, 1);
+    this.error = '';
     await this.cargarDatos();
   }
 
@@ -175,10 +183,12 @@ export class ComunidadFinanzasComponent implements OnInit {
     return month.charAt(0).toUpperCase() + month.slice(1);
   }
 
+  /**
+   * Solicita al backend el resumen financiero procesado.
+   */
   async cargarDatos() {
     if (!this.communityId) return;
     this.loading = true;
-
     const targetMes = this.viewDate.getMonth() + 1;
     const targetAnio = this.viewDate.getFullYear();
 
@@ -195,58 +205,30 @@ export class ComunidadFinanzasComponent implements OnInit {
       return;
     }
 
-    const extractoId = this.extractoActual.id;
-    const { data: movimientos } = await this.supabase.getMovimientosByExtracto(extractoId);
-    const { data: pisos } = await this.supabase.getPisos(this.communityId);
+    const session = await this.supabase.getSession();
+    const headers = { 'Authorization': `Bearer ${session?.access_token}` };
 
-    if (movimientos && pisos) {
-      const ingresos = movimientos.filter(m => m.importe > 0);
-      const gastos = movimientos.filter(m => m.importe < 0);
+    try {
+      const result = await lastValueFrom(
+        this.http.get<FinanzasData>(`/api/comunidades/${this.communityId}/finanzas?mes=${targetMes}&anio=${targetAnio}`, { headers })
+      );
 
-      // Mapear ingresos por piso
-      this.data.ingresosPorPiso = pisos.map(p => {
-        // Buscamos todos los movimientos que coincidan con este piso para sumarlos (normalizando el código)
-        const movsDelPiso = ingresos.filter(m => 
-          this.unformatPiso(m.piso_detectado) === this.unformatPiso(p.codigo)
-        );
-        
-        const importeTotal = movsDelPiso.reduce((acc, m) => acc + this.asNumber(m.importe), 0);
-        
-        return {
-          codigo: p.codigo,
-          importe: importeTotal,
-          pagado: movsDelPiso.length > 0,
-          fecha: movsDelPiso.length > 0 ? movsDelPiso[0].fecha : null
-        };
-      });
-
-      this.data.gastos = gastos.map(g => ({
-        // Usamos la categoría si existe, sino desencriptamos el concepto original
-        concepto: g.categoria && g.categoria !== 'Sin Categoría' 
-          ? g.categoria 
-          : this.decryptVal(g.concepto_original) || 'Otros Gastos',
-        importe: Math.abs(this.asNumber(g.importe))
-      }));
-
-      // Ordenar gastos por importe de mayor a menor
-      this.data.gastos.sort((a, b) => b.importe - a.importe);
-
-      const totalIngresos = ingresos.reduce((acc, m) => acc + this.asNumber(m.importe), 0);
-      const totalGastos = gastos.reduce((acc, m) => acc + Math.abs(this.asNumber(m.importe)), 0);
-      
-      // Intentar obtener el saldo final del último movimiento del mes
-      const saldoTotal = movimientos.length > 0 ? this.asNumber(movimientos[0].saldo_resultante) : 0;
-
-      this.data.resumenCuentas = {
-        saldoAnterior: saldoTotal - totalIngresos + totalGastos,
-        ingresosMes: totalIngresos,
-        gastosMes: totalGastos,
-        saldoTotal: saldoTotal
-      };
+      if (result) {
+        this.data = result;
+      } else {
+        this.extractoActual = null;
+      }
+    } catch (err: any) {
+      this.error = 'No se han podido calcular los datos financieros de este mes.';
+      this.extractoActual = null;
+    } finally {
+      this.loading = false;
     }
-    this.loading = false;
   }
 
+  /**
+   * Envía los datos al generador de informes del backend y descarga el Excel.
+   */
   async generarReportePDF() {
     if (!this.extractoActual) return;
     this.loading = true;
@@ -254,17 +236,17 @@ export class ComunidadFinanzasComponent implements OnInit {
     const comName = this.comunidad?.nombre || 'Comunidad';
     const mes = this.extractoActual.mes_contable;
     const anio = this.extractoActual.anio_contable;
+    const session = await this.supabase.getSession();
+    const headers = { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session?.access_token}`
+    };
 
     try {
       const url = `/api/confirmar?modo=finanzas&community_name=${encodeURIComponent(comName)}&mes=${mes}&anio=${anio}`;
       
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(this.data)
-      });
-      
-      const resData = await response.json();
+      // Cambiado fetch por HttpClient para consistencia arquitectónica
+      const resData: any = await lastValueFrom(this.http.post(url, this.data, { headers }));
       
       const byteCharacters = atob(resData.excel_contenido);
       const byteNumbers = new Array(byteCharacters.length);
@@ -317,15 +299,4 @@ export class ComunidadFinanzasComponent implements OnInit {
     return upper;
   }
 
-  decryptVal(ciphertext: string | undefined): string {
-    if (!ciphertext || ciphertext === '-' || ciphertext === 'nan') return '';
-    try {
-      const decrypted = CryptoJS.AES.decrypt(ciphertext, ENCRYPT_KEY, {
-        iv: ENCRYPT_IV,
-        mode: CryptoJS.mode.CBC,
-        padding: CryptoJS.pad.Pkcs7
-      });
-      return decrypted.toString(CryptoJS.enc.Utf8) || ciphertext;
-    } catch (e) { console.error("Decryption error:", e); return ''; }
-  }
 }

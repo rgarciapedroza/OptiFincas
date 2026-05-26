@@ -2,10 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { SupabaseService } from './supabase.service';
 import { Piso } from './models';
-import * as CryptoJS from 'crypto-js';
-
-const ENCRYPT_KEY = CryptoJS.enc.Utf8.parse('OptiFincasSecretKey2024_Security');
-const ENCRYPT_IV = CryptoJS.enc.Utf8.parse('OptiFincas_IV_16');
+import { HttpClient } from '@angular/common/http';
 
 @Component({
   selector: 'app-censo',
@@ -20,7 +17,7 @@ export class CensoComponent implements OnInit {
   editandoPisoId: number | null = null;
   mostrarModalEdicionPiso = false;
 
-  constructor(private route: ActivatedRoute, private supabase: SupabaseService) {}
+  constructor(private route: ActivatedRoute, private supabase: SupabaseService, private http: HttpClient) {}
 
   async ngOnInit() {
     this.communityId = this.route.parent?.snapshot.paramMap.get('id') || null;
@@ -31,28 +28,7 @@ export class CensoComponent implements OnInit {
 
   async cargarPisos() {
     if (!this.communityId) return;
-    const { data } = await this.supabase.getPisos(this.communityId);
-    if (data) {
-      this.pisos = data.map((p: any) => ({
-        ...p,
-        propietario: this.decryptVal(p.propietario),
-        telefono1: this.decryptVal(p.telefono1),
-        telefono2: this.decryptVal(p.telefono2),
-        observaciones: this.decryptVal(p.observaciones),
-      }));
-    }
-  }
-
-  decryptVal(ciphertext: string): string {
-    if (!ciphertext || ciphertext === '-' || ciphertext === 'nan') return '';
-    try {
-      const decrypted = CryptoJS.AES.decrypt(ciphertext, ENCRYPT_KEY, {
-        iv: ENCRYPT_IV,
-        mode: CryptoJS.mode.CBC,
-        padding: CryptoJS.pad.Pkcs7
-      });
-      return decrypted.toString(CryptoJS.enc.Utf8) || ciphertext;
-    } catch (e) { console.error("Decryption error:", e); return ''; }
+    this.pisos = await this.http.get<Piso[]>(`/api/comunidades/${this.communityId}/pisos`).toPromise() || [];
   }
 
   prepararNuevoPiso() {
