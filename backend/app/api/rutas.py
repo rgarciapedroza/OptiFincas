@@ -4,7 +4,7 @@ from app.controllers.movimientos_bancarios_controller import importar_movimiento
 from app.controllers.pisos_controller import importar_censo_pisos_controller, get_piso_controller, create_piso_controller, update_piso_controller, delete_piso_controller, borrar_censo_comunidad_controller
 from app.controllers.extracto_controller import procesar_extracto_db_controller, confirmar_controller, descargar_controller, descargar_excel_controller, entrenar_controller, opciones_controller
 from app.servicios.auth_supabase import get_current_user
-from ..schemas.models import PisoCreate, PisoUpdate
+from app.schemas.models import PisoCreate, PisoUpdate
 
 router = APIRouter()
 

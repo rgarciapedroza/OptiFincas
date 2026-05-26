@@ -7,7 +7,7 @@ from app.servicios.supabase_db import supabase_client, supabase_service_role_cli
 from app.servicios.procesar_extracto import limpiar_importe, normalizar_fecha, load_df_from_excel_sheet_robust, detectar_columnas, buscar_piso_regex_en_fila
 import re
 from datetime import datetime
-from .security import encriptar_dato
+from app.controllers.security import encriptar_dato
 
 logger = logging.getLogger(__name__)
 
