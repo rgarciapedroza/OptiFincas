@@ -1,8 +1,11 @@
 import re
+import logging
 import pandas as pd
 import unicodedata
 from difflib import SequenceMatcher
 from typing import Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 def find_col_by_keywords(cols_actuales: List[str], keywords: List[str], exclude_keywords: List[str] = None) -> Optional[str]:
     """
@@ -24,8 +27,6 @@ def find_col_by_keywords(cols_actuales: List[str], keywords: List[str], exclude_
                 return col_actual
     return None
 
-print(">>> TRES CARGANDO buscar_pisos.py DESDE:", __file__)
- 
 GENERICAS = {
     "PAGO", "PAGOS", "TRANSFERENCIA", "TRASPASO", "TRASF",
     "COMUNIDAD", "PROPIETARIOS", "PROPIETARIO", "CUOTA",
@@ -193,8 +194,8 @@ def buscar_pisos_en_registro(df_registro, movimientos_a_procesar, extractos_map:
 
         is_mario = "MARIO" in texto_busqueda
         if is_mario:
-            print(f"\n[DEBUG MARIO] Analizando: '{texto_busqueda}'. Nombres detectados: {palabras_nombre}")
-            print(f"[DEBUG MARIO]   Movimiento actual: Concepto='{c_mov}', Ordenante='{o_mov}'")
+            logger.debug(f"Analizando: '{texto_busqueda}'. Nombres detectados: {palabras_nombre}")
+            logger.debug(f"  Movimiento actual: Concepto='{c_mov}', Ordenante='{o_mov}'")
 
         # Diccionario para contar coincidencias y aplicar la regla de los 3 movimientos
         candidatos_conteo = {} # {piso: {"count": int, "best_score": float, "row": dict, "metodo": str}}
@@ -309,7 +310,7 @@ def buscar_pisos_en_registro(df_registro, movimientos_a_procesar, extractos_map:
             mov["metodo_piso"] = mejor_metodo
             mov["es_historico"] = True # Set this flag for the frontend
             if is_mario:
-                print(f"[DEBUG MARIO] ¡IDENTIFICADO! Piso: {mejor_piso} via {mejor_metodo} (Score: {mejor_score:.2f})")
+                logger.info(f"¡IDENTIFICADO! Piso: {mejor_piso} via {mejor_metodo} (Score: {mejor_score:.2f})")
 
 
             # Capturamos la coincidencia completa encontrada en el histórico

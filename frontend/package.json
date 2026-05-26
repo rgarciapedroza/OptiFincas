@@ -4,7 +4,7 @@
   "description": "Sistema de Gestión OptiFincas - Angular & Node.js",
   "scripts": {
     "ng": "ng",
-    "start": "ng serve",
+    "start": "node server.js",
     "build": "ng build --configuration production",
     "build:lib": "ng-packagr -p ng-package.json",
     "dev": "concurrently \"ng serve\" \"node server.js\"",

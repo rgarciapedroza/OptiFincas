@@ -1,238 +1,87 @@
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
-from typing import Optional, List
-from datetime import datetime, date
 
 
-# ==================== Esquemas de Movimiento ====================
+class PisoCreate(BaseModel):
+    comunidad_id: Optional[int] = Field(default=None)
+    nombre: Optional[str] = None
+    numero: Optional[int] = None
+    orden: Optional[int] = None
 
-class MovimientoBase(BaseModel):
-    """Base schema for movimiento"""
-    fecha: Optional[date] = None
-    concepto: str = Field(..., description="Concepto del movimiento")
-    concepto_original: Optional[str] = None
-    importe: float
-    saldo: Optional[float] = None
-
-
-class MovimientoCreate(MovimientoBase):
-    """Schema for creating a movimiento"""
-    piso: Optional[str] = None
-    tipo: str
-    categoria: str
-    mes: Optional[int] = None
-    año: Optional[int] = None
+    # Algunos flujos del sistema suelen enviar/consumir campos extra.
+    # Para evitar romper compatibilidad, permitimos estructuras arbitrarias.
+    extra_fields: Dict[str, Any] = Field(default_factory=dict)
 
 
-class MovimientoUpdate(BaseModel):
-    """Schema for updating a movimiento"""
+class PisoUpdate(BaseModel):
+    # campos típicos (opcionales para permitir update parcial)
+    nombre: Optional[str] = None
+    numero: Optional[int] = None
+    orden: Optional[int] = None
+
+    extra_fields: Dict[str, Any] = Field(default_factory=dict)
+
+
+class MovimientoClasificadoExtracto(BaseModel):
+    FECHA: Optional[str] = None
+    ORDENANTE: Optional[str] = None
+    OBSERVACIONES: Optional[str] = None
+    IMPORTE: Optional[float] = None
+    SALDO: Optional[float] = None
+    CONCEPTO: Optional[str] = None
+
     piso: Optional[str] = None
     tipo: Optional[str] = None
     categoria: Optional[str] = None
+
     confianza: Optional[float] = None
+    metodo_piso: Optional[str] = None
+
+    # Mantiene compatibilidad si se incluyen claves adicionales
+    extra_fields: Dict[str, Any] = Field(default_factory=dict)
+
+    # Permite construir el modelo desde dicts con claves extra.
+    @classmethod
+    def model_validate(cls, obj: Any, *args: Any, **kwargs: Any) -> "MovimientoClasificadoExtracto":
+        # pydantic v2: si llega un dict con claves no definidas, intentamos guardarlas.
+        if isinstance(obj, dict):
+            known = set(cls.model_fields.keys())
+            extra = {k: v for k, v in obj.items() if k not in known}
+            payload = {k: v for k, v in obj.items() if k in known}
+            payload.setdefault("extra_fields", {}).update(extra)
+            return super().model_validate(payload, *args, **kwargs)
+        return super().model_validate(obj, *args, **kwargs)
 
 
-class MovimientoResponse(MovimientoBase):
-    """Schema for movimiento response"""
-    id: int
-    piso: Optional[str] = None
-    tipo: str
-    categoria: str
-    confianza: float
+class FinanzasReportRequest(BaseModel):
+    # El código la usa como `data.model_dump()` para generar Excel.
+    # Por tanto, estos campos deben cubrir la estructura esperada por el frontend/
+    # y el generador de excel. Definimos una estructura flexible.
+
+    # Entradas agregadas por categoría/tipo (si aplica)
+    ingresos: Optional[List[Dict[str, Any]]] = None
+    gastos: Optional[List[Dict[str, Any]]] = None
+
+    # Version alternativa si el payload llega como agregados directos
+    resumen: Optional[Dict[str, Any]] = None
+
+    # Campos comunes para reportes financieros
     mes: Optional[int] = None
-    año: Optional[int] = None
-    banco: Optional[str] = None
-    estado: str
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
+    anio: Optional[int] = None
 
+    # Mantiene compatibilidad con payloads más ricos
+    extra_fields: Dict[str, Any] = Field(default_factory=dict)
 
-class MovimientoClasificado(MovimientoBase):
-    """Schema for classified movement (returned to frontend)"""
-    id: int
-    piso: Optional[str] = None
-    tipo: str
-    categoria: str
-    confianza: float
-    editable: bool = True  # Can be edited by user
-    
-    class Config:
-        from_attributes = True
+    @classmethod
+    def model_validate(cls, obj: Any, *args: Any, **kwargs: Any) -> "FinanzasReportRequest":
+        if isinstance(obj, dict):
+            known = set(cls.model_fields.keys())
+            extra = {k: v for k, v in obj.items() if k not in known}
+            payload = {k: v for k, v in obj.items() if k in known}
+            payload.setdefault("extra_fields", {}).update(extra)
+            return super().model_validate(payload, *args, **kwargs)
+        return super().model_validate(obj, *args, **kwargs)
 
-
-class MovimientoEditable(MovimientoBase):
-    """Schema for editable movement in frontend"""
-    id: int
-    piso: Optional[str] = ""
-    tipo: str
-    categoria: str
-    confianza: float
-    tipo_opciones: List[str] = ["ingreso", "gasto"]
-    categoria_opciones: List[str] = []
-    
-    class Config:
-        from_attributes = True
-
-
-# ==================== Esquemas de Piso ====================
-
-class PisoBase(BaseModel):
-    """Base schema for piso"""
-    community_id: int
-    codigo: str = Field(..., description="Código del piso (ej: 2J, 1A)")
-    propietario: Optional[str] = None
-    telefono1: Optional[str] = None
-    telefono2: Optional[str] = None
-    email: Optional[str] = None
-    observaciones: Optional[str] = None
-
-
-class PisoCreate(PisoBase):
-    """Schema for creating a piso"""
-    pass
-
-
-class PisoUpdate(PisoBase):
-    """Schema for updating a piso (all fields optional)"""
-    community_id: Optional[int] = None
-    codigo: Optional[str] = None
-
-class PisoResponse(PisoBase):
-    """Schema for piso response"""
-    id: int
-    activo: bool
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
-
-
-# ==================== Esquemas de Categoría ====================
-
-class CategoriaBase(BaseModel):
-    """Base schema for categoria"""
-    nombre: str
-    tipo: str  # ingreso/gasto
-    descripcion: Optional[str] = None
-    palabras_clave: Optional[List[str]] = None
-
-
-class CategoriaCreate(CategoriaBase):
-    """Schema for creating a categoria"""
-    pass
-
-
-class CategoriaResponse(CategoriaBase):
-    """Schema for categoria response"""
-    id: int
-    activo: bool
-    
-    class Config:
-        from_attributes = True
-
-
-# ==================== Esquemas de MovimientoAprendizaje ====================
-
-class MovimientoAprendizajeBase(BaseModel):
-    """Base schema for movimiento de aprendizaje"""
-    concepto: str
-    importe: float
-    piso_correcto: Optional[str] = None
-    tipo_correcto: str
-    categoria_correcta: str
-
-
-class MovimientoAprendizajeCreate(MovimientoAprendizajeBase):
-    """Schema for creating aprendizaje data"""
-    pass
-
-
-class MovimientoAprendizajeResponse(MovimientoAprendizajeBase):
-    """Schema for aprendizaje response"""
-    id: int
-    fecha_clasificacion: datetime
-    fuente: str
-    
-    class Config:
-        from_attributes = True
-
-
-# ==================== Esquemas de Procesamiento ====================
-
-class ProcesarRequest(BaseModel):
-    """Request para procesar movimentos"""
-    mes: int = Field(..., ge=1, le=12)
-    año: int = Field(..., ge=2000, le=2100)
-    force_retrain: bool = False
-
-
-class ProcesarResponse(BaseModel):
-    """Response del procesamiento"""
-    estado: str
-    total_movimientos: int
-    movimientos_clasificados: List[MovimientoEditable]
-    resumen: dict
-    pisos_encontrados: List[str]
-    errores: List[str] = []
-
-
-class EntrenarResponse(BaseModel):
-    """Response del entrenamiento"""
-    estado: str
-    mensajes: List[str]
-    precision: Optional[float] = None
-    ejemplos_entrenados: int = 0
-
-
-class DescargarRequest(BaseModel):
-    """Request para descargar"""
-    formato: str = "csv"  # csv/excel
-    tipo_contenido: str = "clasificado"  # clasificado/completo
-
-
-class DescargarResponse(BaseModel):
-    """Response para descarga"""
-    nombre_archivo: str
-    contenido: str  # Base64 encoded
-    mime_type: str
-
-
-# ==================== Esquemas de Resumen ====================
-
-class ResumenGeneral(BaseModel):
-    """Resumen general de movimientos"""
-    total_ingresos: float
-    total_gastos: float
-    saldo_neto: float
-    num_movimientos: int
-
-
-class ResumenCategoria(BaseModel):
-    """Resumen por categoría"""
-    categoria: str
-    tipo: str
-    total: float
-    num_movimientos: int
-
-
-class ResumenPiso(BaseModel):
-    """Resumen por piso"""
-    piso: str
-    ingresos: float
-    gastos: float
-    saldo: float
-
-
-# ==================== Esquemas de Error ====================
-
-class ErrorResponse(BaseModel):
-    """Schema for error responses"""
-    detalle: str
-    codigo: Optional[str] = None
-
-
-class SuccessResponse(BaseModel):
-    """Schema for success responses"""
-    mensaje: str
-    datos: Optional[dict] = None

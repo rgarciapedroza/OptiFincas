@@ -1,2 +1,1 @@
-# backend/app/__init__.py
-
+# Archivo de inicialización del paquete raíz app

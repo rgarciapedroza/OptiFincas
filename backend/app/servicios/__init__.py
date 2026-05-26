@@ -1,1 +1,1 @@
-# backend/app/servicios/__init__.py
+# Archivo de inicialización del paquete servicios
