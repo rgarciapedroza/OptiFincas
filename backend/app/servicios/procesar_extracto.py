@@ -25,7 +25,7 @@ def detectar_columnas(df: pd.DataFrame) -> Dict[str, str]:
         "fecha_valor": fv_col,
         "concepto": find_col_by_keywords(cols, ["concepto", "piso", "unidad", "apartamento", "vivienda"]),
         "observaciones": find_col_by_keywords(cols, ["observaciones", "observ", "detalle", "informacion", "comentario", "texto"]),
-        "ordenante": find_col_by_keywords(cols, ["ordenante", "beneficiario", "titular", "nombre", "benef"]),
+        "ordenante": find_col_by_keywords(cols, ["ordenante", "beneficiario", "titular", "nombre", "benef", "datos", "remitente", "contraparte", "propietario"]),
         "importe": find_col_by_keywords(cols, ["importe", "monto", "cantidad", "euros", "amount", "valor"], exclude_keywords=["saldo", "fecha", "f.cont", "f.oper", "proceso", "contable", "f.valor"]),
         "saldo": find_col_by_keywords(cols, ["saldo", "balance", "disponible"]),
         "texto_mezclado": find_col_by_keywords(cols, ["concepto original", "detalle operacion", "informacion adicional", "descripcion", "detalle completo"])
@@ -178,10 +178,26 @@ def cargar_registros_a_excel(registros: UploadFile):
 
 
 def buscar_piso_regex_en_fila(row: pd.Series, columnas: Dict[str, str]):
-    if not columnas.get("observaciones"):
-        return None
-    texto = str(row.get(columnas["observaciones"], ""))
-    m = re.search(r"\b(\d{1,2}\s*[A-Z])\b", texto, re.IGNORECASE)
-    if m:
-        return m.group(1).replace(" ", "").upper()
+    """
+    Busca un patrón de piso (ej: 2J, 01-A, B3) en varias columnas del registro.
+    """
+    # Columnas donde buscar, en orden de prioridad
+    columnas_a_revisar = ["ordenante", "concepto", "observaciones", "texto_mezclado"]
+    
+    # Patrones: 2J, 2 J, 02-A, 2/A, A2
+    patrones = [
+        r"\b(\d{1,2}\s*[A-Z])\b",            # 2J o 2 J
+        r"\b([A-Z]\s*\d{1,2})\b",            # A2
+        r"\b(\d{1,2}\s*[-/]\s*[A-Z])\b"      # 2-J o 2/J
+    ]
+
+    for col_key in columnas_a_revisar:
+        col_name = columnas.get(col_key)
+        if col_name:
+            texto = str(row.get(col_name, "")).strip()
+            if texto and texto.lower() != 'nan':
+                for pat in patrones:
+                    m = re.search(pat, texto, re.IGNORECASE)
+                    if m:
+                        return re.sub(r"[\s\-/]", "", m.group(1)).upper()
     return None

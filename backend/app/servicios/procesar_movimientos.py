@@ -39,7 +39,7 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
                 break
 
     # Usar el helper find_col_by_keywords para buscar la columna ordenante
-    col_ordenante = find_col_by_keywords(df_extracto.columns.tolist(), ["ordenante", "beneficiario", "nombre", "titular", "remitente", "datos", "contraparte"])
+    col_ordenante = columnas.get("ordenante") or find_col_by_keywords(df_extracto.columns.tolist(), ["ordenante", "beneficiario", "nombre", "titular", "remitente", "datos", "contraparte", "propietario"])
 
     def clean_str(val):
         if pd.isna(val) or val is None:
@@ -70,7 +70,14 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
         if c_mix_raw:
             concepto_completo = c_mix_raw
         else:
-            concepto_completo = f"{c_base} {c_ben} {c_obs}".strip()
+            # Evitar duplicar el ordenante si ya está contenido en el concepto o observaciones
+            partes = []
+            if c_base: partes.append(c_base)
+            if c_ben and c_ben.upper() not in c_base.upper():
+                partes.append(c_ben)
+            if c_obs and c_obs.upper() not in c_base.upper() and c_obs.upper() not in c_ben.upper():
+                partes.append(c_obs)
+            concepto_completo = " ".join(partes).strip()
 
         # Lógica de limpieza para la visualización de Observaciones
         # Queremos mostrar el texto del banco sin el nombre del ordenante duplicado
@@ -91,8 +98,13 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
         
         # Normalizar el piso devuelto por el ML para evitar que la cadena "NONE" se trate como un piso identificado
         piso_ml = resultado_ml["piso"]
-        if piso_ml and str(piso_ml).strip().lower() in ["none", "nan", ""]:
+        if piso_ml and str(piso_ml).strip().lower() in ["none", "nan", "", "piso sin identificar", "piso desconocido", "sin asignar"]:
             piso_ml = None
+
+        # --- MEJORA: Búsqueda Regex Proactiva ---
+        # Si el ML no encontró piso, o devolvió algo muy largo (erróneo), intentamos Regex
+        piso_regex = buscar_piso_regex_en_fila(row, columnas)
+        piso_final_detectado = piso_regex if piso_regex else (piso_ml if (piso_ml and len(str(piso_ml)) <= 5) else None)
 
         mov = {
             "id": idx,
@@ -104,32 +116,32 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
             "IMPORTE": round(importe, 2),
 
             # Campos técnicos internos (mantener en minúsculas para compatibilidad)
-            "fecha": fecha_final,
+            "fecha": fecha_final or "",
             "concepto": concepto_completo,
             "importe": round(importe, 2),
             "saldo": saldo_val,
-            "ordenante": c_ben if (col_ordenante and not es_csv) else "", # En UI mostrar solo si no es CSV
+            "ordenante": c_ben, # Guardar siempre para lógica interna de búsqueda de pisos
 
-            "piso": piso_ml or "",
+            "piso": piso_final_detectado or "",
             "tipo": resultado_ml["tipo"],
             "categoria": resultado_ml["categoria"],
             "concepto_original": concepto_completo,
             "confianza": resultado_ml["confianza"],
             "metodo_piso": resultado_ml.get("metodo", ""),
             "texto_busqueda_nombres": c_ben if (not es_csv and c_ben) else concepto_completo,
+            "es_csv": es_csv,
         }
 
         # Para la visualización en la UI, incluimos ORDENANTE solo si es Excel
         if not es_csv and col_ordenante:
             mov["ORDENANTE"] = c_ben
 
-
-
         if importe < 0:
             mov["CONCEPTO"] = resultado_ml["categoria"]
             movimientos_con_piso.append(mov)
-        elif mov["piso"]:
-            mov["CONCEPTO"] = formatear_piso(mov["piso"])
+        elif piso_final_detectado:
+            mov["piso"] = piso_final_detectado
+            mov["CONCEPTO"] = formatear_piso(piso_final_detectado)
             movimientos_con_piso.append(mov)
         else:
             movimientos_sin_piso.append(mov)

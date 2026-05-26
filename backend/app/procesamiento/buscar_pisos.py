@@ -32,7 +32,8 @@ GENERICAS = {
     "MENSUALIDAD", "RECIBO", "INGRESO", "EFECTIVO",
     "BANCO", "VARIOS", "COMUN", "PROPIEDAD", "PROP",
     "CALLE", "CL", "C", "AVENIDA", "AV", "PORTAL",
-    "ESCALERA", "ESC", "EDIFICIO", "BLOQUE", "BLQ"
+    "ESCALERA", "ESC", "EDIFICIO", "BLOQUE", "BLQ",
+    "DE", "DEL", "LOS", "LAS", "LA", "EL", "SAN", "SANTA", "Y"
 }
 
 def similar(a, b):
@@ -51,16 +52,29 @@ def normalizar_texto(texto: str) -> str:
     texto = re.sub(r"\s+", " ", texto)
     return texto.strip().upper()
 
-PATRON_PISO = re.compile(r"\b(\d{1,2}\s*[A-Z])\b", re.IGNORECASE)
+# Patrón mejorado para detectar: 2J, 2 J, 02-A, 2/A, A2
+PATRON_PISO = re.compile(r"\b(\d{1,2}\s*[A-Z]|[A-Z]\s*\d{1,2}|\d{1,2}\s*[-/]\s*[A-Z])\b", re.IGNORECASE)
 
 def extraer_piso(texto: str) -> str:
     if not texto:
         return ""
-    texto = str(texto).upper().replace(",", " ").replace(".", " ")
-    m = PATRON_PISO.search(texto)
-    if not m:
+    try:
+        texto = str(texto).upper().replace(",", " ").replace(".", " ")
+        m = PATRON_PISO.search(texto)
+        if not m:
+            return ""
+        # Limpiar el resultado: quitar espacios, guiones y barras
+        res = m.group(1)
+        res = re.sub(r"[\s\-/]", "", res)
+        return res.upper()
+    except:
         return ""
-    return m.group(1).replace(" ", "")
+
+def es_piso_identificado(piso) -> bool:
+    if pd.isna(piso) or piso is None:
+        return False
+    p = str(piso).strip().lower()
+    return p not in ["", "nan", "none", "piso sin identificar", "piso desconocido", "sin asignar", "pisodesconocido"]
 
 def es_nombre_o_apellido(p):
     p = p.upper()
@@ -72,6 +86,16 @@ def es_nombre_o_apellido(p):
         if similar(p, g) >= 0.85:
             return False
     return True
+
+def extraer_nombres_desde_concepto(concepto: str) -> List[str]:
+    concepto = concepto.upper()
+    partes = concepto.split()
+    nombres = []
+    # Recorremos todas las partes y filtramos las que parecen nombres (solo letras y longitud > 2)
+    for p in partes:
+        if es_nombre_o_apellido(p):
+            nombres.append(p)
+    return nombres
 
 def detectar_fila_cabecera(df_raw):
     claves = ["fecha", "observ", "importe", "saldo", "concept"]
@@ -90,11 +114,11 @@ def obtener_pisos_validos(df_registro):
     col_piso_directo = cols_lower.get("piso")
     if col_piso_directo:
         for val in df_registro[col_piso_directo]:
-            if pd.notna(val) and str(val).strip() != "" and str(val).lower() != "nan":
+            if es_piso_identificado(val):
                 pisos.add(str(val).strip().upper())
 
     # También buscamos por regex en campos de texto (Excel/Fallback)
-    posibles_columnas = [c for c in df_registro.columns if "observ" in c or "concept" in c]
+    posibles_columnas = [c for c in df_registro.columns if any(kw in c.lower() for kw in ["observ", "concept", "orden", "titular", "nombre", "datos"])]
     for _, row in df_registro.iterrows():
         for col in posibles_columnas:
             texto = normalizar_texto(str(row.get(col, "")))
@@ -113,51 +137,87 @@ def buscar_pisos_en_registro(df_registro, movimientos_a_procesar, extractos_map:
     # Define col_extracto_id here using the helper
     col_extracto_id = find_col_by_keywords(df_registro.columns.tolist(), ["extracto_id", "id_extracto", "extracto"])
 
-    print(f"\n[DEBUG] Buscando en base de datos ({len(df_registro)} registros históricos). Columnas: {list(cols_lower.keys())}")
-    if len(movimientos_a_procesar) > 0:
-        print(f"  Primer movimiento pendiente: Concepto='{movimientos_a_procesar[0].get('concepto_original', '')}', Ordenante='{movimientos_a_procesar[0].get('ordenante', '')}'")
+    # 1. Mapa de Propietario -> {Piso: Frecuencia} (extraído del historial global)
+    # Esto permite identificar de antemano qué propietarios tienen varias propiedades.
+    owner_to_pisos = {}
+    if col_ordenante and col_piso_directo:
+        for _, row in df_registro.iterrows():
+            p_hist = str(row.get(col_piso_directo, "")).strip().upper()
+            o_hist = normalizar_texto(str(row.get(col_ordenante, "")))
+            if o_hist and es_piso_identificado(p_hist):
+                if o_hist not in owner_to_pisos:
+                    owner_to_pisos[o_hist] = {}
+                owner_to_pisos[o_hist][p_hist] = owner_to_pisos[o_hist].get(p_hist, 0) + 1
+
+    # 2. Control de asignaciones en el lote actual (batch) para repartir pagos
+    # Si un propietario tiene 2 pisos, el primer pago va al 1º y el segundo al 2º.
+    lote_assignments = {} # {owner_norm: [piso1, piso2...]}
 
     recuperados = []
     
     for mov in movimientos_a_procesar:
         # Preparar texto del movimiento actual
-        c_mov = normalizar_texto(mov.get("concepto_original", mov.get("concepto", "")))
-        o_mov = normalizar_texto(mov.get("ORDENANTE", mov.get("ordenante", "")))
-        texto_busqueda = f"{c_mov} {o_mov}".strip()
+        c_mov_raw = str(mov.get("concepto_original") or mov.get("concepto") or "")
+        # Intentamos obtener la identidad del pagador
+        o_mov_raw = str(mov.get("ORDENANTE") or mov.get("ordenante") or "").strip()
+        
+        # Si no hay ordenante explícito (común en CSV), intentamos extraer nombres del concepto
+        if not o_mov_raw:
+            nombres_detectados = extraer_nombres_desde_concepto(c_mov_raw)
+            if nombres_detectados:
+                o_mov_raw = " ".join(nombres_detectados)
+        
+        c_mov = normalizar_texto(c_mov_raw)
+        o_mov = normalizar_texto(o_mov_raw)
+        
+        # Combinar asegurando que no duplicamos información si el nombre ya está en el concepto
+        if o_mov and o_mov in c_mov:
+            texto_actual_full = c_mov
+        else:
+            texto_actual_full = f"{o_mov} {c_mov}".strip().replace("  ", " ")
+        texto_busqueda = texto_actual_full
 
         palabras = texto_busqueda.split()
         palabras_nombre = [p for p in palabras if es_nombre_o_apellido(p)]
+
+        # Evitar falsos positivos en CSVs con información genérica.
+        # Si es un CSV, contiene palabras de ruido y no tiene al menos 2 palabras útiles (nombres), se descarta.
+        es_csv = mov.get("es_csv", False)
+        contiene_generica = any(p in GENERICAS for p in palabras)
+        if es_csv and contiene_generica and len(palabras_nombre) < 2:
+            mov["piso"] = ""
+            mov["metodo_piso"] = ""
+            mov["es_historico"] = False
+            recuperados.append(mov)
+            continue
 
         is_mario = "MARIO" in texto_busqueda
         if is_mario:
             print(f"\n[DEBUG MARIO] Analizando: '{texto_busqueda}'. Nombres detectados: {palabras_nombre}")
             print(f"[DEBUG MARIO]   Movimiento actual: Concepto='{c_mov}', Ordenante='{o_mov}'")
 
-        mejor_piso = None
-        mejor_score = 0.0
-        mejor_metodo = ""
+        # Diccionario para contar coincidencias y aplicar la regla de los 3 movimientos
+        candidatos_conteo = {} # {piso: {"count": int, "best_score": float, "row": dict, "metodo": str}}
         extracto_id_historico_found = None # Initialize for each movement
         # Winning historical row fields (used later to build detalle_historico)
         hist_concepto_original_best = ""
         hist_ordenante_best = ""
 
-
         # --- FASE 1: Búsqueda por Nombres (Mínimo 2 palabras útiles) ---
         if len(palabras_nombre) >= 2:
             n1, n2 = palabras_nombre[:2]
+            
             for _, row in df_registro.iterrows():
-                # 1. Obtener el piso del registro histórico
-                p_hist = str(row.get(col_piso_directo, "")).strip().upper() if col_piso_directo else ""
-                if not p_hist or p_hist in ["NAN", "NONE"]:
-                    # Fallback: intentar extraer piso del texto del histórico si la columna está vacía
-                    t_hist_raw = f"{row.get(col_concepto, '')} {row.get(col_observ, '')} {row.get(col_ordenante, '')}"
-                    p_hist = extraer_piso(t_hist_raw)
-                
-                if not p_hist: continue # Skip if no piso could be identified for this historical record
-                current_hist_extracto_id = row.get(col_extracto_id) if col_extracto_id else None
+                val_piso = row.get(col_piso_directo)
+                p_hist = str(val_piso).strip().upper() if es_piso_identificado(val_piso) else ""
+                if not p_hist:
+                    txt_h = f"{row.get(col_concepto, '')} {row.get(col_observ, '') if col_observ else ''} {row.get(col_ordenante, '') if col_ordenante else ''}"
+                    p_hist = extraer_piso(txt_h)
+                if not p_hist: continue
 
-                # 2. Comprobar nombres en el texto histórico normalizado
-                t_hist_norm = normalizar_texto(f"{row.get(col_concepto, '')} {row.get(col_observ, '')} {row.get(col_ordenante, '')}")
+                h_con_n = normalizar_texto(str(row.get(col_concepto, '')))
+                h_ord_n = normalizar_texto(str(row.get(col_ordenante, ''))) if col_ordenante else ''
+                t_hist_norm = h_con_n if (h_ord_n and h_ord_n in h_con_n) else f"{h_ord_n} {h_con_n}".strip().replace("  ", " ")
                 palabras_hist = t_hist_norm.split()
                 
                 s1 = max((similar(n1, p) for p in palabras_hist), default=0)
@@ -165,40 +225,83 @@ def buscar_pisos_en_registro(df_registro, movimientos_a_procesar, extractos_map:
 
                 if s1 >= 0.85 and s2 >= 0.85:
                     score = (s1 + s2) / 2
-                    if score > mejor_score:
-                        mejor_score, mejor_piso, mejor_metodo = score, p_hist, "historico_db_nombres"
-                        extracto_id_historico_found = current_hist_extracto_id # Assign here
-                        # Save winning row fields for the UI details
-                        hist_concepto_original_best = str(row.get(col_concepto, '') or '')
-                        hist_ordenante_best = str(row.get(col_ordenante, '') if col_ordenante else '')
-                        if score >= 0.98: break # Found a very strong match, no need to search further for this movement
+                    if p_hist not in candidatos_conteo:
+                        candidatos_conteo[p_hist] = {"count": 0, "best_score": 0.0, "row": row, "metodo": "historico_db_nombres"}
+                    candidatos_conteo[p_hist]["count"] += 1
+                    if score > candidatos_conteo[p_hist]["best_score"]:
+                        candidatos_conteo[p_hist]["best_score"] = score
+                        candidatos_conteo[p_hist]["row"] = row
 
 
         # --- FASE 2: Similitud de Texto Completo (Fallback si Fase 1 falló o es insuficiente) ---
-        if not mejor_piso or mejor_score < 0.90:
+        if not candidatos_conteo or max((c["count"] for c in candidatos_conteo.values()), default=0) < 3:
             for _, row in df_registro.iterrows():
-                p_hist = str(row.get(col_piso_directo, "")).strip().upper() if col_piso_directo else ""
-                if not p_hist or p_hist in ["NAN", "NONE"]:
-                    t_hist_raw = f"{row.get(col_concepto, '')} {row.get(col_observ, '')} {row.get(col_ordenante, '')}"
-                    p_hist = extraer_piso(t_hist_raw)
-                
-                if not p_hist: continue # Skip if no piso could be identified for this historical record
-                current_hist_extracto_id = row.get(col_extracto_id) if col_extracto_id else None # Get the extract ID from the historical record
+                val_piso = row.get(col_piso_directo)
+                p_hist = str(val_piso).strip().upper() if es_piso_identificado(val_piso) else ""
+                if not p_hist:
+                    txt_h = f"{row.get(col_concepto, '')} {row.get(col_observ, '') if col_observ else ''} {row.get(col_ordenante, '') if col_ordenante else ''}"
+                    p_hist = extraer_piso(txt_h)
+                if not p_hist: continue
 
-                t_hist_norm = normalizar_texto(f"{row.get(col_concepto, '')} {row.get(col_ordenante, '')}")
+                h_con_n = normalizar_texto(str(row.get(col_concepto, '')))
+                h_ord_n = normalizar_texto(str(row.get(col_ordenante, ''))) if col_ordenante else ''
+                t_hist_full = h_con_n if (h_ord_n and h_ord_n in h_con_n) else f"{h_ord_n} {h_con_n}".strip().replace("  ", " ")
                 
-                # Comparamos el bloque del movimiento actual contra el bloque histórico
-                sim1 = similar(c_mov, t_hist_norm)
-                sim2 = similar(o_mov, t_hist_norm)
-                score = max(sim1, sim2)
+                score = similar(texto_actual_full, t_hist_full)
+                if score >= 0.85:
+                    if p_hist not in candidatos_conteo:
+                        candidatos_conteo[p_hist] = {"count": 0, "best_score": 0.0, "row": row, "metodo": "historico_db_similitud"}
+                    candidatos_conteo[p_hist]["count"] += 1
+                    if score > candidatos_conteo[p_hist]["best_score"]:
+                        candidatos_conteo[p_hist]["best_score"] = score
+                        candidatos_conteo[p_hist]["row"] = row
 
-                if score >= 0.85 and score > mejor_score:
-                    mejor_score, mejor_piso, mejor_metodo = score, p_hist, "historico_db_similitud"
-                    extracto_id_historico_found = current_hist_extracto_id # Assign here
-                    # Save winning row fields for the UI details
-                    hist_concepto_original_best = str(row.get(col_concepto, '') or '')
-                    hist_ordenante_best = str(row.get(col_ordenante, '') if col_ordenante else '')
-                    if score >= 0.95: break # Found a strong match, no need to search further for this movement
+
+        # --- LÓGICA DE ASIGNACIÓN FINAL Y MULTI-PROPIEDAD ---
+        mejor_piso = None
+        mejor_metodo = ""
+        mejor_score = 0.0
+
+        # Regla de consistencia: al menos 3 movimientos con el mismo resultado en el historial
+        candidatos_consistentes = [p for p, data in candidatos_conteo.items() if data["count"] >= 3]
+        
+        if candidatos_consistentes:
+            # Ordenar por frecuencia (el que más veces aparezca en el pasado gana)
+            candidatos_consistentes.sort(key=lambda p: candidatos_conteo[p]["count"], reverse=True)
+            
+            # Comprobar si este propietario tiene más de una finca registrada en la comunidad
+            pisos_del_propietario = [p for p, c in owner_to_pisos.get(o_mov, {}).items() if c >= 3]
+            
+            if len(pisos_del_propietario) > 1:
+                # REPARTO PARA MULTI-PROPIETARIOS
+                # Buscamos un piso que este propietario posea pero que NO hayamos asignado aún en este lote (mes)
+                ya_asignados = lote_assignments.get(o_mov, [])
+                pendientes = [p for p in pisos_del_propietario if p not in ya_asignados]
+                
+                if pendientes:
+                    # Asignamos el primero de los que faltan por pagar
+                    mejor_piso = pendientes[0]
+                else:
+                    # Si ya han pagado todos sus pisos este mes, repetimos por orden de probabilidad
+                    mejor_piso = candidatos_consistentes[0]
+                
+                # Registrar la asignación para el siguiente movimiento del mismo lote
+                if o_mov not in lote_assignments: lote_assignments[o_mov] = []
+                lote_assignments[o_mov].append(mejor_piso)
+                mejor_metodo = candidatos_conteo.get(mejor_piso, {}).get("metodo", "multi_propiedad_db")
+            else:
+                # Caso normal: un solo piso o no detectado como multi-piso
+                mejor_piso = candidatos_consistentes[0]
+                mejor_metodo = candidatos_conteo[mejor_piso]["metodo"]
+
+            # Extraer metadatos del registro ganador para la UI
+            best_match = candidatos_conteo.get(mejor_piso, {})
+            mejor_score = best_match.get("best_score", 0.0)
+            win_row = best_match.get("row")
+            if win_row is not None:
+                extracto_id_historico_found = win_row.get(col_extracto_id) if col_extracto_id else None
+                hist_concepto_original_best = str(win_row.get(col_concepto, '') or '')
+                hist_ordenante_best = str(win_row.get(col_ordenante, '') if col_ordenante else '')
 
 
         if mejor_piso:
