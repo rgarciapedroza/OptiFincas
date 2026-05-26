@@ -10,3 +10,4 @@ ortools
 holidays
 supabase
 python-multipart
+pydantic-settings

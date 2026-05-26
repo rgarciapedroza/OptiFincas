@@ -2,14 +2,9 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 import smtplib
 from email.message import EmailMessage
 import os
-from dotenv import load_dotenv
 from app.servicios.supabase_db import supabase_service_role_client, supabase_client
 from datetime import datetime
-
-# Forzar la carga del .env buscando desde la ubicación de este archivo hacia arriba
-base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-dotenv_path = os.path.join(base_path, '.env')
-load_dotenv(dotenv_path=dotenv_path)
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -24,7 +19,7 @@ async def enviar_contacto(
 ):
     try:
         # 0. LÓGICA PROFESIONAL: Buscar el email del administrador de la comunidad específica
-        destinatario_final = os.getenv("ADMIN_EMAIL") # Fallback por si no hay comunidad
+        destinatario_final = settings.ADMIN_EMAIL # Fallback por si no hay comunidad
         nombre_comunidad = "General"
 
         if communityId:
@@ -67,15 +62,15 @@ async def enviar_contacto(
 
         SMTP_SERVER = "smtp.gmail.com"
         SMTP_PORT = 587
-        EMAIL_SENDER = os.getenv("SMTP_USER") # Este es el "De:" (el sistema)
-        EMAIL_PASSWORD = os.getenv("SMTP_PASSWORD") # Contraseña de aplicación
+        EMAIL_SENDER = settings.SMTP_USER # Este es el "De:" (el sistema)
+        EMAIL_PASSWORD = settings.SMTP_PASSWORD # Contraseña de aplicación
 
         if not EMAIL_SENDER:
-            print("[ERROR SMTP] Falta la variable SMTP_USER en el .env")
+            print("[ERROR SMTP] Falta la variable SMTP_USER configurada.")
             raise ValueError("Falta configurar SMTP_USER en el archivo .env")
         
         if not EMAIL_PASSWORD:
-            print("[ERROR SMTP] Falta la variable SMTP_PASSWORD en el .env")
+            print("[ERROR SMTP] Falta la variable SMTP_PASSWORD configurada.")
             raise ValueError("Falta configurar SMTP_PASSWORD en el archivo .env")
 
         msg = EmailMessage()

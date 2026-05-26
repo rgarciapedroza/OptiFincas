@@ -9,15 +9,14 @@ from fastapi import UploadFile, HTTPException, File, Form
 from typing import Optional, Any, Union
 from fastapi.responses import StreamingResponse
 from app.ml.clasificador_ml import crear_clasificador
-from app.servicios.procesar_movimientos import procesar_extracto_y_registros # Importar correctamente
+from app.servicios.procesar_movimientos import procesar_extracto_y_registros 
 from app.servicios.procesar_extracto import detectar_columnas, limpiar_importe
 from app.servicios.resumen import calcular_resumen_categorias_con_tipo
-from app.servicios.supabase_db import supabase_client, supabase_service_role_client # Importar supabase_service_role_client
+from app.servicios.supabase_db import supabase_client, supabase_service_role_client 
 from app.procesamiento.generar_excel import crear_excel_actualizado, crear_excel_informe_finanzas
 from app.procesamiento.procesar_excel_contable import obtener_nombre_hoja
-from .security import encriptar_dato, desencriptar_dato
-from ..schemas.extracto import FinanzasReportRequest, MovimientoClasificado as MovimientoClasificadoExtracto
-
+from app.controllers.security import encriptar_dato, desencriptar_dato
+from app.schemas import FinanzasReportRequest, MovimientoClasificado as MovimientoClasificadoExtracto
 # Configuración de logging profesional
 logger = logging.getLogger(__name__)
 clasificador = crear_clasificador()

@@ -3,20 +3,17 @@ import base64
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding
 from cryptography.hazmat.backends import default_backend
-from dotenv import load_dotenv
 from typing import Any, Optional
-
-# Intentar cargar las variables de entorno desde el archivo .env
-load_dotenv()
+from app.core.config import settings
 
 # Configuración AES-256-CBC compatible con datos existentes (ej: "NidAA...")
-ENCRYPT_KEY = os.getenv("ENCRYPT_KEY", "OptiFincasSecretKey2024_Security").encode('utf-8')
+ENCRYPT_KEY = settings.ENCRYPT_KEY.encode('utf-8')
 if len(ENCRYPT_KEY) < 32:
     ENCRYPT_KEY = ENCRYPT_KEY.ljust(32, b'\0')
 elif len(ENCRYPT_KEY) > 32:
     ENCRYPT_KEY = ENCRYPT_KEY[:32]
 
-ENCRYPT_IV = os.getenv("ENCRYPT_IV", "OptiFincas_IV_16").encode('utf-8')
+ENCRYPT_IV = settings.ENCRYPT_IV.encode('utf-8')
 if len(ENCRYPT_IV) < 16:
     ENCRYPT_IV = ENCRYPT_IV.ljust(16, b'\0')
 elif len(ENCRYPT_IV) > 16:

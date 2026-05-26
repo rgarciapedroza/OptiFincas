@@ -1,5 +1,3 @@
-from .models import (
-    PisoCreate,
-    PisoUpdate,
-)
-from .extracto import FinanzasReportRequest, MovimientoClasificado, ConfirmarMensualRequest, IngresoPorPiso, GastoReporte, ResumenCuentas
+# Archivo de exportación de esquemas
+from app.schemas.models import PisoCreate, PisoUpdate
+from app.schemas.extracto import FinanzasReportRequest, MovimientoClasificado, ConfirmarMensualRequest
