@@ -3,6 +3,7 @@ import base64
 import os
 import re
 import pandas as pd
+import logging
 from datetime import datetime
 from fastapi import UploadFile, HTTPException, File, Form
 from typing import Optional, Any, Union
@@ -15,7 +16,10 @@ from app.servicios.supabase_db import supabase_client, supabase_service_role_cli
 from app.procesamiento.generar_excel import crear_excel_actualizado, crear_excel_informe_finanzas
 from app.procesamiento.procesar_excel_contable import obtener_nombre_hoja
 from .security import encriptar_dato, desencriptar_dato
+from app.schemas.extracto import FinanzasReportRequest, MovimientoClasificado
 
+# Configuración de logging profesional
+logger = logging.getLogger(__name__)
 clasificador = crear_clasificador()
 
 def opciones_controller():
@@ -108,7 +112,7 @@ async def procesar_extracto_db_controller(
         # Cargamos movimientos previos para usarlos como base de conocimiento, incluyendo extracto_id
         response_movs = supabase_service_role_client.table("movimientos").select("concepto_original,importe,piso_detectado,ordenante,fecha,extracto_id").eq("community_id", community_id).order("fecha", desc=True).execute()
         if response_movs.data:
-            print(f"[DEBUG extracto_controller] Cargados {len(response_movs.data)} movimientos históricos de la base de datos para la comunidad {community_id}")
+            logger.info(f"Cargados {len(response_movs.data)} movimientos históricos de la base de datos para la comunidad {community_id}")
             
             # DESENCRIPTAR datos históricos para que el buscador pueda trabajar con texto plano
             movs_desencriptados = [] # Ya no necesitamos crear el objeto cipher aquí
@@ -121,15 +125,14 @@ async def procesar_extracto_db_controller(
             # Renombramos columnas para que coincidan con la lógica de búsqueda de pisos
             df_historico = df_historico.rename(columns={"concepto_original": "concepto", "piso_detectado": "piso"})
             df_historico.columns = [c.lower() for c in df_historico.columns]
-            print(f"[DEBUG extracto_controller] df_historico head después de renombrar y lower:\n{df_historico.head().to_string()}")
         else:
-            print(f"[DEBUG extracto_controller] No se encontraron movimientos históricos para la comunidad {community_id}.")
+            logger.warning(f"No se encontraron movimientos históricos para la comunidad {community_id}.")
             df_historico = pd.DataFrame() # Asegurarse de que df_historico siempre sea un DataFrame
 
         # Fetch extractos_procesados to get month/year mapping
         extractos_res = supabase_service_role_client.table("extractos_procesados").select("id,mes_contable,anio_contable").eq("comunidad_id", community_id).execute()
         extractos_map = {ext['id']: {'mes': ext['mes_contable'], 'anio': ext['anio_contable']} for ext in extractos_res.data}
-        print(f"[DEBUG extracto_controller] Cargados {len(extractos_map)} extractos procesados para la comunidad {community_id}.")
+        logger.info(f"Cargados {len(extractos_map)} extractos procesados para la comunidad {community_id}.")
 
     else:
         extractos_map = {} # Ensure it's always defined
@@ -181,21 +184,15 @@ async def procesar_extracto_db_controller(
         "nombre_comunidad": nombre_comunidad_fallback
     }
 
-async def confirmar_controller(data: Any, modo: str = "mensual", community_name: Optional[str] = None, mes: Optional[int] = None, anio: Optional[int] = None):
+async def confirmar_controller(
+    data: Union[FinanzasReportRequest, List[MovimientoClasificado]], 
+    modo: str = "mensual", 
+    community_name: Optional[str] = None, 
+    mes: Optional[int] = None, 
+    anio: Optional[int] = None
+):
     # Inicializar variables para los datos específicos de cada tipo de informe
-    finanzas_data_payload: Optional[dict] = None
-    movimientos_actualizados_payload: List[Dict] = []
-
-    if modo == "finanzas":
-        if not isinstance(data, dict):
-            print(f"[ERROR] Modo finanzas pero el cuerpo de la petición no es un diccionario. Tipo recibido: {type(data)}")
-            raise HTTPException(status_code=400, detail="Para el modo 'finanzas', el cuerpo de la petición debe ser un objeto JSON (diccionario).")
-        finanzas_data_payload = data
-    else: # modo == "mensual"
-        if not isinstance(data, list):
-            print(f"[ERROR] Modo mensual pero el cuerpo de la petición no es una lista. Tipo recibido: {type(data)}")
-            raise HTTPException(status_code=400, detail="Para el modo 'mensual', el cuerpo de la petición debe ser una lista JSON.")
-        movimientos_actualizados_payload = data
+    logger.info(f"Iniciando generación de documento modo={modo}")
 
     # Usar mes/año del parámetro o fecha actual como fallback seguro
     p_mes = mes if mes is not None else datetime.now().month
@@ -212,28 +209,29 @@ async def confirmar_controller(data: Any, modo: str = "mensual", community_name:
     # Determinar nombre de hoja (MES AÑO en MAYUSCULAS) basado en los datos
     hoja_nombre = obtener_nombre_hoja(p_mes, p_anio).upper()
 
-    print(f"[DEBUG confirmar_controller] modo={modo} finanzas_payload_exists={finanzas_data_payload is not None} type(data)={type(data)}")
-
-    if modo == "finanzas" and finanzas_data_payload:
-        print("[DEBUG confirmar_controller] Generando FINANZAS excel_informe")
+    if modo == "finanzas":
+        # FastAPI/Pydantic garantizan que si llegamos aquí, data es un FinanzasReportRequest
+        finanzas_dict = data.model_dump() if hasattr(data, "model_dump") else data
+        logger.info("Generando informe de FINANZAS")
         # Generar el informe de finanzas (3 tablas: Ingresos por piso, Gastos y Resumen)
         excel_bytes = crear_excel_informe_finanzas(
             nombre_documento=nombre_limpio,
             nombre_hoja=hoja_nombre,
-            finanzas_data=finanzas_data_payload
+            finanzas_data=finanzas_dict
         )
         nombre_archivo = f"Informe_Finanzas_{nombre_limpio}_{hoja_nombre}.xlsx"
     else:
-        print("[DEBUG confirmar_controller] Generando MENSUAL/EXTRACTO excel_actualizado")
-        # Generar el Excel de movimientos (extracto mensual)
+        # En modo mensual, data es una lista de movimientos
+        movimientos_dicts = [m.model_dump() if hasattr(m, "model_dump") else m for m in data]
+        logger.info(f"Generando extracto MENSUAL con {len(movimientos_dicts)} movimientos")
 
-        tiene_datos_ordenante = any(m.get("ORDENANTE") and str(m["ORDENANTE"]).strip() != "" for m in movimientos_actualizados_payload)
+        tiene_datos_ordenante = any(m.get("ORDENANTE") and str(m["ORDENANTE"]).strip() != "" for m in movimientos_dicts)
         show_ordenante = tiene_datos_ordenante # Simplificado para no depender de la global
 
         excel_bytes = crear_excel_actualizado(
             contenido_excel=None, # Siempre libro nuevo para mensual
             nombre_hoja=hoja_nombre,
-            movimientos_nuevos=movimientos_actualizados_payload,
+            movimientos_nuevos=movimientos_dicts,
             resultado_conciliacion={},
             mes=p_mes,
             año=p_anio,
