@@ -3,10 +3,10 @@ import pandas as pd
 from fastapi import UploadFile, HTTPException, BackgroundTasks
 from typing import List, Dict
 from app.servicios.supabase_db import supabase_client, supabase_service_role_client
-from app.servicios.procesar_extracto import limpiar_importe, normalizar_fecha, load_df_from_excel_sheet_robust, detectar_columnas
+from app.servicios.procesar_extracto import limpiar_importe, normalizar_fecha, load_df_from_excel_sheet_robust, detectar_columnas, buscar_piso_regex_en_fila
 import re
 from datetime import datetime
-from app.controllers.security import encriptar_dato
+from .security import encriptar_dato
 
 async def importar_movimientos_controller(community_id: str, file: UploadFile, user_id: str):
     """
@@ -129,12 +129,18 @@ async def importar_movimientos_controller(community_id: str, file: UploadFile, u
                     
                     # En los registros históricos (Registros.xlsx), la columna mapeada a 'piso' (col_piso)
                     # contiene el Piso para ingresos y la Categoría para gastos.
-                    piso_detectado = None
+                    piso_detectado = piso_val[:20] if (piso_val and piso_val != "") else None
                     categoria = "Sin Categoría"
                     
                     if tipo == "ingreso":
-                        piso_detectado = piso_val[:20] if (piso_val and piso_val != "") else "piso sin identificar"
+                        # Si no se detectó un piso limpio, intentamos buscarlo con Regex en toda la fila
+                        if not piso_detectado or len(piso_detectado) > 5: # Un piso suele ser corto (2J)
+                            piso_regex = buscar_piso_regex_en_fila(row, columnas)
+                            if piso_regex:
+                                piso_detectado = piso_regex
+                        
                         categoria = "Ingreso Cuota"
+                        # Si no se detectó piso, se queda como None para no contaminar el histórico
                     else:
                         categoria = piso_val[:50] if (piso_val and piso_val != "") else "Gasto Varios" # Los gastos no tienen piso_detectado
                         piso_detectado = None
@@ -254,7 +260,8 @@ async def eliminar_extracto_controller(extracto_id: int):
     try:
         # Con ON DELETE CASCADE en la DB, eliminar el extracto padre
         # automáticamente elimina los movimientos asociados.
-        response = supabase_client.table("extractos_procesados").delete().eq("id", extracto_id).execute()
+        client = supabase_service_role_client if supabase_service_role_client else supabase_client
+        response = client.table("extractos_procesados").delete().eq("id", extracto_id).execute()
         
         return {"status": "success", "message": "Registro eliminado correctamente"}
     except Exception as e:

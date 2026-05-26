@@ -5,7 +5,11 @@ from fastapi.responses import FileResponse
 from app.api.rutas import router as api_router
 from app.api.optimizacion import router as optimizacion_router
 from app.api.contacto import router as contacto_router
-import os, fastapi
+import os, fastapi, logging
+
+# Configuración de Logging Profesional
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("OptiFincas")
 
 app = FastAPI(title="API Procesador de Extractos")
 
@@ -29,8 +33,8 @@ frontend_dist_root = os.path.join(base_dir, "frontend", "dist")
 
 frontend_path = None
 
-print(f"--- Diagnóstico de Frontend ---")
-print(f"Ruta raíz buscada: {frontend_dist_root}")
+logger.info("--- Diagnóstico de Frontend ---")
+logger.info(f"Ruta raíz buscada: {frontend_dist_root}")
 
 # Estrategias para encontrar el 'index.html' dentro de la carpeta 'dist'
 # 1. Directamente en 'dist/' (ej: frontend/dist/index.html)
@@ -52,7 +56,7 @@ elif os.path.isdir(frontend_dist_root):
                 break
 
 if frontend_path and os.path.exists(os.path.join(frontend_path, "index.html")):
-    print(f"✅ Frontend detectado y listo en: {frontend_path}")
+    logger.info(f"✅ Frontend detectado y listo en: {frontend_path}")
     app.mount("/", StaticFiles(directory=frontend_path, html=True), name="static")
 
     @app.get("/{full_path:path}")
@@ -62,8 +66,8 @@ if frontend_path and os.path.exists(os.path.join(frontend_path, "index.html")):
             raise fastapi.HTTPException(status_code=404, detail="API route not found")
         return FileResponse(os.path.join(frontend_path, "index.html"))
 else:
-    print(f"⚠️  ERROR: No se encontró index.html en {frontend_dist_root} o sus subdirectorios.")
-    print("Asegúrate de haber ejecutado 'npm run build' en la carpeta frontend.")
+    logger.warning(f"⚠️  ERROR: No se encontró index.html en {frontend_dist_root} o sus subdirectorios.")
+    logger.info("Asegúrate de haber ejecutado 'npm run build' en la carpeta frontend.")
 
 if __name__ == "__main__":
     import uvicorn

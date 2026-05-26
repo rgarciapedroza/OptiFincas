@@ -1,8 +1,8 @@
 import io
 import pandas as pd
 from fastapi import UploadFile, HTTPException
-from app.servicios.supabase_db import supabase_client
-from app.controllers.security import encriptar_dato, desencriptar_dato
+from app.servicios.supabase_db import supabase_client, supabase_service_role_client
+from .security import encriptar_dato, desencriptar_dato
 
 def importar_censo_pisos_controller(community_id: int, file: UploadFile, user_id: str = None):
     """
@@ -98,7 +98,8 @@ def importar_censo_pisos_controller(community_id: int, file: UploadFile, user_id
 
         # Insertar en Supabase (usamos upsert por seguridad, aunque ya hayamos borrado)
         # Nota: La tabla 'pisos' debe tener la restricción _piso_comunidad_uc definida.
-        response = supabase_client.table("pisos").upsert(
+        client = supabase_service_role_client if supabase_service_role_client else supabase_client
+        response = client.table("pisos").upsert(
             pisos_a_insertar, 
             on_conflict="community_id,codigo"
         ).execute()
@@ -116,7 +117,8 @@ def importar_censo_pisos_controller(community_id: int, file: UploadFile, user_id
 
 def get_piso_controller(piso_id: int):
     """Obtiene un piso por su ID y desencripta los datos sensibles."""
-    response = supabase_client.table("pisos").select("*").eq("id", piso_id).single().execute()
+    client = supabase_service_role_client if supabase_service_role_client else supabase_client
+    response = client.table("pisos").select("*").eq("id", piso_id).single().execute()
     if not response.data:
         raise HTTPException(status_code=404, detail="Piso no encontrado")
 
@@ -135,7 +137,8 @@ def create_piso_controller(piso_data: dict, user_id: str = None):
         if field in piso_data and piso_data[field]:
             piso_data[field] = encriptar_dato(piso_data[field])
 
-    response = supabase_client.table("pisos").insert(piso_data).execute()
+    client = supabase_service_role_client if supabase_service_role_client else supabase_client
+    response = client.table("pisos").insert(piso_data).execute()
     if response.data:
         return response.data[0]
     raise HTTPException(status_code=500, detail="Error al crear el piso")
@@ -150,8 +153,10 @@ def update_piso_controller(piso_id: int, piso_data: dict, user_id: str = None):
     if "codigo" in piso_data:
         updates["codigo"] = str(piso_data["codigo"]).upper()
 
+    client = supabase_service_role_client if supabase_service_role_client else supabase_client
+
     # Primero verificamos si el piso existe y a quién pertenece
-    existing = supabase_client.table("pisos").select("user_id").eq("id", piso_id).single().execute()
+    existing = client.table("pisos").select("user_id").eq("id", piso_id).single().execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Piso no encontrado")
     
@@ -163,7 +168,7 @@ def update_piso_controller(piso_id: int, piso_data: dict, user_id: str = None):
     if not existing.data.get("user_id") and user_id:
         updates["user_id"] = user_id
 
-    query = supabase_client.table("pisos").update(updates).eq("id", piso_id)
+    query = client.table("pisos").update(updates).eq("id", piso_id)
     response = query.execute()
 
     if response.data:
@@ -175,15 +180,16 @@ def update_piso_controller(piso_id: int, piso_data: dict, user_id: str = None):
 
 def delete_piso_controller(piso_id: int, user_id: str = None):
     """Elimina un piso por su ID verificado por user_id."""
+    client = supabase_service_role_client if supabase_service_role_client else supabase_client
     # Verificación similar para permitir borrar si no tiene dueño o es el dueño
-    existing = supabase_client.table("pisos").select("user_id").eq("id", piso_id).single().execute()
+    existing = client.table("pisos").select("user_id").eq("id", piso_id).single().execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Piso no encontrado")
         
     if existing.data.get("user_id") and existing.data["user_id"] != user_id:
          raise HTTPException(status_code=403, detail="No tienes permiso para eliminar este piso")
 
-    query = supabase_client.table("pisos").delete().eq("id", piso_id)
+    query = client.table("pisos").delete().eq("id", piso_id)
     response = query.execute()
 
     if response.data:
@@ -192,5 +198,6 @@ def delete_piso_controller(piso_id: int, user_id: str = None):
 
 def borrar_censo_comunidad_controller(community_id: int):
     """Elimina todos los pisos de una comunidad específica."""
-    response = supabase_client.table("pisos").delete().eq("community_id", community_id).execute()
+    client = supabase_service_role_client if supabase_service_role_client else supabase_client
+    response = client.table("pisos").delete().eq("community_id", community_id).execute()
     return {"status": "success", "message": f"Se han eliminado {len(response.data)} registros del censo."}

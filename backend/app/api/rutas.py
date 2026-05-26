@@ -4,6 +4,7 @@ from app.controllers.movimientos_bancarios_controller import importar_movimiento
 from app.controllers.pisos_controller import importar_censo_pisos_controller, get_piso_controller, create_piso_controller, update_piso_controller, delete_piso_controller, borrar_censo_comunidad_controller
 from app.controllers.extracto_controller import procesar_extracto_db_controller, confirmar_controller, descargar_controller, descargar_excel_controller, entrenar_controller, opciones_controller
 from app.servicios.auth_supabase import get_current_user
+from app.schemas import PisoCreate, PisoUpdate
 
 router = APIRouter()
 
@@ -68,20 +69,22 @@ async def get_piso_route(piso_id: int):
 
 @router.post("/pisos")
 async def create_piso_route(
-    piso_data: Dict, # Using Dict for now, ideally a Pydantic model
+    piso_data: PisoCreate,
     user_id: str = Depends(get_current_user)
 ):
     """Crea un nuevo piso."""
-    return create_piso_controller(piso_data, user_id)
+    # Usamos model_dump(exclude_none=True) para no enviar valores nulos innecesarios
+    return create_piso_controller(piso_data.model_dump(exclude_none=True), user_id)
 
 @router.put("/pisos/{piso_id}")
 async def update_piso_route(
     piso_id: int,
-    piso_data: Dict, # Using Dict for now, ideally a Pydantic model
+    piso_data: PisoUpdate,
     user_id: str = Depends(get_current_user)
 ):
     """Actualiza un piso existente."""
-    return update_piso_controller(piso_id, piso_data, user_id)
+    # exclude_unset=True evita sobrescribir campos que el usuario no ha enviado
+    return update_piso_controller(piso_id, piso_data.model_dump(exclude_unset=True, exclude_none=True), user_id)
 
 @router.delete("/pisos/{piso_id}")
 async def delete_piso_route(
