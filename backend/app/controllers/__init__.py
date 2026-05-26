@@ -1,1 +1,1 @@
-# backend/app/controllers/__init__.py
+# Archivo de inicialización del paquete controllers
