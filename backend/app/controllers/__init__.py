@@ -1,1 +1,1 @@
-# Archivo de inicialización del paquete controllers
+# Paquete para configuraciones centrales del sistema

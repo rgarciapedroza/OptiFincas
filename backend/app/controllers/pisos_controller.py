@@ -1,7 +1,7 @@
 import io
 import pandas as pd
 from fastapi import UploadFile, HTTPException
-from app.servicios.supabase_db import supabase_client, supabase_service_role_client
+from ..servicios.supabase_db import supabase_client, supabase_service_role_client
 from .security import encriptar_dato, desencriptar_dato
 
 def importar_censo_pisos_controller(community_id: int, file: UploadFile, user_id: str = None):
