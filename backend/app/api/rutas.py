@@ -9,7 +9,12 @@ from app.schemas.models import PisoCreate, PisoUpdate
 router = APIRouter()
 
 # --- Rutas para Movimientos Bancarios (Funcionalidad 2 - Dashboard de Comunidad) ---
-@router.post("/comunidades/{community_id}/importar-movimientos")
+@router.post(
+    "/comunidades/{community_id}/importar-movimientos",
+    tags=["Movimientos"],
+    summary="Importar extracto histórico",
+    description="Carga movimientos desde un Excel con múltiples hojas (mes/año) y los registra en el histórico de la comunidad."
+)
 async def importar_movimientos_route(
     community_id: int,
     file: UploadFile = File(...),
@@ -20,7 +25,12 @@ async def importar_movimientos_route(
     """
     return await importar_movimientos_controller(str(community_id), file, user_id)
 
-@router.get("/comunidades/{community_id}/movimientos")
+@router.get(
+    "/comunidades/{community_id}/movimientos",
+    tags=["Movimientos"],
+    summary="Listar movimientos de la comunidad",
+    description="Obtiene todos los movimientos bancarios registrados para una comunidad específica."
+)
 async def get_movimientos_by_community_route(
     community_id: str,
     user_id: str = Depends(get_current_user)
@@ -30,7 +40,12 @@ async def get_movimientos_by_community_route(
     """
     return await get_movimientos_by_community_controller(community_id, user_id)
 
-@router.delete("/extractos/{extracto_id}")
+@router.delete(
+    "/extractos/{extracto_id}",
+    tags=["Movimientos"],
+    summary="Eliminar extracto procesado",
+    description="Borra un registro de extracto y todos sus movimientos asociados (vía borrado en cascada)."
+)
 async def eliminar_extracto_route(
     extracto_id: int,
     user_id: str = Depends(get_current_user)
@@ -41,7 +56,12 @@ async def eliminar_extracto_route(
     return await eliminar_extracto_controller(extracto_id)
 
 # --- Rutas para Pisos (Funcionalidad 2 - Dashboard de Comunidad) ---
-@router.post("/comunidades/{community_id}/importar-censo")
+@router.post(
+    "/comunidades/{community_id}/importar-censo",
+    tags=["Pisos"],
+    summary="Importar censo de propietarios",
+    description="Procesa un Excel con la lista de propietarios y encripta los datos sensibles antes de guardarlos."
+)
 async def importar_censo_route(
     community_id: int,
     file: UploadFile = File(...),
@@ -52,7 +72,11 @@ async def importar_censo_route(
     """
     return importar_censo_pisos_controller(community_id, file, user_id)
 
-@router.delete("/comunidades/{community_id}/censo")
+@router.delete(
+    "/comunidades/{community_id}/censo",
+    tags=["Pisos"],
+    summary="Borrar censo completo"
+)
 async def borrar_censo_comunidad_route(
     community_id: int,
     user_id: str = Depends(get_current_user)
@@ -62,12 +86,16 @@ async def borrar_censo_comunidad_route(
     """
     return borrar_censo_comunidad_controller(community_id)
 
-@router.get("/pisos/{piso_id}")
+@router.get("/pisos/{piso_id}", tags=["Pisos"], summary="Obtener detalle de piso")
 async def get_piso_route(piso_id: int):
     """Obtiene un piso por su ID."""
     return get_piso_controller(piso_id)
 
-@router.post("/pisos")
+@router.post(
+    "/pisos",
+    tags=["Pisos"],
+    summary="Crear piso manualmente"
+)
 async def create_piso_route(
     piso_data: PisoCreate,
     user_id: str = Depends(get_current_user)
@@ -76,7 +104,11 @@ async def create_piso_route(
     # Usamos model_dump(exclude_none=True) para no enviar valores nulos innecesarios
     return create_piso_controller(piso_data.model_dump(exclude_none=True), user_id)
 
-@router.put("/pisos/{piso_id}")
+@router.put(
+    "/pisos/{piso_id}",
+    tags=["Pisos"],
+    summary="Actualizar piso"
+)
 async def update_piso_route(
     piso_id: int,
     piso_data: PisoUpdate,
@@ -86,7 +118,11 @@ async def update_piso_route(
     # exclude_unset=True evita sobrescribir campos que el usuario no ha enviado
     return update_piso_controller(piso_id, piso_data.model_dump(exclude_unset=True, exclude_none=True), user_id)
 
-@router.delete("/pisos/{piso_id}")
+@router.delete(
+    "/pisos/{piso_id}",
+    tags=["Pisos"],
+    summary="Eliminar piso individual"
+)
 async def delete_piso_route(
     piso_id: int,
     user_id: str = Depends(get_current_user)
@@ -95,7 +131,11 @@ async def delete_piso_route(
     return delete_piso_controller(piso_id, user_id)
 
 # --- Rutas para Extractos Procesados ---
-@router.get("/comunidades/{community_id}/extractos")
+@router.get(
+    "/comunidades/{community_id}/extractos",
+    tags=["Movimientos"],
+    summary="Listar extractos por comunidad"
+)
 async def get_extractos_by_community_route(
     community_id: str,
     user_id: str = Depends(get_current_user)
@@ -104,7 +144,12 @@ async def get_extractos_by_community_route(
     return await get_extractos_by_community_controller(community_id, user_id)
 
 # --- Rutas para el Clasificador (Funcionalidad 1) ---
-@router.post("/procesar-extracto-db")
+@router.post(
+    "/procesar-extracto-db",
+    tags=["Inteligencia Artificial"],
+    summary="Procesar extracto nuevo",
+    description="Analiza un extracto bancario usando modelos de ML y el histórico para asignar pisos automáticamente."
+)
 async def procesar_extracto_db_route(
     extracto: UploadFile = File(...),
     community_id: int = Form(...)
@@ -112,7 +157,12 @@ async def procesar_extracto_db_route(
     """Procesa un extracto bancario utilizando datos históricos de la base de datos para clasificación."""
     return await procesar_extracto_db_controller(extracto, community_id)
 
-@router.post("/confirmar")
+@router.post(
+    "/confirmar",
+    tags=["Inteligencia Artificial"],
+    summary="Confirmar y Generar Excel",
+    description="Recibe los movimientos editados por el usuario y genera el archivo Excel final de contabilidad."
+)
 async def confirmar_route(
     data: Any = Body(...), # Body(...) es obligatorio para evitar el error 422 con Any
     modo: str = "mensual",
@@ -123,7 +173,7 @@ async def confirmar_route(
     """Confirma los movimientos actualizados y genera un archivo."""
     return await confirmar_controller(data, modo, community_name, mes, anio)
 
-@router.post("/descargar")
+@router.post("/descargar", tags=["Inteligencia Artificial"], summary="Descargar CSV")
 async def descargar_route(
     movimientos_actualizados: List[Dict] = Body(...),
     formato: str = "csv",
@@ -133,7 +183,7 @@ async def descargar_route(
     """Descarga los movimientos en el formato especificado."""
     return await descargar_controller(movimientos_actualizados, formato, mes, anio)
 
-@router.post("/descargar-excel")
+@router.post("/descargar-excel", tags=["Inteligencia Artificial"], summary="Descargar Excel")
 async def descargar_excel_route(
     movimientos_actualizados: List[Dict] = Body(...),
     mes: int = 1,
@@ -142,7 +192,7 @@ async def descargar_excel_route(
     """Descarga los movimientos en formato Excel."""
     return await descargar_excel_controller(movimientos_actualizados, mes, anio)
 
-@router.post("/entrenar")
+@router.post("/entrenar", tags=["Inteligencia Artificial"], summary="Entrenar clasificador")
 async def entrenar_route(
     extracto: UploadFile = File(...),
     excel_contable: UploadFile = File(...)
@@ -150,7 +200,7 @@ async def entrenar_route(
     """Entrena el modelo de clasificación con nuevos datos."""
     return await entrenar_controller(extracto, excel_contable)
 
-@router.get("/opciones")
+@router.get("/opciones", tags=["Inteligencia Artificial"], summary="Listar tipos y categorías")
 async def opciones_route():
     """Obtiene las opciones disponibles para el clasificador."""
     return opciones_controller()

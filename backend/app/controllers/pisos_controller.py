@@ -1,8 +1,11 @@
 import io
+import logging
 import pandas as pd
 from fastapi import UploadFile, HTTPException
-from ..servicios.supabase_db import supabase_client, supabase_service_role_client
+from app.servicios.supabase_db import supabase_client, supabase_service_role_client
 from .security import encriptar_dato, desencriptar_dato
+
+logger = logging.getLogger(__name__)
 
 def importar_censo_pisos_controller(community_id: int, file: UploadFile, user_id: str = None):
     """
@@ -18,7 +21,7 @@ def importar_censo_pisos_controller(community_id: int, file: UploadFile, user_id
         # Normalizar columnas
         df.columns = [str(c).strip().lower() for c in df.columns]
         
-        print(f"DEBUG: Columnas normalizadas en DataFrame: {df.columns.tolist()}")
+        logger.debug(f"Columnas normalizadas en DataFrame: {df.columns.tolist()}")
 
         # Mapeo de columnas basado en la nueva estructura
         col_piso = next((c for c in df.columns if "piso" in c or "codigo" in c), None)
@@ -31,7 +34,7 @@ def importar_censo_pisos_controller(community_id: int, file: UploadFile, user_id
         
         col_prop_combined = next((c for c in df.columns if "propietario" in c), None)
         col_tel_gen = next((c for c in df.columns if "telefono" in c or "teléfono" in c), None)
-        print(f"DEBUG: Columnas detectadas - Piso: {col_piso}, Nombre: {col_nombre}, Apellidos: {col_apellidos}, Email: {col_email}, Tel1: {col_tel1}, Tel2: {col_tel2}, Obs: {col_obs}")
+        logger.info(f"Columnas detectadas - Piso: {col_piso}, Email: {col_email}")
 
         if not col_piso:
             raise HTTPException(status_code=400, detail="No se encontró la columna de 'Piso' o 'Código'")
@@ -71,14 +74,12 @@ def importar_censo_pisos_controller(community_id: int, file: UploadFile, user_id
                 val_tel1 = limpiar_valor(row.get(col_tel_gen))
 
             debug_obs_val = limpiar_valor(row.get(col_obs))
-            print(f"DEBUG: Procesando fila - Codigo: {codigo}, Nombre: '{nombre_completo}', Email: '{debug_email_val}', Tel1: '{val_tel1}', Obs: '{debug_obs_val}'")
 
             # Encriptamos los datos sensibles
             encrypted_propietario = encriptar_dato(nombre_completo) if nombre_completo else None
             encrypted_tel1 = encriptar_dato(val_tel1) if val_tel1 else None
             encrypted_tel2 = encriptar_dato(val_tel2) if val_tel2 else None
             encrypted_obs = encriptar_dato(debug_obs_val) if debug_obs_val else None
-            print(f"DEBUG: Procesando - Codigo: {codigo}, Propietario Encriptado: {encrypted_propietario[:30] if encrypted_propietario else None}...")
 
             pisos_a_insertar.append({
                 "community_id": community_id,
