@@ -3,12 +3,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { lastValueFrom } from 'rxjs';
 import { SupabaseService } from './supabase.service';
-import * as CryptoJS from 'crypto-js';
 import { FinanzasData, MovimientoBancario } from './models';
-
-// Claves para desencriptación
-const ENCRYPT_KEY = CryptoJS.enc.Utf8.parse('OptiFincasSecretKey2024_Security');
-const ENCRYPT_IV = CryptoJS.enc.Utf8.parse('OptiFincas_IV_16');
 
 @Component({
   selector: 'app-portal-propietario',
@@ -67,11 +62,8 @@ export class PortalPropietarioComponent implements OnInit {
     if (session?.user?.email) {
       const { data } = await this.supabase.buscarPisoPorEmail(session.user.email);
       if (data) {
-        this.userPisos = data.map((p: any) => ({
-          ...p,
-          propietario: this.decryptVal(p.propietario),
-          observaciones: this.decryptVal(p.observaciones)
-        }));
+        // Los datos ya vienen desencriptados desde el backend
+        this.userPisos = data;
         
         if (this.userPisos.length > 0) {
           this.userName = this.userPisos[0].propietario;
@@ -142,8 +134,9 @@ export class PortalPropietarioComponent implements OnInit {
       this.extractoActualFinanzas = extData?.find((e: any) => e.mes_contable === mes && e.anio_contable === anio) || null;
 
       if (this.extractoActualFinanzas) {
-        const { data: movs } = await this.supabase.getMovimientosByExtracto(this.extractoActualFinanzas.id);
-        const { data: allPisos } = await this.supabase.getPisos(this.selectedPiso.comunidades.id);
+        // LLAMADA AL BACKEND: Obtenemos datos ya desencriptados por el servidor
+        const movs = await lastValueFrom(this.http.get<any[]>(`/api/comunidades/${this.selectedPiso.comunidades.id}/movimientos`));
+        const allPisos = await lastValueFrom(this.http.get<any[]>(`/api/comunidades/${this.selectedPiso.comunidades.id}/pisos`));
         
         if (movs && allPisos) {
           const ingresos = movs.filter(m => this.asNumber(m.importe) > 0);
@@ -167,7 +160,7 @@ export class PortalPropietarioComponent implements OnInit {
           });
 
           this.finanzasData.gastos = gastos.map(g => ({
-            concepto: g.categoria !== 'Sin Categoría' ? g.categoria : this.decryptVal(g.concepto_original),
+            concepto: g.categoria !== 'Sin Categoría' ? g.categoria : g.concepto_original,
             importe: Math.abs(this.asNumber(g.importe))
           })).sort((a, b) => b.importe - a.importe);
 
@@ -346,7 +339,7 @@ export class PortalPropietarioComponent implements OnInit {
             }
 
             // 3. Comprobación por Concepto Original (Desencriptado)
-            const descPlana = this.decryptVal(mov.concepto_original);
+            const descPlana = mov.concepto_original;
             const descNorm = this.unformatPiso(descPlana);
             if (descNorm.includes(pisoNorm)) {
               console.log(`  [MATCH!] Mes ${m} - Piso ${pisoNorm}: Encontrado en descripción: "${descPlana}"`);
@@ -354,7 +347,7 @@ export class PortalPropietarioComponent implements OnInit {
             }
 
             // 4. Comprobación por Ordenante (Desencriptado)
-            const ordPlano = this.decryptVal(mov.ordenante);
+            const ordPlano = mov.ordenante;
             const ordNorm = this.unformatPiso(ordPlano);
             if (ordNorm.includes(pisoNorm)) {
               console.log(`  [MATCH!] Mes ${m} - Piso ${pisoNorm}: Encontrado en ordenante: "${ordPlano}"`);
@@ -463,17 +456,6 @@ export class PortalPropietarioComponent implements OnInit {
     console.log('[DEBUG] Mostrar solo pendientes:', this.mostrarPendientes);
   }
 
-  decryptVal(ciphertext: string): string {
-    if (!ciphertext || ciphertext === '-' || ciphertext === 'nan') return '';
-    try {
-      const decrypted = CryptoJS.AES.decrypt(ciphertext, ENCRYPT_KEY, {
-        iv: ENCRYPT_IV,
-        mode: CryptoJS.mode.CBC,
-        padding: CryptoJS.pad.Pkcs7
-      });
-      return decrypted.toString(CryptoJS.enc.Utf8) || ciphertext;
-    } catch (e) { console.error("Decryption error:", e); return ''; } // Return empty string on error
-  }
 
   asNumber(val: any): number {
     if (typeof val === 'number') return val;

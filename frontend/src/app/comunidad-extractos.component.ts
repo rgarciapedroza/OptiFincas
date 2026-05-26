@@ -2,10 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { SupabaseService } from './supabase.service';
 import { ExtractoProcesado, MovimientoBancario } from './models';
-import * as CryptoJS from 'crypto-js';
-
-const ENCRYPT_KEY = CryptoJS.enc.Utf8.parse('OptiFincasSecretKey2024_Security');
-const ENCRYPT_IV = CryptoJS.enc.Utf8.parse('OptiFincas_IV_16');
+import { HttpClient } from '@angular/common/http';
 
 @Component({
   selector: 'app-comunidad-extractos',
@@ -68,7 +65,7 @@ const ENCRYPT_IV = CryptoJS.enc.Utf8.parse('OptiFincas_IV_16');
               <th (click)="toggleOrdenFecha()" style="cursor: pointer; user-select: none;">
                 FECHA {{ ordenFecha === 'desc' ? '▼' : '▲' }}
               </th>
-              <th>OBSERVACIONES</th>
+              <th>CONCEPTO ORIGINAL</th>
               <th style="text-align: right;">IMPORTE</th>
               <th style="text-align: center;">CONCEPTO</th>
             </tr>
@@ -76,7 +73,7 @@ const ENCRYPT_IV = CryptoJS.enc.Utf8.parse('OptiFincas_IV_16');
           <tbody>
             <tr *ngFor="let mov of movimientosOrdenados">
               <td>{{ mov.fecha | date:'dd/MM/yyyy' }}</td>
-              <td style="font-size: 0.9rem;">{{ decryptVal(mov.concepto_original) || '-' }}</td>
+              <td style="font-size: 0.9rem;">{{ mov.concepto_original || '-' }}</td>
               <td [style.color]="mov.importe > 0 ? '#2ecc71' : '#e74c3c'" style="text-align: right; font-weight: bold;">
                 {{ mov.importe | number:'1.2-2' }}€
               </td>
@@ -118,7 +115,7 @@ export class ComunidadExtractosComponent implements OnInit {
   cambiosRealizados = false;
   loading = false;
 
-  constructor(private route: ActivatedRoute, private supabase: SupabaseService) {}
+  constructor(private route: ActivatedRoute, private supabase: SupabaseService, private http: HttpClient) {}
 
   async ngOnInit() {
     // El ID viene del componente padre (ComunidadDashboard)
@@ -184,18 +181,17 @@ export class ComunidadExtractosComponent implements OnInit {
   async seleccionarExtracto(ext: ExtractoProcesado) {
     this.extractoSeleccionado = ext;
     this.loading = true;
-    const { data } = await this.supabase.getMovimientosByExtracto(ext.id);
-    this.movimientos = (data || []).map(m => {
-      const decrypted = {
+    // Obtener movimientos ya desencriptados desde el backend
+    const movimientosDesencriptados = await this.http.get<any[]>(`/api/comunidades/${this.communityId}/movimientos?extracto_id=${ext.id}`).toPromise();
+    this.movimientos = (movimientosDesencriptados || []).map(m => {
+      const processed = {
         ...m,
-        concepto_original: this.decryptVal(m.concepto_original),
-        ordenante: this.decryptVal(m.ordenante)
       };
       // Inicializar CONCEPTO para el input de la UI (Piso para ingresos, Categoría para gastos)
-      decrypted.CONCEPTO = m.tipo === 'ingreso' 
+      processed.CONCEPTO = m.tipo === 'ingreso' 
         ? this.formatearPiso(m.piso_detectado) 
         : (m.categoria || 'Sin categoría');
-      return decrypted;
+      return processed;
     });
     this.cambiosRealizados = false;
     this.loading = false;
@@ -208,7 +204,7 @@ export class ComunidadExtractosComponent implements OnInit {
       // Sincronizamos los cambios del input (CONCEPTO) con los campos técnicos antes de guardar
       this.movimientos.forEach(m => {
         if (m.tipo === 'ingreso') {
-          m.piso_detectado = this.unformatPiso(m.CONCEPTO || '');
+          m.piso_detectado = this.unformatPiso(m.CONCEPTO || ''); // El backend encriptará esto
         } else {
           m.categoria = m.CONCEPTO || 'Sin Categoría';
         }
@@ -219,10 +215,10 @@ export class ComunidadExtractosComponent implements OnInit {
         community_id: m.community_id,
         extracto_id: m.extracto_id,
         fecha: m.fecha,
-        concepto_original: this.encryptVal(m.concepto_original || ''),
+        concepto_original: m.concepto_original || '', // El backend encriptará esto
         importe: m.importe,
         saldo_resultante: m.saldo_resultante,
-        ordenante: this.encryptVal(m.ordenante || ''),
+        ordenante: m.ordenante || '', // El backend encriptará esto
         piso_detectado: (m.piso_detectado && m.piso_detectado.trim() !== '') ? m.piso_detectado.substring(0, 20) : 'piso sin identificar',
         tipo: m.tipo,
         editado_manualmente: true,
@@ -241,18 +237,6 @@ export class ComunidadExtractosComponent implements OnInit {
     } finally {
       this.loading = false;
     }
-  }
-
-  encryptVal(plaintext: string): string {
-    if (!plaintext) return '';
-    try {
-      const encrypted = CryptoJS.AES.encrypt(plaintext, ENCRYPT_KEY, {
-        iv: ENCRYPT_IV,
-        mode: CryptoJS.mode.CBC,
-        padding: CryptoJS.pad.Pkcs7
-      });
-      return encrypted.toString();
-    } catch (e) { return plaintext; }
   }
 
   unformatPiso(formattedPiso: string): string {
@@ -320,18 +304,6 @@ export class ComunidadExtractosComponent implements OnInit {
     const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
                    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
     return meses[mes - 1] || 'Desconocido';
-  }
-
-  decryptVal(ciphertext: string | undefined): string {
-    if (!ciphertext || ciphertext === '-' || ciphertext === 'nan') return '';
-    try {
-      const decrypted = CryptoJS.AES.decrypt(ciphertext, ENCRYPT_KEY, {
-        iv: ENCRYPT_IV,
-        mode: CryptoJS.mode.CBC,
-        padding: CryptoJS.pad.Pkcs7
-      });
-      return decrypted.toString(CryptoJS.enc.Utf8) || ciphertext;
-    } catch (e) { return ciphertext || ''; }
   }
 
   async onFileSelected(event: any) {
