@@ -135,7 +135,6 @@ def buscar_pisos_en_registro(df_registro, movimientos_a_procesar, extractos_map:
     col_ordenante = cols_lower.get("ordenante") or next((v for k, v in cols_lower.items() if any(kw in k for kw in ["titular", "propietario", "nombre", "benef"])), None)
     col_piso_directo = cols_lower.get("piso")
     
-    # Define col_extracto_id here using the helper
     col_extracto_id = find_col_by_keywords(df_registro.columns.tolist(), ["extracto_id", "id_extracto", "extracto"])
 
     # 1. Mapa de Propietario -> {Piso: Frecuencia} (extraído del historial global)

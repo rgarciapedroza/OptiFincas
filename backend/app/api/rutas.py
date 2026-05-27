@@ -102,9 +102,9 @@ async def borrar_censo_comunidad_route(
     return borrar_censo_comunidad_controller(community_id)
 
 @router.get("/pisos/{piso_id}", tags=["Pisos"], summary="Obtener detalle de piso")
-async def get_piso_route(piso_id: int):
+async def get_piso_route(piso_id: int, user_id: str = Depends(get_current_user)):
     """Obtiene un piso por su ID."""
-    return get_piso_controller(piso_id)
+    return get_piso_controller(piso_id, user_id)
 
 @router.post(
     "/pisos",

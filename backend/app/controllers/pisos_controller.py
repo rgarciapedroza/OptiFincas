@@ -131,18 +131,24 @@ def get_pisos_by_community_controller(community_id: int):
         piso["observaciones"] = desencriptar_dato(piso.get("observaciones"))
     return response.data
 
-def get_piso_controller(piso_id: int):
+def get_piso_controller(piso_id: int, user_id: str):
     """Obtiene un piso por su ID y desencripta los datos sensibles."""
     client = supabase_service_role_client if supabase_service_role_client else supabase_client
-    response = client.table("pisos").select("*").eq("id", piso_id).single().execute()
+    response = client.table("pisos").select("*, comunidades(id, nombre)").eq("id", piso_id).single().execute()
     if not response.data:
         raise HTTPException(status_code=404, detail="Piso no encontrado")
 
     piso = response.data
-    piso["propietario"] = desencriptar_dato(piso["propietario"])
-    piso["telefono1"] = desencriptar_dato(piso["telefono1"])
-    piso["telefono2"] = desencriptar_dato(piso["telefono2"])
-    piso["observaciones"] = desencriptar_dato(piso["observaciones"])
+
+    # Verificar si el usuario tiene permiso para ver este piso
+    if piso.get("user_id") and piso["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="No tienes permiso para ver este piso.")
+
+    piso["propietario"] = desencriptar_dato(piso.get("propietario"))
+    piso["telefono1"] = desencriptar_dato(piso.get("telefono1"))
+    piso["telefono2"] = desencriptar_dato(piso.get("telefono2"))
+    piso["observaciones"] = desencriptar_dato(piso.get("observaciones"))
+
     return piso
 
 def create_piso_controller(piso_data: dict, user_id: str = None):

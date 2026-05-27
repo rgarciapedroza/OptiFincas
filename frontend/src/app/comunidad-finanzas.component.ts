@@ -4,6 +4,7 @@ import { SupabaseService } from './supabase.service';
 import { FinanzasData } from './models';
 import { HttpClient } from '@angular/common/http';
 import { lastValueFrom } from 'rxjs';
+import { UtilsService } from './utils.service';
 
 @Component({
   selector: 'app-comunidad-finanzas',
@@ -61,7 +62,7 @@ import { lastValueFrom } from 'rxjs';
             </thead>
             <tbody>
               <tr *ngFor="let item of data.ingresosPorPiso">
-                <td style="font-weight: 600;">{{ formatearPiso(item.codigo) }}</td>
+                <td style="font-weight: 600;">{{ utils.formatearPiso(item.codigo) }}</td>
                 <td style="text-align: center;" [style.font-weight]="item.pagado ? '700' : 'normal'">
                   {{ item.pagado ? (item.importe | number:'1.2-2') + '€' : '-' }}
                 </td>
@@ -157,7 +158,13 @@ export class ComunidadFinanzasComponent implements OnInit {
     resumenCuentas: { saldoAnterior: 0, ingresosMes: 0, gastosMes: 0, saldoTotal: 0 }
   };
 
-  constructor(private route: ActivatedRoute, private supabase: SupabaseService, private router: Router, private http: HttpClient) {}
+  constructor(
+    private route: ActivatedRoute, 
+    private supabase: SupabaseService, 
+    private router: Router, 
+    private http: HttpClient,
+    public utils: UtilsService
+  ) {}
 
   async ngOnInit() {
     this.communityId = this.route.parent?.snapshot.paramMap.get('id') || null;
@@ -264,39 +271,6 @@ export class ComunidadFinanzasComponent implements OnInit {
     } finally {
       this.loading = false;
     }
-  }
-
-  asNumber(val: any): number {
-    if (typeof val === 'number') return val;
-    if (val === undefined || val === null || String(val).trim() === '') return 0;
-    const str = String(val).trim().replace(/\./g, '').replace(',', '.');
-    const num = parseFloat(str) || 0;
-    return Number(num.toFixed(2));
-  }
-
-  unformatPiso(formattedPiso: string | undefined): string {
-    if (!formattedPiso) return '';
-    const lowerPiso = formattedPiso.toLowerCase();
-    if (lowerPiso.includes('identificar') || lowerPiso.includes('desconocido') || lowerPiso.includes('sin asignar')) return '';
-
-    // Remove common prefixes that might appear in descriptions
-    let cleanedPiso = lowerPiso.replace(/^(piso|vivienda|cuota|recibo|abono|finca)\s*/, '');
-    
-    const match = cleanedPiso.match(/^(\d+)º\s*([a-z])$/i); // Match "XºY" format
-    if (match) return `${match[1]}${match[2]}`.toUpperCase(); // Convert "2ºJ" to "2J"
-    
-    // Final cleaning: remove non-alphanumeric, then uppercase
-    return cleanedPiso.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  }
-
-  formatearPiso(piso: string | undefined): string {
-    if (!piso || piso.trim() === '' || piso.toLowerCase() === 'nan' || piso.toLowerCase() === 'none' || piso.toLowerCase().includes('identificar')) return 'piso sin identificar';
-    const upper = piso.trim().toUpperCase();
-    const match = upper.match(/^(\d+)([A-Z])$/);
-    if (match) {
-      return `${match[1]}º ${match[2]}`;
-    }
-    return upper;
   }
 
 }

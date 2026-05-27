@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { SupabaseService } from './supabase.service';
 import { Router } from '@angular/router';
+import { UtilsService } from './utils.service';
 import {
   ComunidadDB
 } from './models'; // Importamos las interfaces
@@ -26,7 +27,7 @@ export class ComunidadesComponent implements OnInit {
   editandoId: string | null = null;
   mostrarModalEdicionComunidad = false;
 
-  constructor(private http: HttpClient, private supabase: SupabaseService, private router: Router) {}
+  constructor(private http: HttpClient, private supabase: SupabaseService, private router: Router, public utils: UtilsService) {}
 
   async ngOnInit() {
     // Pequeña espera para asegurar que la sesión esté propagada en el cliente
@@ -36,49 +37,6 @@ export class ComunidadesComponent implements OnInit {
         await this.cargarComunidades();
       }
     }, 100);
-  }
-
-  // --- Métodos de Utilidad ---
-  // Función para convertir el formato de piso visual (ej. "2º J") a su formato raw (ej. "2J")
-  unformatPiso(formattedPiso: string): string {
-    if (!formattedPiso || formattedPiso.toLowerCase().includes('desconocido') || formattedPiso.toLowerCase().includes('identificar') || formattedPiso.toLowerCase().includes('asignar')) return '';
-    const match = formattedPiso.match(/^(\d+)º\s*([A-Z])$/i);
-    if (match) {
-      return `${match[1]}${match[2]}`.toUpperCase();
-    }
-    return formattedPiso.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  }
-
-  // Formatear piso para la vista de dashboard
-  formatearPiso(piso: string | undefined): string {
-    if (!piso || piso.trim() === '' || piso.toLowerCase() === 'nan' || piso.toLowerCase() === 'none' || (piso.toLowerCase().includes('desconocido') && !piso.toLowerCase().includes('ingresos')) || piso.toLowerCase().includes('identificar')) return 'piso sin identificar';
-    const trimmed = piso.trim();
-    const upper = trimmed.toUpperCase();
-    const match = upper.match(/^(\d+)([A-Z])$/);
-    if (match) {
-      return `${match[1]}º ${match[2]}`;
-    }
-    return upper;
-  }
-
-  asNumber(val: any): number {
-    if (typeof val === 'number') return val;
-    if (val === undefined || val === null || String(val).trim() === '') return 0;
-    const str = String(val).trim().replace(/\./g, '').replace(',', '.');
-    const num = parseFloat(str) || 0;
-    return Number(num.toFixed(2));
-  }
-
-  getMesNombre(mes: number | null): string {
-    if (!mes) return 'Registro';
-    const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-    return meses[mes - 1] || 'Mes Desconocido';
-  }
-
-  private formatDateToUI(dateStr: string): string {
-    if (!dateStr || !dateStr.includes('-')) return dateStr;
-    const [year, month, day] = dateStr.split('-');
-    return `${day}/${month}/${year}`;
   }
 
   // --- GESTIÓN DE COMUNIDADES (DB) ---
