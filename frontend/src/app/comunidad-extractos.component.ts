@@ -3,6 +3,8 @@ import { ActivatedRoute } from '@angular/router';
 import { SupabaseService } from './supabase.service';
 import { ExtractoProcesado, MovimientoBancario } from './models';
 import { HttpClient } from '@angular/common/http';
+import { lastValueFrom } from 'rxjs';
+import { UtilsService } from './utils.service';
 
 @Component({
   selector: 'app-comunidad-extractos',
@@ -46,7 +48,7 @@ import { HttpClient } from '@angular/common/http';
         </thead>
         <tbody>
           <tr *ngFor="let ext of extractosFiltrados" (click)="seleccionarExtracto(ext)" style="cursor: pointer;">
-            <td style="font-weight: 600;">{{ getMesNombre(ext.mes_contable) }}</td>
+            <td style="font-weight: 600;">{{ utils.getMesNombre(ext.mes_contable) }}</td>
             <td style="text-align: center; color: #6366f1; font-weight: 600;">{{ ext.movimientos_count || 0 }}</td>
             <td style="text-align: center;">
               <button class="btn-action btn-delete" (click)="eliminar($event, ext.id)" title="Eliminar">
@@ -115,7 +117,7 @@ export class ComunidadExtractosComponent implements OnInit {
   cambiosRealizados = false;
   loading = false;
 
-  constructor(private route: ActivatedRoute, private supabase: SupabaseService, private http: HttpClient) {}
+  constructor(private route: ActivatedRoute, private supabase: SupabaseService, private http: HttpClient, public utils: UtilsService) {}
 
   async ngOnInit() {
     // El ID viene del componente padre (ComunidadDashboard)
@@ -171,13 +173,6 @@ export class ComunidadExtractosComponent implements OnInit {
     this.loading = false;
   }
 
-  formatearPiso(piso: string | undefined): string {
-    if (!piso || piso.trim() === '' || piso.toLowerCase() === 'nan' || piso.toLowerCase() === 'none' || piso.toLowerCase().includes('identificar')) return 'piso sin identificar';
-    const upper = piso.trim().toUpperCase();
-    const match = upper.match(/^(\d+)([A-Z])$/);
-    return match ? `${match[1]}º ${match[2]}` : upper;
-  }
-
   async seleccionarExtracto(ext: ExtractoProcesado) {
     this.extractoSeleccionado = ext;
     this.loading = true;
@@ -189,7 +184,7 @@ export class ComunidadExtractosComponent implements OnInit {
       };
       // Inicializar CONCEPTO para el input de la UI (Piso para ingresos, Categoría para gastos)
       processed.CONCEPTO = m.tipo === 'ingreso' 
-        ? this.formatearPiso(m.piso_detectado) 
+        ? this.utils.formatearPiso(m.piso_detectado) 
         : (m.categoria || 'Sin categoría');
       return processed;
     });
@@ -204,7 +199,7 @@ export class ComunidadExtractosComponent implements OnInit {
       // Sincronizamos los cambios del input (CONCEPTO) con los campos técnicos antes de guardar
       this.movimientos.forEach(m => {
         if (m.tipo === 'ingreso') {
-          m.piso_detectado = this.unformatPiso(m.CONCEPTO || ''); // El backend encriptará esto
+          m.piso_detectado = this.utils.unformatPiso(m.CONCEPTO || '');
         } else {
           m.categoria = m.CONCEPTO || 'Sin Categoría';
         }
@@ -239,21 +234,6 @@ export class ComunidadExtractosComponent implements OnInit {
     }
   }
 
-  unformatPiso(formattedPiso: string): string {
-    if (!formattedPiso) return '';
-    const lowerPiso = formattedPiso.toLowerCase();
-    if (lowerPiso.includes('identificar') || lowerPiso.includes('desconocido') || lowerPiso.includes('sin asignar')) return '';
-
-    // Remove common prefixes that might appear in descriptions
-    let cleanedPiso = lowerPiso.replace(/^(piso|vivienda|cuota|recibo|abono|finca)\s*/, '');
-    
-    const match = cleanedPiso.match(/^(\d+)º\s*([a-z])$/i); // Match "XºY" format
-    if (match) return `${match[1]}${match[2]}`.toUpperCase(); // Convert "2ºJ" to "2J"
-    
-    // Final cleaning: remove non-alphanumeric, then uppercase
-    return cleanedPiso.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  }
-
   async generarReportePDF() {
     if (!this.extractoSeleccionado) return;
     this.loading = true;
@@ -268,19 +248,19 @@ export class ComunidadExtractosComponent implements OnInit {
       OBSERVACIONES: m.concepto_original || '',
       IMPORTE: m.importe,
       SALDO: m.saldo_resultante,
-      CONCEPTO: m.tipo === 'ingreso' ? this.formatearPiso(m.piso_detectado) : m.categoria
+      CONCEPTO: m.tipo === 'ingreso' ? this.utils.formatearPiso(m.piso_detectado) : m.categoria
     }));
+
+    const session = await this.supabase.getSession();
+    const headers = { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session?.access_token}`
+    };
 
     try {
       const url = `/api/confirmar?modo=mensual&community_name=${encodeURIComponent(comName)}&mes=${mes}&anio=${anio}`;
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(datosAEnviar)
-      });
-      
-      const resData = await response.json();
+
+      const resData: any = await lastValueFrom(this.http.post(url, datosAEnviar, { headers }));
       
       const byteCharacters = atob(resData.excel_contenido);
       const byteNumbers = new Array(byteCharacters.length);
@@ -298,12 +278,6 @@ export class ComunidadExtractosComponent implements OnInit {
     } finally {
       this.loading = false;
     }
-  }
-
-  getMesNombre(mes: number): string {
-    const meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", 
-                   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-    return meses[mes - 1] || 'Desconocido';
   }
 
   async onFileSelected(event: any) {

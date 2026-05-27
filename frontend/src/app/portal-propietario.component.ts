@@ -4,6 +4,7 @@ import { HttpClient } from '@angular/common/http';
 import { lastValueFrom } from 'rxjs';
 import { SupabaseService } from './supabase.service';
 import { FinanzasData, MovimientoBancario } from './models';
+import { UtilsService } from './utils.service';
 
 @Component({
   selector: 'app-portal-propietario',
@@ -51,7 +52,8 @@ export class PortalPropietarioComponent implements OnInit {
     private supabase: SupabaseService,
     private route: ActivatedRoute,
     private router: Router,
-    private http: HttpClient
+    private http: HttpClient,
+    public utils: UtilsService
   ) {}
 
   async ngOnInit() {
@@ -139,16 +141,16 @@ export class PortalPropietarioComponent implements OnInit {
         const allPisos = await lastValueFrom(this.http.get<any[]>(`/api/comunidades/${this.selectedPiso.comunidades.id}/pisos`));
         
         if (movs && allPisos) {
-          const ingresos = movs.filter(m => this.asNumber(m.importe) > 0);
-          const gastos = movs.filter(m => this.asNumber(m.importe) < 0);
+          const ingresos = movs.filter(m => this.utils.asNumber(m.importe) > 0);
+          const gastos = movs.filter(m => this.utils.asNumber(m.importe) < 0);
           
           // Identificar los pisos del propietario para resaltarlos
-          const misPisosNorm = new Set(this.userPisos.map(p => this.unformatPiso(p.codigo)));
+          const misPisosNorm = new Set(this.userPisos.map(p => this.utils.unformatPiso(p.codigo)));
 
           this.finanzasData.ingresosPorPiso = allPisos.map(p => {
-            const pNorm = this.unformatPiso(p.codigo);
-            const movsDelPiso = ingresos.filter(m => this.unformatPiso(m.piso_detectado) === pNorm);
-            const total = movsDelPiso.reduce((acc, m) => acc + this.asNumber(m.importe), 0);
+            const pNorm = this.utils.unformatPiso(p.codigo);
+            const movsDelPiso = ingresos.filter(m => this.utils.unformatPiso(m.piso_detectado) === pNorm);
+            const total = movsDelPiso.reduce((acc, m) => acc + this.utils.asNumber(m.importe), 0);
             
             return {
               codigo: p.codigo,
@@ -161,12 +163,12 @@ export class PortalPropietarioComponent implements OnInit {
 
           this.finanzasData.gastos = gastos.map(g => ({
             concepto: g.categoria !== 'Sin Categoría' ? g.categoria : g.concepto_original,
-            importe: Math.abs(this.asNumber(g.importe))
+            importe: Math.abs(this.utils.asNumber(g.importe))
           })).sort((a, b) => b.importe - a.importe);
 
-          const totalIngresosCom = ingresos.reduce((acc, m) => acc + this.asNumber(m.importe), 0);
-          const totalGastosCom = gastos.reduce((acc, m) => acc + Math.abs(this.asNumber(m.importe)), 0);
-          const saldoF = movs.length > 0 ? this.asNumber(movs[0].saldo_resultante) : 0;
+          const totalIngresosCom = ingresos.reduce((acc, m) => acc + this.utils.asNumber(m.importe), 0);
+          const totalGastosCom = gastos.reduce((acc, m) => acc + Math.abs(this.utils.asNumber(m.importe)), 0);
+          const saldoF = movs.length > 0 ? this.utils.asNumber(movs[0].saldo_resultante) : 0;
 
           this.finanzasData.resumenCuentas = {
             saldoAnterior: saldoF - totalIngresosCom + totalGastosCom,
@@ -200,16 +202,17 @@ export class PortalPropietarioComponent implements OnInit {
     const mes = this.extractoActualFinanzas.mes_contable;
     const anio = this.extractoActualFinanzas.anio_contable;
 
+    const session = await this.supabase.getSession();
+    const headers = { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session?.access_token}`
+    };
+
     try {
       const url = `/api/confirmar?modo=finanzas&community_name=${encodeURIComponent(comName)}&mes=${mes}&anio=${anio}`;
       
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(this.finanzasData)
-      });
-      
-      const resData = await response.json();
+      // Cambiado fetch por HttpClient para consistencia arquitectónica
+      const resData: any = await lastValueFrom(this.http.post(url, this.finanzasData, { headers }));
       
       const byteCharacters = atob(resData.excel_contenido);
       const byteNumbers = new Array(byteCharacters.length);
@@ -319,20 +322,20 @@ export class PortalPropietarioComponent implements OnInit {
         
         for (const p of this.userPisos) {
           const movimientosComunidad = movementsCache.get(p.comunidades?.id) || [];
-          const pisoNorm = this.unformatPiso(p.codigo);
+            const pisoNorm = this.utils.unformatPiso(p.codigo);
 
           const pagosEncontrados = movimientosComunidad.filter((mov: any) => {
             const d = new Date(mov.fecha);
             const movAnio = d.getFullYear();
             const movMes = d.getMonth() + 1;
-            const importe = this.asNumber(mov.importe);
+              const importe = this.utils.asNumber(mov.importe);
 
             // Solo ingresos del mes y año correcto
             if (movAnio !== targetAnio || movMes !== m) return false;
             if (importe <= 0) return false; // Solo ingresos
 
             // 2. Comprobación por piso_detectado (ML/Clasificador)
-            const pisoDetectadoNorm = this.unformatPiso(mov.piso_detectado);
+              const pisoDetectadoNorm = this.utils.unformatPiso(mov.piso_detectado);
             if (pisoDetectadoNorm && pisoDetectadoNorm === pisoNorm) {
               console.log(`  [MATCH!] Mes ${m} - Piso ${pisoNorm}: Encontrado vía piso_detectado`);
               return true;
@@ -340,7 +343,7 @@ export class PortalPropietarioComponent implements OnInit {
 
             // 3. Comprobación por Concepto Original (Desencriptado)
             const descPlana = mov.concepto_original;
-            const descNorm = this.unformatPiso(descPlana);
+              const descNorm = this.utils.unformatPiso(descPlana);
             if (descNorm.includes(pisoNorm)) {
               console.log(`  [MATCH!] Mes ${m} - Piso ${pisoNorm}: Encontrado en descripción: "${descPlana}"`);
               return true;
@@ -348,7 +351,7 @@ export class PortalPropietarioComponent implements OnInit {
 
             // 4. Comprobación por Ordenante (Desencriptado)
             const ordPlano = mov.ordenante;
-            const ordNorm = this.unformatPiso(ordPlano);
+              const ordNorm = this.utils.unformatPiso(ordPlano);
             if (ordNorm.includes(pisoNorm)) {
               console.log(`  [MATCH!] Mes ${m} - Piso ${pisoNorm}: Encontrado en ordenante: "${ordPlano}"`);
               return true;
@@ -358,7 +361,7 @@ export class PortalPropietarioComponent implements OnInit {
           });
 
           const pagado = pagosEncontrados.length > 0;
-          const importeTotal = pagosEncontrados.reduce((acc: number, mov: MovimientoBancario) => acc + this.asNumber(mov.importe), 0);
+          const importeTotal = pagosEncontrados.reduce((acc: number, mov: MovimientoBancario) => acc + this.utils.asNumber(mov.importe), 0);
           const fechaUltimoPago = pagado ? [...pagosEncontrados].sort((a: MovimientoBancario, b: MovimientoBancario) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())[0].fecha : null;
           const esVencido = !pagado && (targetAnio < currentAnio || (targetAnio === currentAnio && m < currentMonth));
 
@@ -454,43 +457,6 @@ export class PortalPropietarioComponent implements OnInit {
   togglePendientes() {
     this.mostrarPendientes = !this.mostrarPendientes;
     console.log('[DEBUG] Mostrar solo pendientes:', this.mostrarPendientes);
-  }
-
-
-  asNumber(val: any): number {
-    if (typeof val === 'number') return val;
-    if (val === undefined || val === null || String(val).trim() === '') return 0;
-    const str = String(val).trim().replace(/\./g, '').replace(',', '.');
-    const num = parseFloat(str);
-    return isNaN(num) ? 0 : Number(num.toFixed(2));
-  }
-
-  unformatPiso(formattedPiso: string | undefined): string {
-    if (!formattedPiso) return '';
-    const lowerPiso = formattedPiso.toLowerCase();
-    if (lowerPiso.includes('identificar') || lowerPiso.includes('desconocido') || lowerPiso.includes('sin asignar')) return '';
-
-    // Remove common prefixes that might appear in descriptions
-    let cleanedPiso = lowerPiso.replace(/^(piso|vivienda|cuota|recibo|abono|finca)\s*/, '');
-    
-    const match = cleanedPiso.match(/^(\d+)º\s*([a-z])$/i); // Match "XºY" format
-    if (match) return `${match[1]}${match[2]}`.toUpperCase(); // Convert "2ºJ" to "2J"
-    
-    // Final cleaning: remove non-alphanumeric, then uppercase
-    return cleanedPiso.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  }
-
-  formatearPiso(piso: string | undefined): string {
-    if (!piso || piso.trim() === '' || piso.toLowerCase() === 'nan' || piso.toLowerCase() === 'none' || (piso.toLowerCase().includes('desconocido') && !piso.toLowerCase().includes('ingresos')) || piso.toLowerCase().includes('identificar')) return 'piso sin identificar';
-    
-    const rawPisoCode = this.unformatPiso(piso); // Use unformatPiso to get the raw code
-    if (!rawPisoCode) return 'piso sin identificar';
-
-    const match = rawPisoCode.match(/^(\d+)([A-Z])$/);
-    if (match) {
-      return `${match[1]}º ${match[2]}`;
-    }
-    return rawPisoCode; // If it doesn't match the XN format, just return the cleaned code
   }
 
   getMesNombre(mes: number | null): string {

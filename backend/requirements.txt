@@ -11,3 +11,5 @@ holidays
 supabase
 python-multipart
 pydantic-settings
+pytest
+httpx
