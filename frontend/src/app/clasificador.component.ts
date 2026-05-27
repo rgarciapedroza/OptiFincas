@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { SupabaseService } from './supabase.service';
 import { ComunidadDB } from './models';
+import { UtilsService } from './utils.service';
 
 @Component({
   selector: 'app-clasificador',
@@ -25,7 +26,7 @@ export class ClasificadorComponent implements OnInit {
   historicalTooltipContent = '';
   loadingMessage = 'Procesando...';
 
-  constructor(private http: HttpClient, private supabase: SupabaseService) {}
+  constructor(private http: HttpClient, private supabase: SupabaseService, public utils: UtilsService) {}
 
   async ngOnInit() {
     await this.cargarComunidades();
@@ -80,12 +81,12 @@ export class ClasificadorComponent implements OnInit {
         mes: this.currentExtractoMes,
         anio: this.currentExtractoAnio,
         movimientos: this.movimientos.map(m => ({
-          fecha: this.formatDate(m.FECHA),
+          fecha: this.utils.formatToISODate(m.FECHA),
           concepto_original: m.OBSERVACIONES || '',
           importe: m.IMPORTE,
           saldo_resultante: m.SALDO,
           ordenante: m.ORDENANTE || '',
-          piso_detectado: m.IMPORTE > 0 ? this.unformatPiso(m.CONCEPTO) : 'piso sin identificar',
+          piso_detectado: m.IMPORTE > 0 ? this.utils.unformatPiso(m.CONCEPTO) : 'piso sin identificar',
           tipo: m.IMPORTE > 0 ? 'ingreso' : 'gasto',
           categoria: m.IMPORTE < 0 ? m.CONCEPTO : 'Ingreso Cuota'
         }))
@@ -134,21 +135,6 @@ export class ClasificadorComponent implements OnInit {
 
   hideHistoricalDetails() {
     this.showHistoricalTooltip = false;
-  }
-
-  // --- Utilidades de Formateo ---
-
-  private formatDate(dateStr: string): string {
-    if (!dateStr || !dateStr.includes('/')) return dateStr;
-    const [day, month, year] = dateStr.split('/');
-    return `${year}-${month}-${day}`;
-  }
-
-  private unformatPiso(formattedPiso: string): string {
-    if (!formattedPiso || formattedPiso.toLowerCase().includes('sin identificar')) return 'piso sin identificar';
-    const match = formattedPiso.match(/^(\d+)º\s*([A-Z])$/i);
-    if (match) return `${match[1]}${match[2]}`.toUpperCase();
-    return formattedPiso.toUpperCase().replace(/[^A-Z0-9]/g, '');
   }
 
   reiniciar() {

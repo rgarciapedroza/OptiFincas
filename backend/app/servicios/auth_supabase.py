@@ -12,7 +12,7 @@ async def get_current_user(authorization: str = Header(...)) -> str:
         
         # El método get_user() es síncrono en el cliente estándar.
         # Eliminamos el 'await' para evitar errores de ejecución.
-        user_response = supabase_client.auth.get_user(token)
+        user_response = await supabase_client.auth.get_user(token)
         
         if user_response and user_response.user:
             return user_response.user.id
