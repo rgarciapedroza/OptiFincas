@@ -3,7 +3,7 @@ import logging
 import pandas as pd
 import unicodedata
 from difflib import SequenceMatcher
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -28,19 +28,24 @@ def find_col_by_keywords(cols_actuales: List[str], keywords: List[str], exclude_
     return None
 
 GENERICAS = {
-    "PAGO", "PAGOS", "TRANSFERENCIA", "TRASPASO", "TRASF",
-    "COMUNIDAD", "PROPIETARIOS", "PROPIETARIO", "CUOTA",
-    "MENSUALIDAD", "RECIBO", "INGRESO", "EFECTIVO",
-    "BANCO", "VARIOS", "COMUN", "PROPIEDAD", "PROP",
+    "PAGO", "PAGOS", "TRANSFERENCIA", "TRANSFERENCIAS", "TRASPASO", "TRASF", "TRANSFER", "TRANSF.", "TRANSF", "TRANS", "MES",
+    "COMUNIDAD", "PROPIETARIOS", "PROPIETARIO", "CUOTA", "CDAD", "CP", "C P", "CDAD.", "VIVIENDA", "VIVIEND",
+    "DICIEMBRE", "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE",
+    "MENSUALIDAD", "RECIBO", "INGRESO", "EFECTIVO", "DEPOSITO",
+    "BANCO", "VARIOS", "COMUN", "PROPIEDAD", "PROP", "TITULAR", "ORDENANTE", "DATOS", "PROPIET",
+    "IDENTIFICAR", "PROCESO", "CONTABLE", "OPERACION", "VALOR", "LIQUIDACION",
+    "SU", "FAVOR", "ABONO", "CARGO", "RECIBO", "INMEDIATA", "CAJERO", "CURSO",
     "CALLE", "CL", "C", "AVENIDA", "AV", "PORTAL",
     "ESCALERA", "ESC", "EDIFICIO", "BLOQUE", "BLQ",
-    "DE", "DEL", "LOS", "LAS", "LA", "EL", "SAN", "SANTA", "Y"
+    "DE", "DEL", "LOS", "LAS", "LA", "EL", "Y",
+    "BANCARIA", "TELEMATICA", "ONLINE", "NOMINA", "PENSION", "RECIBOS", "EMITIDO", "BANCARIO"
 }
 
 def similar(a, b):
     return SequenceMatcher(None, a, b).ratio()
 
 def normalizar_texto(texto: str) -> str:
+    """Normaliza texto para comparaciones (quita acentos, puntuación, etc)"""
     if not texto:
         return ""
 
@@ -53,21 +58,34 @@ def normalizar_texto(texto: str) -> str:
     texto = re.sub(r"\s+", " ", texto)
     return texto.strip().upper()
 
-# Patrón mejorado para detectar: 2J, 2 J, 02-A, 2/A, A2
-PATRON_PISO = re.compile(r"\b(\d{1,2}\s*[A-Z]|[A-Z]\s*\d{1,2}|\d{1,2}\s*[-/]\s*[A-Z])\b", re.IGNORECASE)
+# Patrones sincronizados con clasificador_ml.py
+PATRONES_PISO = [
+    r'\b(?:PISO|PIZO|PIS0)\s*(\d{1,2}\s*[A-Z]?)\b',    # PISO 4, PISO 4J
+    r'\b(?:PLANTA|PLNTA|PLTA)\s*(\d{1,2}\s*[A-Z]?)\b',# PLANTA 2
+    r'\bP\.?\s*(\d{1,2}\s*[A-Z]?)\b',                 # P. 4, P 4J
+    r'\bPL\.?\s*(\d{1,2}\s*[A-Z]?)\b',                # PL. 2
+    r'\b(\d{1,2}\s*[-/]\s*[A-Z])\b',                  # 4-J, 4/J
+    r'\b(\d{1,2}\s*[A-Z])\b',                         # 4J, 4 J
+    r'\b(\d{1,2}\s*(?:IZQUIERDA|IZQ|DERECHA|DRCHA|DCHA|EXTERIOR|EXT|INTERIOR|INT))\b', # 4 IZQ, 4 DRCHA
+    r'\b(\d{1,2}[ºª]\s*[A-Z]?)\b',                    # 4º, 4ª, 4ºJ
+]
+
+PATRON_PISO_LEGACY = re.compile(r"\b(\d{1,2}\s*[A-Z]|[A-Z]\s*\d{1,2}|\d{1,2}\s*[-/]\s*[A-Z])\b", re.IGNORECASE)
 
 def extraer_piso(texto: str) -> str:
     if not texto:
         return ""
     try:
         texto = str(texto).upper().replace(",", " ").replace(".", " ")
-        m = PATRON_PISO.search(texto)
-        if not m:
-            return ""
-        # Limpiar el resultado: quitar espacios, guiones y barras
-        res = m.group(1)
-        res = re.sub(r"[\s\-/]", "", res)
-        return res.upper()
+        for pat in PATRONES_PISO:
+            m = re.search(pat, texto, re.IGNORECASE)
+            if m:
+                # Tomamos el primer grupo de captura que tenga contenido
+                for group in m.groups():
+                    if group:
+                        res = re.sub(r"[\s\-/ºª]", "", str(group))
+                        return res.upper()
+        return ""
     except:
         return ""
 
@@ -81,11 +99,12 @@ def es_nombre_o_apellido(p):
     p = p.upper()
     if any(c.isdigit() for c in p):
         return False
-    if len(p) < 3:
+    if p in ["S.A.", "S.L.", "S.L", "S.A", "SOCIEDAD", "LIMITADA"]:
+        return True
+    if len(p) <= 2: # Ignorar tokens de 1 o 2 letras (ruido como "A", "DE", "SU")
         return False
-    for g in GENERICAS:
-        if similar(p, g) >= 0.85:
-            return False
+    if p in GENERICAS:
+        return False
     return True
 
 def extraer_nombres_desde_concepto(concepto: str) -> List[str]:
@@ -123,8 +142,9 @@ def obtener_pisos_validos(df_registro):
     for _, row in df_registro.iterrows():
         for col in posibles_columnas:
             texto = normalizar_texto(str(row.get(col, "")))
-            for p in PATRON_PISO.findall(texto):
-                pisos.add(p.replace(" ", ""))
+            p_found = extraer_piso(texto)
+            if p_found:
+                pisos.add(p_found)
     return pisos
 
 def buscar_pisos_en_registro(df_registro, movimientos_a_procesar, extractos_map: Optional[Dict] = None):
@@ -137,18 +157,24 @@ def buscar_pisos_en_registro(df_registro, movimientos_a_procesar, extractos_map:
     
     col_extracto_id = find_col_by_keywords(df_registro.columns.tolist(), ["extracto_id", "id_extracto", "extracto"])
 
+    # Pre-limpieza de histórico para acelerar búsqueda
+    df_hist = df_registro.copy()
+    if col_piso_directo:
+        df_hist = df_hist[df_hist[col_piso_directo].apply(es_piso_identificado)]
+    
     # 1. Mapa de Propietario -> {Piso: Frecuencia} (extraído del historial global)
     # Esto permite identificar de antemano qué propietarios tienen varias propiedades.
     owner_to_pisos = {}
-    if col_ordenante and col_piso_directo:
-        for _, row in df_registro.iterrows():
+    if not df_hist.empty:
+        h_ord_col = col_ordenante if col_ordenante else col_concepto
+        for _, row in df_hist.iterrows():
             p_hist = str(row.get(col_piso_directo, "")).strip().upper()
-            o_hist = normalizar_texto(str(row.get(col_ordenante, "")))
+            o_hist = normalizar_texto(str(row.get(h_ord_col, "")))
             if o_hist and es_piso_identificado(p_hist):
                 if o_hist not in owner_to_pisos:
                     owner_to_pisos[o_hist] = {}
                 owner_to_pisos[o_hist][p_hist] = owner_to_pisos[o_hist].get(p_hist, 0) + 1
-
+    
     # 2. Control de asignaciones en el lote actual (batch) para repartir pagos
     # Si un propietario tiene 2 pisos, el primer pago va al 1º y el segundo al 2º.
     lote_assignments = {} # {owner_norm: [piso1, piso2...]}
@@ -156,105 +182,122 @@ def buscar_pisos_en_registro(df_registro, movimientos_a_procesar, extractos_map:
     recuperados = []
     
     for mov in movimientos_a_procesar:
-        # Preparar texto del movimiento actual
-        c_mov_raw = str(mov.get("concepto_original") or mov.get("concepto") or "")
-        # Intentamos obtener la identidad del pagador
+        # Extraer campos del movimiento actual
+        c_mov_raw = str(mov.get("concepto_original") or mov.get("concepto") or "").strip()
         o_mov_raw = str(mov.get("ORDENANTE") or mov.get("ordenante") or "").strip()
-        
-        # Si no hay ordenante explícito (común en CSV), intentamos extraer nombres del concepto
-        if not o_mov_raw:
-            nombres_detectados = extraer_nombres_desde_concepto(c_mov_raw)
-            if nombres_detectados:
-                o_mov_raw = " ".join(nombres_detectados)
-        
-        c_mov = normalizar_texto(c_mov_raw)
-        o_mov = normalizar_texto(o_mov_raw)
-        
-        # Combinar asegurando que no duplicamos información si el nombre ya está en el concepto
-        if o_mov and o_mov in c_mov:
-            texto_actual_full = c_mov
-        else:
-            texto_actual_full = f"{o_mov} {c_mov}".strip().replace("  ", " ")
-        texto_busqueda = texto_actual_full
-
-        palabras = texto_busqueda.split()
-        palabras_nombre = [p for p in palabras if es_nombre_o_apellido(p)]
-
-        # Evitar falsos positivos en CSVs con información genérica.
-        # Si es un CSV, contiene palabras de ruido y no tiene al menos 2 palabras útiles (nombres), se descarta.
         es_csv = mov.get("es_csv", False)
-        contiene_generica = any(p in GENERICAS for p in palabras)
-        if es_csv and contiene_generica and len(palabras_nombre) < 2:
+
+        # Evitar procesar movimientos vacíos
+        if not c_mov_raw and not o_mov_raw:
             mov["piso"] = ""
             mov["metodo_piso"] = ""
             mov["es_historico"] = False
             recuperados.append(mov)
             continue
 
-        is_mario = "MARIO" in texto_busqueda
-        if is_mario:
-            logger.debug(f"Analizando: '{texto_busqueda}'. Nombres detectados: {palabras_nombre}")
-            logger.debug(f"  Movimiento actual: Concepto='{c_mov}', Ordenante='{o_mov}'")
+        # Definir tokens de búsqueda según el tipo de archivo (CSV: solo obs, Excel: ambos)
+        nombres_en_concepto = extraer_nombres_desde_concepto(c_mov_raw)
+        nombres_en_ordenante = extraer_nombres_desde_concepto(o_mov_raw)
 
-        # Diccionario para contar coincidencias y aplicar la regla de los 3 movimientos
-        candidatos_conteo = {} # {piso: {"count": int, "best_score": float, "row": dict, "metodo": str}}
-        extracto_id_historico_found = None # Initialize for each movement
-        # Winning historical row fields (used later to build detalle_historico)
+        if es_csv:
+            palabras_nombre_mov = nombres_en_concepto
+        else:
+            palabras_nombre_mov = list(set(nombres_en_concepto + nombres_en_ordenante))
+
+        c_mov = normalizar_texto(c_mov_raw)
+        o_mov = normalizar_texto(o_mov_raw)
+        
+        texto_actual_full = f"{o_mov} {c_mov}".strip()
+        texto_busqueda = texto_actual_full
+
+        palabras = texto_busqueda.split()
+
+        # Evitar falsos positivos en CSVs genéricos
+        if es_csv and any(p in GENERICAS for p in palabras) and len(palabras_nombre_mov) < 2:
+            mov["piso"] = ""
+            mov["metodo_piso"] = ""
+            mov["es_historico"] = False
+            recuperados.append(mov)
+            continue
+
+        candidatos_conteo = {} # {piso: {"count": int, "best_score": float, "row": dict}}
+
+        # --- LÓGICA UNIFICADA: Búsqueda por Tokens de Nombre ---
+        for _, row in df_hist.iterrows():
+            p_hist = str(row.get(col_piso_directo, "")).strip().upper()
+
+            # Histórico: Buscamos en observaciones y ordenantes del pasado
+            h_con_raw = str(row.get(col_concepto, ''))
+            h_ord_raw = str(row.get(col_ordenante, '')) if col_ordenante else ''
+            
+            # Texto normalizado completo del registro histórico
+            t_hist_norm = normalizar_texto(f"{h_ord_raw} {h_con_raw}")
+
+            # Tokens del registro histórico
+            tokens_h_con = extraer_nombres_desde_concepto(h_con_raw)
+            tokens_h_ord = extraer_nombres_desde_concepto(h_ord_raw)
+            tokens_h_all = list(set(tokens_h_con + tokens_h_ord))
+
+            # 1. Coincidencia por tokens (Motor optimizado)
+            matches_count = 0
+            if len(palabras_nombre_mov) >= 1 and tokens_h_all:
+                for pm in palabras_nombre_mov:
+                    # Similitud directa
+                    if any(similar(pm, ph) >= 0.85 for ph in tokens_h_all):
+                        matches_count += 1
+                    # Manejo de truncamiento (ej: "REYES" vs "REY")
+                    elif any((pm in ph or ph in pm) and len(pm) > 3 for ph in tokens_h_all):
+                        matches_count += 0.8
+
+                # Denominador asimétrico: No castigar si una fuente es más descriptiva que la otra
+                # Usamos el mínimo de tokens para que nombres largos coincidan con cortos sin diluir el score
+                denominador = min(len(palabras_nombre_mov), len(tokens_h_all))
+                token_score = matches_count / denominador if denominador > 0 else 0
+                
+                # Requisito de coincidencia base (al menos 2 nombres o el 100% de uno largo)
+                # Umbrales ajustados para mayor precisión en Excel (Nombre + Concepto)
+                min_ratio = 0.45 if len(palabras_nombre_mov) > 3 else 0.55
+                if (matches_count >= 2 or (matches_count >= 1 and token_score >= 0.75)) and token_score >= min_ratio:
+                    # Bonus por Ordenante (Titular): Factor clave para desambiguar
+                    # Limpiamos ruido del titular antes de comparar para evitar falsos positivos
+                    o_mov_clean = " ".join([p for p in o_mov.split() if p not in GENERICAS])
+                    h_ord_clean = " ".join([p for p in normalizar_texto(h_ord_raw).split() if p not in GENERICAS])
+
+                    if not es_csv and o_mov_clean and h_ord_clean:
+                        sim_titular = similar(o_mov_clean, h_ord_clean)
+                        if sim_titular > 0.85:
+                            token_score += 0.7 
+                        elif any(similar(tn, th) > 0.90 for tn in nombres_en_ordenante for th in tokens_h_ord):
+                            token_score += 0.4 # Bonus por match parcial en titular
+
+                    # Bonus por Nombre de Pila (Primer Token): Crucial para distinguir familiares
+                    if tokens_h_all and palabras_nombre_mov and similar(palabras_nombre_mov[0], tokens_h_all[0]) > 0.90:
+                        token_score += 0.3
+
+                    if p_hist not in candidatos_conteo:
+                        candidatos_conteo[p_hist] = {"count": 0, "best_score": 0.0, "row": row, "metodo": "historico_tokens"}
+                    candidatos_conteo[p_hist]["count"] += 1
+                    candidatos_conteo[p_hist]["best_score"] = max(candidatos_conteo[p_hist].get("best_score", 0), token_score)
+                    continue
+
+            # Fallback: Similitud difusa completa (evitando ruido bancario)
+            if not es_csv:
+                # Limpiamos GENERICAS para que frases como "PAGO COMUNIDAD" no provoquen falsos matches
+                t_act_clean = " ".join([p for p in texto_actual_full.split() if p not in GENERICAS and len(p) > 2])
+                t_hist_clean = " ".join([p for p in t_hist_norm.split() if p not in GENERICAS and len(p) > 2])
+                
+                if t_act_clean and t_hist_clean:
+                    full_score = similar(t_act_clean, t_hist_clean)
+                    if full_score >= 0.82:
+                        if p_hist not in candidatos_conteo:
+                            candidatos_conteo[p_hist] = {"count": 0, "best_score": 0.0, "row": row, "metodo": "historico_db_difuso"}
+                        candidatos_conteo[p_hist]["count"] += 1
+                        candidatos_conteo[p_hist]["best_score"] = max(candidatos_conteo[p_hist].get("best_score", 0), full_score)
+
+        # Campos para detalle_historico
+        extracto_id_historico_found = None
         hist_concepto_original_best = ""
         hist_ordenante_best = ""
-
-        # --- FASE 1: Búsqueda por Nombres (Mínimo 2 palabras útiles) ---
-        if len(palabras_nombre) >= 2:
-            n1, n2 = palabras_nombre[:2]
-            
-            for _, row in df_registro.iterrows():
-                val_piso = row.get(col_piso_directo)
-                p_hist = str(val_piso).strip().upper() if es_piso_identificado(val_piso) else ""
-                if not p_hist:
-                    txt_h = f"{row.get(col_concepto, '')} {row.get(col_observ, '') if col_observ else ''} {row.get(col_ordenante, '') if col_ordenante else ''}"
-                    p_hist = extraer_piso(txt_h)
-                if not p_hist: continue
-
-                h_con_n = normalizar_texto(str(row.get(col_concepto, '')))
-                h_ord_n = normalizar_texto(str(row.get(col_ordenante, ''))) if col_ordenante else ''
-                t_hist_norm = h_con_n if (h_ord_n and h_ord_n in h_con_n) else f"{h_ord_n} {h_con_n}".strip().replace("  ", " ")
-                palabras_hist = t_hist_norm.split()
-                
-                s1 = max((similar(n1, p) for p in palabras_hist), default=0)
-                s2 = max((similar(n2, p) for p in palabras_hist), default=0)
-
-                if s1 >= 0.85 and s2 >= 0.85:
-                    score = (s1 + s2) / 2
-                    if p_hist not in candidatos_conteo:
-                        candidatos_conteo[p_hist] = {"count": 0, "best_score": 0.0, "row": row, "metodo": "historico_db_nombres"}
-                    candidatos_conteo[p_hist]["count"] += 1
-                    if score > candidatos_conteo[p_hist]["best_score"]:
-                        candidatos_conteo[p_hist]["best_score"] = score
-                        candidatos_conteo[p_hist]["row"] = row
-
-
-        # --- FASE 2: Similitud de Texto Completo (Fallback si Fase 1 falló o es insuficiente) ---
-        if not candidatos_conteo or max((c["count"] for c in candidatos_conteo.values()), default=0) < 3:
-            for _, row in df_registro.iterrows():
-                val_piso = row.get(col_piso_directo)
-                p_hist = str(val_piso).strip().upper() if es_piso_identificado(val_piso) else ""
-                if not p_hist:
-                    txt_h = f"{row.get(col_concepto, '')} {row.get(col_observ, '') if col_observ else ''} {row.get(col_ordenante, '') if col_ordenante else ''}"
-                    p_hist = extraer_piso(txt_h)
-                if not p_hist: continue
-
-                h_con_n = normalizar_texto(str(row.get(col_concepto, '')))
-                h_ord_n = normalizar_texto(str(row.get(col_ordenante, ''))) if col_ordenante else ''
-                t_hist_full = h_con_n if (h_ord_n and h_ord_n in h_con_n) else f"{h_ord_n} {h_con_n}".strip().replace("  ", " ")
-                
-                score = similar(texto_actual_full, t_hist_full)
-                if score >= 0.85:
-                    if p_hist not in candidatos_conteo:
-                        candidatos_conteo[p_hist] = {"count": 0, "best_score": 0.0, "row": row, "metodo": "historico_db_similitud"}
-                    candidatos_conteo[p_hist]["count"] += 1
-                    if score > candidatos_conteo[p_hist]["best_score"]:
-                        candidatos_conteo[p_hist]["best_score"] = score
-                        candidatos_conteo[p_hist]["row"] = row
 
 
         # --- LÓGICA DE ASIGNACIÓN FINAL Y MULTI-PROPIEDAD ---
@@ -263,15 +306,18 @@ def buscar_pisos_en_registro(df_registro, movimientos_a_procesar, extractos_map:
         mejor_score = 0.0
 
         # Regla de consistencia: al menos 3 movimientos con el mismo resultado en el historial
-        candidatos_consistentes = [p for p, data in candidatos_conteo.items() if data["count"] >= 3]
+        candidatos_consistentes = [p for p, data in candidatos_conteo.items() if data["count"] >= 1] # Permite una sola ocurrencia en el historial
         
         if candidatos_consistentes:
-            # Ordenar por frecuencia (el que más veces aparezca en el pasado gana)
-            candidatos_consistentes.sort(key=lambda p: candidatos_conteo[p]["count"], reverse=True)
+            # CRITERIO DE DESEMPATE: 1. Calidad del match (score) > 2. Frecuencia (count)
+            candidatos_consistentes.sort(key=lambda p: (candidatos_conteo[p].get("best_score", 0), candidatos_conteo[p].get("count", 0)), reverse=True)
             
             # Comprobar si este propietario tiene más de una finca registrada en la comunidad
-            pisos_del_propietario = [p for p, c in owner_to_pisos.get(o_mov, {}).items() if c >= 3]
-            
+            # Reducimos el requisito a >= 1 para que funcione con datasets de prueba pequeños
+            # o en comunidades que están empezando a registrarse.
+            owner_norm = o_mov # ya está normalizado arriba
+            pisos_del_propietario = [p for p, c in owner_to_pisos.get(owner_norm, {}).items() if c >= 1]
+
             if len(pisos_del_propietario) > 1:
                 # REPARTO PARA MULTI-PROPIETARIOS
                 # Buscamos un piso que este propietario posea pero que NO hayamos asignado aún en este lote (mes)
@@ -308,9 +354,6 @@ def buscar_pisos_en_registro(df_registro, movimientos_a_procesar, extractos_map:
             mov["piso"] = mejor_piso
             mov["metodo_piso"] = mejor_metodo
             mov["es_historico"] = True # Set this flag for the frontend
-            if is_mario:
-                logger.info(f"¡IDENTIFICADO! Piso: {mejor_piso} via {mejor_metodo} (Score: {mejor_score:.2f})")
-
 
             # Capturamos la coincidencia completa encontrada en el histórico
             coincidencia_limpia = f"{hist_concepto_original_best} {hist_ordenante_best}".strip().replace('  ', ' ')

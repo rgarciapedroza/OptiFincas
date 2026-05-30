@@ -16,14 +16,27 @@ from app.servicios.resumen import calcular_resumen_categorias_con_tipo # Importa
 def formatear_piso(piso: str) -> str:
     if not piso:
         return ""
-    piso_str = str(piso).strip()
-    if piso_str.lower() in ["piso sin identificar", "piso desconocido", "sin asignar", "nan", "pisodesconocido", "none"]:
+    piso_str = str(piso).strip().upper()
+    if piso_str.lower() in ["piso sin identificar", "piso desconocido", "sin asignar", "nan", "pisodesconocido", "none", ""]:
         return "piso sin identificar"
-    piso_str = piso_str.upper()
-    # Detectar formato NumeroLetra (ej: 2J, 10A)
-    match = re.match(r"^(\d+)([A-Z])$", piso_str)
+    
+    # Normalizar descriptores comunes
+    piso_str = piso_str.replace("IZQUIERDA", "IZQ").replace("DERECHA", "DRCHA").replace("DCHA", "DRCHA")
+    
+    # Caso Numero+Letra (ej: 2J -> 2º J)
+    match = re.match(r"^(\d{1,2})([A-Z])$", piso_str)
     if match:
         return f"{match.group(1)}º {match.group(2)}"
+        
+    # Caso Numero+Descriptor (ej: 4IZQ -> 4º IZQ)
+    match_desc = re.match(r"^(\d{1,2})(IZQ|DRCHA|EXT|INT)$", piso_str)
+    if match_desc:
+        return f"{match_desc.group(1)}º {match_desc.group(2)}"
+
+    # Caso Numero solo -> 4º
+    if piso_str.isdigit() and len(piso_str) <= 2:
+        return f"{piso_str}º"
+        
     return piso_str
 
 def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
@@ -110,7 +123,7 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
             "id": idx,
             # Cabeceras en MAYÚSCULAS para la UI y Excel
             "FECHA": fecha_final or "",
-            "CONCEPTO": formatear_piso(piso_ml) if piso_ml else "piso sin identificar",
+            "CONCEPTO": formatear_piso(piso_final_detectado) if piso_final_detectado else "piso sin identificar", # Corregido: Usar piso_final_detectado
             "OBSERVACIONES": obs_limpia, # Observaciones limpias de nombres
             "SALDO": saldo_val,
             "IMPORTE": round(importe, 2),
@@ -208,7 +221,7 @@ def procesar_extracto_y_registros(extracto: UploadFile, registros: Optional[Uplo
         
         # Si se identificó un piso (por ML o histórico) y CONCEPTO aún es un valor por defecto, asignarlo.
         if piso_id:
-            if m.get("CONCEPTO") in ["Sin asignar", "piso sin identificar", "piso desconocido", "Piso desconocido", "PISODESCONOCIDO", "", None]:
+            if m.get("CONCEPTO") in ["Sin asignar", "piso sin identificar", "piso desconocido", "Piso desconocido", "PISODESCONOCIDO", "", None]: # La lógica de formatear_piso(m.get("piso_ml_original", "")) no es necesaria aquí.
                 m["CONCEPTO"] = formatear_piso(piso_id)
         # Si no se identificó piso y CONCEPTO es un valor por defecto, establecer "piso sin identificar".
         elif m.get("CONCEPTO") in ["Sin asignar", "piso sin identificar", "piso desconocido", "PISODESCONOCIDO", "", None]:

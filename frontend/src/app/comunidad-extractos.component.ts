@@ -67,6 +67,7 @@ import { UtilsService } from './utils.service';
               <th (click)="toggleOrdenFecha()" style="cursor: pointer; user-select: none;">
                 FECHA {{ ordenFecha === 'desc' ? '▼' : '▲' }}
               </th>
+              <th>ORDENANTE</th>
               <th>CONCEPTO ORIGINAL</th>
               <th style="text-align: right;">IMPORTE</th>
               <th style="text-align: center;">CONCEPTO</th>
@@ -74,7 +75,8 @@ import { UtilsService } from './utils.service';
           </thead>
           <tbody>
             <tr *ngFor="let mov of movimientosOrdenados">
-              <td>{{ mov.fecha | date:'dd/MM/yyyy' }}</td>
+              <td>{{ mov.fecha | date:'dd/MM/yyyy' }}</td> 
+              <td style="font-size: 0.9rem;">{{ mov.ORDENANTE || '-' }}</td>
               <td style="font-size: 0.9rem;">{{ mov.concepto_original || '-' }}</td>
               <td [style.color]="mov.importe > 0 ? '#2ecc71' : '#e74c3c'" style="text-align: right; font-weight: bold;">
                 {{ mov.importe | number:'1.2-2' }}€
@@ -177,7 +179,9 @@ export class ComunidadExtractosComponent implements OnInit {
     this.extractoSeleccionado = ext;
     this.loading = true;
     // Obtener movimientos ya desencriptados desde el backend
-    const movimientosDesencriptados = await this.http.get<any[]>(`/api/comunidades/${this.communityId}/movimientos?extracto_id=${ext.id}`).toPromise();
+    const session = await this.supabase.getSession();
+    const headers = { 'Authorization': `Bearer ${session?.access_token}` }; // Aseguramos que el token se envía
+    const movimientosDesencriptados = await lastValueFrom(this.http.get<any[]>(`/api/comunidades/${this.communityId}/movimientos?extracto_id=${ext.id}`, { headers }));
     this.movimientos = (movimientosDesencriptados || []).map(m => {
       const processed = {
         ...m,
@@ -199,9 +203,14 @@ export class ComunidadExtractosComponent implements OnInit {
       // Sincronizamos los cambios del input (CONCEPTO) con los campos técnicos antes de guardar
       this.movimientos.forEach(m => {
         if (m.tipo === 'ingreso') {
-          m.piso_detectado = this.utils.unformatPiso(m.CONCEPTO || '');
+          // Para ingresos, CONCEPTO es el piso. Lo desformateamos y truncamos si es necesario.
+          const unformattedPiso = this.utils.unformatPiso(m.CONCEPTO || '');
+          m.piso_detectado = (unformattedPiso && unformattedPiso.trim() !== '') ? unformattedPiso.substring(0, 20) : null;
+          m.categoria = null; // Los ingresos no tienen categoría en este contexto
         } else {
+          // Para gastos, CONCEPTO es la categoría.
           m.categoria = m.CONCEPTO || 'Sin Categoría';
+          m.piso_detectado = null; // Los gastos no tienen piso_detectado
         }
       });
 
@@ -214,15 +223,24 @@ export class ComunidadExtractosComponent implements OnInit {
         importe: m.importe,
         saldo_resultante: m.saldo_resultante,
         ordenante: m.ordenante || '', // El backend encriptará esto
-        piso_detectado: (m.piso_detectado && m.piso_detectado.trim() !== '') ? m.piso_detectado.substring(0, 20) : 'piso sin identificar',
+        piso_detectado: m.piso_detectado, // Ya es null o el piso truncado
         tipo: m.tipo,
         editado_manualmente: true,
         categoria: (m.categoria || 'Sin Categoría').substring(0, 50),
         confianza_clasificacion: m.confianza_clasificacion || 0
       }));
 
-      const { error } = await this.supabase.upsertMovimientos(movimientosParaDB);
-      if (error) throw error;
+      const session = await this.supabase.getSession();
+      const headers = { 'Authorization': `Bearer ${session?.access_token}` };
+      const payload = {
+        community_id: this.communityId,
+        movimientos: movimientosParaDB,
+        mes: this.extractoSeleccionado.mes_contable,
+        anio: this.extractoSeleccionado.anio_contable,
+        nombre_archivo: this.extractoSeleccionado.nombre_archivo
+      };
+
+      await lastValueFrom(this.http.put('/api/movimientos/batch', payload, { headers }));
 
       this.cambiosRealizados = false;
       alert('Cambios guardados correctamente en la base de datos.');

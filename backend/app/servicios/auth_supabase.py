@@ -1,31 +1,30 @@
-from fastapi import Header, HTTPException
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.servicios.supabase_db import supabase_client
+import logging
 
-async def get_current_user(authorization: str = Header(...)) -> str:
+logger = logging.getLogger(__name__)
+
+security = HTTPBearer()
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
     """
     Dependencia para obtener el ID del usuario actual a partir del token JWT de Supabase.
     """
     try:
-        scheme, token = authorization.split()
-        if scheme.lower() != "bearer":
-            raise HTTPException(status_code=401, detail="Esquema de autenticación inválido. Se esperaba 'Bearer'.")
+        # credentials.credentials contiene el token sin el prefijo 'Bearer'
+        token = credentials.credentials
         
-        # El método get_user() es síncrono en el cliente estándar.
-        # Eliminamos el 'await' para evitar errores de ejecución.
-        user_response = await supabase_client.auth.get_user(token)
-        
+        # El cliente estándar de Supabase es síncrono. 
+        # Eliminamos 'await' para evitar el error de servidor.
+        user_response = supabase_client.auth.get_user(token)
         if user_response and user_response.user:
             return user_response.user.id
         else:
             # Si user_response.user es None, el token no es válido o ha expirado
             raise HTTPException(status_code=401, detail="Token inválido o expirado.")
-
-    except ValueError:
-        # Error si el formato del header Authorization no es 'Bearer <token>'
-        raise HTTPException(status_code=401, detail="Formato de cabecera de autorización inválido.")
-    except HTTPException:
-        raise # Re-lanza las excepciones HTTPException ya creadas
     except Exception as e:
-        # Captura cualquier otro error inesperado durante la autenticación
-        print(f"Error inesperado en la autenticación: {e}")
+        if "expired" in str(e).lower():
+            raise HTTPException(status_code=401, detail="La sesión ha expirado. Por favor, inicie sesión de nuevo.")
+        logger.error(f"Error inesperado en la autenticación: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor al validar credenciales.")

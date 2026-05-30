@@ -7,8 +7,8 @@
   </div>
 
   <div class="app-layout">
-    <!-- SIDEBAR: Visible para todos los usuarios logueados -->
-    <aside class="sidebar" *ngIf="session && !router.url.includes('login')">
+    <!-- SIDEBAR: Solo visible si hay sesión activa Y no estamos en la landing page ni login -->
+    <aside class="sidebar" *ngIf="session && router.url !== '/' && !router.url.includes('login')">
       <div class="sidebar-header">
         <img src="assets/logo.png" class="sidebar-logo" alt="OptiFincas">
         <h2 class="sidebar-title">OptiFincas</h2>
@@ -44,7 +44,7 @@
     </aside>
 
     <!-- CONTENIDO: Siempre se muestra el router-outlet para que funcionen las rutas -->
-    <main class="main-content" [class.full-width]="!session || userRole !== 'admin' || router.url.includes('login')">
+    <main class="main-content" [class.full-width]="!session || router.url === '/' || router.url.includes('login') || router.url.includes('privacidad') || router.url.includes('terminos')">
       <router-outlet></router-outlet>
     </main>
   </div>

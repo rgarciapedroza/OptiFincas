@@ -1,0 +1,59 @@
+<div class="legal-container">
+  <div class="legal-card" *ngIf="type === 'privacidad'">
+    <h1>Política de Privacidad</h1>
+    <p class="last-update">Última actualización: 30 de mayo de 2026</p>
+    
+    <section>
+      <h2>1. Responsable del Tratamiento</h2>
+      <p>OptiFincas S.L., con contacto en opti.fincas.comunidades&#64;gmail.com, es el responsable del tratamiento de los datos personales recogidos en esta plataforma.</p>
+    </section>
+
+    <section>
+      <h2>2. Datos Recogidos y Finalidad</h2>
+      <p>Tratamos datos de propietarios (nombres, correos, teléfonos) y movimientos bancarios para facilitar la gestión contable. Los datos sensibles se almacenan mediante cifrado AES-256 para garantizar su confidencialidad.</p>
+    </section>
+
+    <section>
+      <h2>3. Inteligencia Artificial</h2>
+      <p>El sistema utiliza modelos de aprendizaje automático para clasificar extractos. Estos modelos procesan descripciones de movimientos para sugerir categorías, pero no se utilizan para perfiles automatizados con efectos legales.</p>
+    </section>
+
+    <section>
+      <h2>4. Sus Derechos</h2>
+      <p>Usted tiene derecho a acceder, rectificar y suprimir sus datos, así como otros derechos detallados en la normativa vigente, dirigiéndose a nuestro correo electrónico de contacto.</p>
+    </section>
+
+    <div class="actions">
+      <button class="btn-primary" routerLink="/">Volver al Inicio</button>
+    </div>
+  </div>
+
+  <div class="legal-card" *ngIf="type === 'terminos'">
+    <h1>Términos y Condiciones</h1>
+    <p class="last-update">Última actualización: 30 de mayo de 2026</p>
+
+    <section>
+      <h2>1. Uso del Servicio</h2>
+      <p>OptiFincas es una herramienta de asistencia para la administración de fincas. El usuario se compromete a hacer un uso lícito de la plataforma y a no cargar archivos con software malicioso.</p>
+    </section>
+
+    <section>
+      <h2>2. Responsabilidad del Administrador</h2>
+      <p>El administrador de la comunidad es el responsable último de validar las sugerencias realizadas por el clasificador de IA y el optimizador de rutas antes de su aplicación definitiva.</p>
+    </section>
+
+    <section>
+      <h2>3. Propiedad Intelectual</h2>
+      <p>Todo el software, algoritmos y diseño de OptiFincas son propiedad de sus creadores. Se prohíbe la reproducción total o parcial del código fuente sin autorización expresa.</p>
+    </section>
+
+    <section>
+      <h2>4. Disponibilidad</h2>
+      <p>Aunque nos esforzamos por mantener el servicio 24/7, OptiFincas no garantiza la disponibilidad ininterrumpida debido a mantenimientos técnicos o fallos en proveedores de infraestructura (Supabase/OSRM).</p>
+    </section>
+
+    <div class="actions">
+      <button class="btn-primary" routerLink="/">Volver al Inicio</button>
+    </div>
+  </div>
+</div>

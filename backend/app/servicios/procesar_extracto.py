@@ -184,11 +184,16 @@ def buscar_piso_regex_en_fila(row: pd.Series, columnas: Dict[str, str]):
     # Columnas donde buscar, en orden de prioridad
     columnas_a_revisar = ["ordenante", "concepto", "observaciones", "texto_mezclado"]
     
-    # Patrones: 2J, 2 J, 02-A, 2/A, A2
+    # Patrones sincronizados con clasificador_ml.py
     patrones = [
-        r"\b(\d{1,2}\s*[A-Z])\b",            # 2J o 2 J
-        r"\b([A-Z]\s*\d{1,2})\b",            # A2
-        r"\b(\d{1,2}\s*[-/]\s*[A-Z])\b"      # 2-J o 2/J
+        r'\b(?:PISO|PIZO|PIS0)\s*(\d{1,2}\s*[A-Z]?)\b',
+        r'\b(?:PLANTA|PLNTA|PLTA)\s*(\d{1,2}\s*[A-Z]?)\b',
+        r'\bP\.?\s*(\d{1,2}\s*[A-Z]?)\b',
+        r'\bPL\.?\s*(\d{1,2}\s*[A-Z]?)\b',
+        r'\b(\d{1,2}\s*[-/]\s*[A-Z])\b',
+        r'\b(\d{1,2}\s*[A-Z])\b',
+        r'\b(\d{1,2}\s*(?:IZQUIERDA|IZQ|DERECHA|DRCHA|DCHA|EXTERIOR|EXT|INTERIOR|INT))\b',
+        r'\b(\d{1,2}[ºª]\s*[A-Z]?)\b',
     ]
 
     for col_key in columnas_a_revisar:
@@ -199,5 +204,8 @@ def buscar_piso_regex_en_fila(row: pd.Series, columnas: Dict[str, str]):
                 for pat in patrones:
                     m = re.search(pat, texto, re.IGNORECASE)
                     if m:
-                        return re.sub(r"[\s\-/]", "", m.group(1)).upper()
+                        # Retornar el primer grupo capturado (el valor del piso)
+                        for group in m.groups():
+                            if group:
+                                return re.sub(r"[\s\-/ºª]", "", str(group)).upper()
     return None

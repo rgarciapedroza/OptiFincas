@@ -10,7 +10,7 @@ export class UtilsService {
   /**
    * Limpia el formato visual de un piso para guardarlo en la DB (ej: "2º J" -> "2J")
    */
-  unformatPiso(formattedPiso: string | undefined): string {
+  unformatPiso(formattedPiso: string | null | undefined): string {
     if (!formattedPiso) return '';
     const lowerPiso = formattedPiso.toLowerCase();
     if (lowerPiso.includes('identificar') || lowerPiso.includes('desconocido') || lowerPiso.includes('sin asignar')) return '';
@@ -25,7 +25,7 @@ export class UtilsService {
   /**
    * Formatea un código de piso para mostrarlo en la interfaz (ej: "2J" -> "2º J")
    */
-  formatearPiso(piso: string | undefined): string {
+  formatearPiso(piso: string | null | undefined): string {
     if (!piso || piso.trim() === '' || piso.toLowerCase() === 'nan' || piso.toLowerCase() === 'none' || piso.toLowerCase().includes('identificar')) return 'piso sin identificar';
     const rawPisoCode = this.unformatPiso(piso);
     if (!rawPisoCode) return 'piso sin identificar';

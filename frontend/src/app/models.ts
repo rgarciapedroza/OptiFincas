@@ -23,12 +23,12 @@ export interface MovimientoBancario {
   fecha: string;
   concepto_original: string;
   importe: number;
-  saldo_resultante?: number;
-  ordenante?: string;
-  piso?: string;
-  piso_detectado?: string;
-  tipo?: string;
-  categoria?: string;
+  saldo_resultante?: number | null;
+  ordenante?: string | null;
+  piso?: string | null;
+  piso_detectado?: string | null;
+  tipo?: string | null;
+  categoria?: string | null;
   // Propiedades adicionales para la lógica de histórico
   es_historico?: boolean;
   detalle_historico?: DetalleHistorico;

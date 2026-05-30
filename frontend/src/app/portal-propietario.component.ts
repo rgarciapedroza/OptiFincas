@@ -136,9 +136,11 @@ export class PortalPropietarioComponent implements OnInit {
       this.extractoActualFinanzas = extData?.find((e: any) => e.mes_contable === mes && e.anio_contable === anio) || null;
 
       if (this.extractoActualFinanzas) {
+        const session = await this.supabase.getSession(); // Obtenemos la sesión para el token
+        const headers = { 'Authorization': `Bearer ${session?.access_token}` }; // Añadimos el token a las cabeceras
         // LLAMADA AL BACKEND: Obtenemos datos ya desencriptados por el servidor
-        const movs = await lastValueFrom(this.http.get<any[]>(`/api/comunidades/${this.selectedPiso.comunidades.id}/movimientos`));
-        const allPisos = await lastValueFrom(this.http.get<any[]>(`/api/comunidades/${this.selectedPiso.comunidades.id}/pisos`));
+        const movs = await lastValueFrom(this.http.get<any[]>(`/api/comunidades/${this.selectedPiso.comunidades.id}/movimientos`, { headers }));
+        const allPisos = await lastValueFrom(this.http.get<any[]>(`/api/comunidades/${this.selectedPiso.comunidades.id}/pisos`, { headers }));
         
         if (movs && allPisos) {
           const ingresos = movs.filter(m => this.utils.asNumber(m.importe) > 0);

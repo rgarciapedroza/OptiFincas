@@ -1,0 +1,156 @@
+<div class="landing-container">
+  <!-- HEADER -->
+  <header class="main-header">
+    <div class="header-content">
+      <div class="brand" (click)="scrollTo('hero')">
+        <img src="assets/logo.png" alt="Logo" class="mini-logo">
+        <span>OptiFincas</span>
+      </div>
+      <nav class="main-nav">
+        <a (click)="scrollTo('features')">Servicios</a>
+        <a (click)="scrollTo('about')">Empresa</a>
+        <a (click)="scrollTo('contact-section')">Contacto</a>
+        <button class="btn-nav-login" (click)="router.navigate(['/login'])">Acceder</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="landing-main">
+    <!-- HERO SECTION -->
+    <section id="hero" class="hero-section full-screen-section">
+      <div class="hero-overlay"></div>
+      <div class="hero-text">
+        <span class="badge-new">Innovación en Gestión</span>
+        <h1 class="hero-title">Administración de Fincas, <span>Optimizada</span></h1>
+        <p class="hero-subtitle">Digitaliza tu despacho con Inteligencia Artificial. Automatiza el procesamiento de extractos y optimiza las rutas de tu personal en un solo lugar.</p>
+        <div class="hero-actions">
+          <button class="btn-primary-lg" (click)="scrollTo('features')">Saber más</button>
+          <button class="btn-secondary-lg" (click)="router.navigate(['/login'])">Empezar ahora</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- FEATURES SECTION -->
+    <section id="features" class="features-section full-screen-section">
+      <div class="section-header">
+        <h2>Gestión Inteligente</h2>
+        <p>Herramientas diseñadas por y para administradores de fincas</p>
+      </div>
+
+      <div class="features-grid">
+        <div class="feature-item">
+          <div class="feature-image-container">
+            <img src="assets/ia_extractos.png" alt="IA en Extractos" class="feature-image">
+          </div>
+          <h3>Automatización de extractos</h3>
+          <p>Clasificación automática de movimientos bancarios vinculados a propietarios reales mediante reconocimiento de patrones</p>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-image-container">
+            <img src="assets/rutas_optimizadas.png" alt="Rutas Optimizadas" class="feature-image">
+          </div>
+          <h3>Rutas Optimizadas</h3>
+          <p>Cálculo de trayectos eficientes para el personal de limpieza integrando tiempos reales de tráfico y carretera</p>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-image-container">
+            <img src="assets/portal_vecinal.png" alt="Portal Vecinal" class="feature-image">
+          </div>
+          <h3>Transparencia Total</h3>
+          <p>Portal interactivo donde los propietarios pueden consultar sus recibos, finanzas y reportar incidencias con fotos</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ABOUT SECTION -->
+    <section id="about" class="about-section full-screen-section">
+      <div class="about-decoration-blob"></div>
+      <div class="about-content">
+        <div class="about-text">
+          <h2>Sobre Nosotros</h2>
+          <hr class="about-divider">
+          <p>OptiFincas nace como un proyecto de innovación tecnológica para modernizar un sector que tradicionalmente ha dependido de procesos manuales</p>
+          <p>Nuestra misión es devolver el tiempo a los administradores para que puedan centrarse en lo que importa: la atención a sus comunidades</p>
+        </div>
+
+        <div class="about-image-container">
+          <img src="assets/team.png" alt="Equipo OptiFincas" class="about-image">
+        </div>
+      </div>
+    </section>
+
+    <!-- CONTACT SECTION -->
+    <section id="contact-section" class="contact-section full-screen-section">
+      <div class="contact-card">
+        <div class="contact-info">
+          <h2>Contacto</h2>
+          <p>¿Necesitas una demostración personalizada para tu despacho?</p>
+
+          <div class="contact-details">
+            <div class="info-line">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="contact-icon"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+              <span>Las Palmas de Gran Canaria</span>
+            </div>
+            <div class="info-line">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="contact-icon"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+              <span>opti.fincas.comunidades&#64;gmail.com</span>
+            </div>
+            <div class="info-line">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="contact-icon"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+              <span>+34 928 123 456</span>
+            </div>
+          </div>
+        </div>
+
+        <form class="contact-form" (submit)="enviarMensajeContacto(); $event.preventDefault()">
+          <h2>¿Tienes más preguntas?</h2>
+          <p>¡Ponte en contacto con nosotros!</p>
+          <input type="text" [(ngModel)]="contactData.nombre" name="cNombre" placeholder="Nombre" required style="margin-top: 10px;">
+          <input type="email" [(ngModel)]="contactData.email" name="cEmail" placeholder="Correo electrónico" required>
+          <textarea [(ngModel)]="contactData.mensaje" name="cMsg" placeholder="¿En qué podemos ayudarte?" rows="4" required></textarea>
+          <button type="submit" class="btn-primary-lg">Enviar mensaje</button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer class="main-footer">
+    <div class="footer-grid" style="grid-template-columns: 2fr 1fr 1.2fr;">
+      <!-- Columna 1: Branding -->
+      <div class="footer-col">
+        <div class="footer-brand">
+          <img src="assets/logo.png" alt="OptiFincas" class="footer-logo-icon">
+          <span>OptiFincas</span>
+        </div>
+        <p class="footer-desc">Transformando la gestión de comunidades a través de la inteligencia artificial.</p>
+        <p class="footer-copy">&copy; 2024 OptiFincas S.L.</p>
+        <div class="footer-legal-links" style="margin-top: 15px;">
+          <a routerLink="/privacidad">Privacidad</a> | <a routerLink="/terminos">Términos</a>
+        </div>
+      </div>
+
+      <!-- Columna 2: Navegación -->
+      <div class="footer-col">
+        <h4>Plataforma</h4>
+        <ul class="footer-links">
+          <li><a (click)="scrollTo('hero')">Inicio</a></li>
+          <li><a (click)="scrollTo('features')">Servicios</a></li>
+          <li><a (click)="scrollTo('about')">Sobre nosotros</a></li>
+          <li><a (click)="router.navigate(['/login'])">Acceso</a></li>
+        </ul>
+      </div>
+
+      <!-- Columna 3: Contacto -->
+      <div class="footer-col">
+        <h4>Contacto</h4>
+        <div class="footer-contact-info">
+          <p>opti.fincas.comunidades@gmail.com</p>
+          <p>+34 928 123 456</p>
+          <p>Las Palmas, España</p>
+        </div>
+      </div>
+    </div>
+  </footer>
+</div>
