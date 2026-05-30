@@ -2,7 +2,7 @@ import io
 import logging
 import pandas as pd
 from fastapi import UploadFile, HTTPException, BackgroundTasks
-from typing import List, Dict
+from typing import List, Dict, Optional
 from app.servicios.supabase_db import supabase_client, supabase_service_role_client
 from app.servicios.procesar_extracto import limpiar_importe, normalizar_fecha, load_df_from_excel_sheet_robust, detectar_columnas, buscar_piso_regex_en_fila
 import re
@@ -212,44 +212,55 @@ async def importar_movimientos_controller(community_id: int, file: UploadFile, u
         "skipped_sheets": skipped_sheets_info
     }
 
-
-async def get_movimientos_by_community_controller(community_id: int, user_id: str):
+async def get_movimientos_by_community_controller(community_id: int, user_id: str, extracto_id: Optional[int] = None):
     """
-    Obtiene todos los movimientos bancarios asociados a una comunidad específica
-    para el usuario autenticado.
+    Obtiene todos los movimientos bancarios asociados a una comunidad específica.
+    Filtra por extracto_id si se proporciona (selección de mes).
     """
     try:
-        response = supabase_client.table("movimientos") \
+        query = supabase_service_role_client.table("movimientos") \
             .select("*") \
-            .eq("community_id", community_id) \
-            .order("fecha", desc=True) \
-            .execute()
+            .eq("community_id", community_id)
+
+        if extracto_id:
+            query = query.eq("extracto_id", extracto_id)
+
+        response = query.order("fecha", desc=True).execute()
 
         if response.data:
-            # Convertir Decimal a float para JSON serialización
+            # Desencriptación segura para la visualización en el Dashboard
             for mov in response.data:
-                # DESENCRIPTACIÓN EN BACKEND: El frontend ya no necesita las llaves
-                mov["concepto_original"] = desencriptar_dato(mov.get("concepto_original"))
-                mov["ordenante"] = desencriptar_dato(mov.get("ordenante"))
+                try:
+                    desc_con = desencriptar_dato(mov.get("concepto_original"))
+                    desc_ord = desencriptar_dato(mov.get("ordenante"))
+                except Exception:
+                    desc_con = mov.get("concepto_original")
+                    desc_ord = mov.get("ordenante")
+
+                mov["concepto_original"] = desc_con
+                mov["ordenante"] = desc_ord or ""
+                mov["ORDENANTE"] = desc_ord or "-"
                 
-                if 'importe' in mov and isinstance(mov['importe'], str):
+                if 'importe' in mov and mov['importe'] is not None:
                     try:
                         mov['importe'] = float(mov['importe'])
-                    except ValueError:
-                        pass # Mantener como string si no se puede convertir
+                    except (ValueError, TypeError):
+                        pass
             return response.data
-        else:
-            return []
+        return []
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al obtener movimientos: {e}")
+        logger.error(f"Error al obtener movimientos: {e}")
+        raise HTTPException(status_code=500, detail="Error al recuperar los movimientos bancarios")
+
+
 
 async def get_extractos_by_community_controller(community_id: int, user_id: str):
     """
     Obtiene todos los extractos procesados asociados a una comunidad específica.
     """
     try:
-        response = supabase_client.table("extractos_procesados") \
-            .select("*") \
+        response = supabase_service_role_client.table("extractos_procesados") \
+            .select("*, movimientos(count)") \
             .eq("comunidad_id", community_id) \
             .order("anio_contable", desc=True) \
             .order("mes_contable", desc=True) \
@@ -279,60 +290,95 @@ async def get_finanzas_comunidad_controller(community_id: int, mes: int, anio: i
     Lógica centralizada en el backend para Matrícula de Honor.
     """
     try:
+        # Siempre usar service_role para cálculos financieros de servidor para evitar filtros RLS parciales
+        client = supabase_service_role_client if supabase_service_role_client else supabase_client
+        
         # 1. Obtener el extracto correspondiente
-        ext_res = supabase_client.table("extractos_procesados") \
+        ext_res = client.table("extractos_procesados") \
             .select("id") \
             .eq("comunidad_id", community_id) \
             .eq("mes_contable", mes) \
             .eq("anio_contable", anio) \
-            .maybeSingle().execute()
+            .maybe_single().execute()
         
         if not ext_res.data:
-            return None
+            # Si no hay extracto, devolvemos estructura vacía coherente
+            return {
+                "ingresosPorPiso": [],
+                "gastos": [],
+                "resumenCuentas": {
+                    "saldoAnterior": 0, "ingresosMes": 0, "gastosMes": 0, "saldoTotal": 0
+                },
+                "mensaje": "No se encontraron datos para el periodo seleccionado."
+            }
             
         extracto_id = ext_res.data['id']
 
         # 2. Obtener movimientos y pisos
-        movs_res = supabase_client.table("movimientos").select("*").eq("extracto_id", extracto_id).execute()
-        pisos_res = supabase_client.table("pisos").select("codigo").eq("community_id", community_id).execute()
+        movs_res = client.table("movimientos").select("*").eq("extracto_id", extracto_id).execute()
+        pisos_res = client.table("pisos").select("codigo").eq("community_id", community_id).execute()
         
         if not movs_res.data:
-            return None
+            return {"ingresosPorPiso": [], "gastos": [], "resumenCuentas": { "saldoAnterior": 0, "ingresosMes": 0, "gastosMes": 0, "saldoTotal": 0 }}
 
         df = pd.DataFrame(movs_res.data)
-        # Asegurar tipos
+
+        # Garantizar que las columnas necesarias existen (evita KeyError si Supabase no las devuelve)
+        for col in ['importe', 'piso_detectado', 'categoria', 'saldo_resultante', 'fecha']:
+            if col not in df.columns:
+                df[col] = 0.0 if col == 'importe' else None
+
+        # Asegurar tipos e importes limpios
         df['importe'] = df['importe'].apply(limpiar_importe)
         
+        def normalizar_piso_simple(p):
+            if not p: return ""
+            return str(p).upper().replace("º", "").replace("ª", "").replace(" ", "").replace("-", "")
+
+        df['piso_norm'] = df['piso_detectado'].apply(normalizar_piso_simple)
         ingresos = df[df['importe'] > 0]
         gastos = df[df['importe'] < 0]
 
         # 3. Resumen de Ingresos por Piso
         resumen_pisos = []
+
         for p in pisos_res.data:
             codigo = p['codigo']
-            # Filtrar movimientos que coincidan con el piso (insensible a formato)
-            # Usamos una lógica similar a la del buscador de pisos
-            movs_piso = ingresos[ingresos['piso_detectado'].str.contains(codigo, na=False, case=False)]
+            codigo_norm = normalizar_piso_simple(codigo)
+            
+            # Coincidencia exacta sobre versión normalizada
+            movs_piso = ingresos[ingresos['piso_norm'] == codigo_norm]
             total = float(movs_piso['importe'].sum())
             
             resumen_pisos.append({
                 "codigo": codigo,
                 "importe": total,
-                "pagado": len(movs_piso) > 0,
+                "pagado": total > 0,
                 "fecha": movs_piso.iloc[0]['fecha'] if len(movs_piso) > 0 else None
             })
 
         # 4. Resumen de Gastos
-        resumen_gastos = gastos.groupby('categoria')['importe'].sum().abs().reset_index()
-        resumen_gastos = resumen_gastos.rename(columns={'categoria': 'concepto', 'importe': 'importe'})
-        resumen_gastos = resumen_gastos.to_dict('records')
+        if not gastos.empty:
+            gastos_copy = gastos.copy()
+            gastos_copy['categoria'] = gastos_copy['categoria'].fillna('Sin Categoría')
+            resumen_gastos = gastos_copy.groupby('categoria')['importe'].sum().abs().reset_index()
+            resumen_gastos = resumen_gastos.rename(columns={'categoria': 'concepto', 'importe': 'importe'})
+            resumen_gastos = resumen_gastos.to_dict('records')
+        else:
+            resumen_gastos = []
 
         # 5. Totales
         total_ingresos = float(ingresos['importe'].sum())
-        total_gastos = float(gastos['importe'].sum().abs())
+        total_gastos = abs(float(gastos['importe'].sum()))
         # Saldo final (del último movimiento si existe saldo_resultante)
         df_sorted = df.sort_values('fecha', ascending=False)
-        saldo_total = float(df_sorted.iloc[0]['saldo_resultante']) if 'saldo_resultante' in df.columns else 0
+        
+        saldo_total = 0.0
+        if 'saldo_resultante' in df.columns and not df_sorted.empty:
+            val = df_sorted.iloc[0]['saldo_resultante']
+            if pd.notna(val):
+                try: saldo_total = float(val)
+                except: saldo_total = 0.0
 
         return {
             "ingresosPorPiso": resumen_pisos,

@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, UploadFile, File, Form, Body
+from fastapi import APIRouter, Depends, UploadFile, File, Form, Body, HTTPException
 from typing import List, Dict, Optional, Any, Union
 from app.controllers.movimientos_bancarios_controller import importar_movimientos_controller, get_movimientos_by_community_controller, eliminar_extracto_controller, get_extractos_by_community_controller, get_finanzas_comunidad_controller
 from app.controllers.pisos_controller import importar_censo_pisos_controller, get_piso_controller, create_piso_controller, update_piso_controller, delete_piso_controller, borrar_censo_comunidad_controller, get_pisos_by_community_controller
 from app.controllers.extracto_controller import procesar_extracto_db_controller, confirmar_controller, descargar_controller, descargar_excel_controller, entrenar_controller, opciones_controller, persistir_extracto_db_controller
 from app.servicios.auth_supabase import get_current_user
 from app.schemas import PisoCreate, PisoUpdate, FinanzasReportRequest, MovimientoClasificado
+from app.servicios.evaluacion import ejecutar_test_accuracy
 
 router = APIRouter()
 
@@ -38,12 +39,13 @@ async def importar_movimientos_route(
 )
 async def get_movimientos_by_community_route(
     community_id: int,
+    extracto_id: Optional[int] = None,
     user_id: str = Depends(get_current_user)
 ):
     """
     Obtiene todos los movimientos bancarios de una comunidad específica.
     """
-    return await get_movimientos_by_community_controller(community_id, user_id)
+    return await get_movimientos_by_community_controller(community_id, user_id, extracto_id)
 
 @router.get(
     "/comunidades/{community_id}/finanzas",
@@ -145,6 +147,12 @@ async def delete_piso_route(
     """Elimina un piso por su ID."""
     return delete_piso_controller(piso_id, user_id)
 
+@router.put("/movimientos/batch", tags=["Movimientos"])
+async def update_movimientos_batch_route(data: Dict = Body(...), user_id: str = Depends(get_current_user)):
+    """Actualiza múltiples movimientos encriptando los datos sensibles."""
+    # Reutilizamos la lógica de persistencia que maneja la encriptación AES
+    return await persistir_extracto_db_controller(data)
+
 # --- Rutas para Extractos Procesados ---
 @router.get(
     "/comunidades/{community_id}/extractos",
@@ -228,3 +236,32 @@ async def entrenar_route(
 async def opciones_route():
     """Obtiene las opciones disponibles para el clasificador."""
     return opciones_controller()
+
+@router.get(
+    "/evaluacion/reporte",
+    tags=["Calidad y Metricas"],
+    summary="Generar reporte de precisión",
+    description="Ejecuta el sistema contra un dataset de prueba etiquetado y devuelve métricas de exactitud para la memoria del TFG."
+)
+async def obtener_reporte_evaluacion(community_id: Optional[int] = None, user_id: str = Depends(get_current_user)):
+    """Endpoint exclusivo para auditoría técnica y defensa del TFG."""
+    return ejecutar_test_accuracy(community_id)
+
+@router.post("/contacto", tags=["Comunicación"])
+async def contacto_route(data: Dict = Body(...)):
+    """Recibe los datos del formulario de contacto y envía un correo."""
+    from app.servicios.email_service import enviar_email_contacto
+    
+    nombre = data.get("nombre")
+    email = data.get("email")
+    mensaje = data.get("mensaje")
+
+    if not all([nombre, email, mensaje]):
+        raise HTTPException(status_code=400, detail="Todos los campos son obligatorios.")
+
+    exito = enviar_email_contacto(nombre, email, mensaje)
+    
+    if not exito:
+        raise HTTPException(status_code=500, detail="No se pudo enviar el correo. Revisa la configuración del servidor.")
+
+    return {"status": "success", "message": "Mensaje enviado correctamente."}
