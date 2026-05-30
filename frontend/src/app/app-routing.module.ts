@@ -10,8 +10,11 @@ import { CensoComponent } from './censo.component';
 import { ComunidadExtractosComponent } from './comunidad-extractos.component';
 import { ComunidadFinanzasComponent } from './comunidad-finanzas.component';
 import { ComunidadLimpiezaComponent } from './comunidad-limpieza.component';
+import { LandingComponent } from './landing.component';
+import { LegalComponent } from './legal.component';
 
 const routes: Routes = [
+  { path: '', component: LandingComponent, title: 'OptiFincas - Bienvenidos' },
   { path: 'login', component: AuthComponent, title: 'OptiFincas - Login' },
   { path: 'comunidades', component: ComunidadesComponent },
   { 
@@ -33,7 +36,9 @@ const routes: Routes = [
   { path: 'portal-propietario/finanzas', component: PortalPropietarioComponent },
   { path: 'portal-propietario/limpieza', component: PortalPropietarioComponent },
   { path: 'portal-propietario/contactar', component: PortalPropietarioComponent },
-  { path: '', redirectTo: '/login', pathMatch: 'full' }
+  { path: 'privacidad', component: LegalComponent, data: { type: 'privacidad' } },
+  { path: 'terminos', component: LegalComponent, data: { type: 'terminos' } },
+  { path: '**', redirectTo: '' }
 ];
 
 @NgModule({

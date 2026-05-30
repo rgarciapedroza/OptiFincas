@@ -18,6 +18,7 @@ from typing import Dict, List, Tuple, Optional
 from collections import Counter
 import logging
 from difflib import SequenceMatcher
+from app.procesamiento.buscar_pisos import normalizar_texto # Importar normalizar_texto
 from app.servicios.supabase_db import supabase_client
 
 # Configurar logging
@@ -86,6 +87,7 @@ class ClasificadorML:
             r'\bPL\.?\s*(\d{1,2}\s*[A-Z]?)\b',                # PL. 2
             r'\b(\d{1,2}\s*[-/]\s*[A-Z])\b',                  # 4-J, 4/J
             r'\b(\d{1,2}\s*[A-Z])\b',                         # 4J, 4 J
+            r'\b(\d{1,2}\s*(?:IZQUIERDA|IZQ|DERECHA|DRCHA|DCHA|EXTERIOR|EXT|INTERIOR|INT))\b', # 4 IZQ, 4 DRCHA
             r'\b(\d{1,2}[ºª]\s*[A-Z]?)\b',                    # 4º, 4ª, 4ºJ
     ]
 
@@ -107,6 +109,7 @@ class ClasificadorML:
                 
                 self.reglas = nuevas_reglas
                 logger.info(f"✅ [Configuración Dinámica] Cargadas {len(res.data)} reglas desde la base de datos.")
+                self._inicializar_palabras() # Inicializar palabras_categoria con las reglas de la DB
                 return
         except Exception as e:
             logger.warning(f"⚠️ [Resiliencia] Error al conectar con la DB ({e}). Activando reglas de respaldo (Fallback) para garantizar operatividad.")
@@ -201,8 +204,8 @@ class ClasificadorML:
                 "metodo": "ninguno"
             }
         
-        concepto_lower = concepto.lower()
-        piso = self.detectar_piso(concepto_lower)
+        concepto_normalizado = normalizar_texto(concepto) # Usar la misma normalización que buscar_pisos
+        piso = self.detectar_piso(concepto_normalizado) # Usar concepto_normalizado aquí
         
         # 1. Determinar el tipo de forma ESTRICTAMENTE NUMÉRICA desde el principio
         mejor_tipo = "ingreso" if importe >= 0 else "gasto"
@@ -210,9 +213,9 @@ class ClasificadorML:
         mejor_coincidencia = None
         mejor_confianza = 0.0
         
-        #Búsqueda de palabras clave
-        for palabra, categoria in self.palabras_categoria.items():
-            if palabra in concepto_lower:
+        # Búsqueda de palabras clave
+        for palabra, categoria in self.palabras_categoria.items(): # Las palabras clave ya están en minúsculas
+            if palabra in concepto_normalizado.lower(): # Comparar con el concepto normalizado y en minúsculas
                 confianza = min(0.9, 0.5 + (len(palabra) / 20))
                 
                 if confianza > mejor_confianza:
@@ -220,18 +223,18 @@ class ClasificadorML:
                     mejor_coincidencia = categoria
 
         # similitud difusa
-        for palabra, categoria in self.palabras_categoria.items():
-            sim = SequenceMatcher(None, palabra, concepto_lower).ratio()
+        for palabra_clave, categoria in self.palabras_categoria.items(): # Las palabras clave ya están en minúsculas
+            sim = SequenceMatcher(None, normalizar_texto(palabra_clave), concepto_normalizado.lower()).ratio() # Normalizar palabra clave también
             if sim > 0.65:  
                 mejor_coincidencia = categoria
                 mejor_confianza = sim
                 break
 
-        #Reglas estáticas por defecto
+        # Reglas estáticas por defecto
         if mejor_coincidencia is None:
             for categoria, info in self.reglas.items():
                 for palabra in info["palabras"]:
-                    if palabra in concepto_lower:
+                    if palabra.lower() in concepto_normalizado.lower(): # Comparar con el concepto normalizado y en minúsculas
                         confianza = 0.9 if len(palabra) > 5 else 0.7
                         
                         if confianza > mejor_confianza:
@@ -358,7 +361,7 @@ if __name__ == "__main__":
     
     ejemplos = [
         ("IBERDROLA DISTRIBUCION ELECTRICA", -150.50),
-        ("CARMEN SANTANA FLEITAS 2J", 150.00),
+        ("PAGO COMUNIDAD 2J", 150.00),
         ("PAGOCOLEGIAL COMUNIDAD", 200.00),
         ("REPARACION FONTANERO", -85.00),
         ("LIMPIEZA ESCALERAS", -120.00),

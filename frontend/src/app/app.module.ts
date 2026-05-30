@@ -1,7 +1,7 @@
 import { NgModule } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
 import { HttpClientModule } from '@angular/common/http';
-import { FormsModule } from '@angular/forms'; // Necesario para [(ngModel)]
+import { FormsModule } from '@angular/forms';
 
 import { AppComponent } from './app.component';
 import { AuthComponent } from './auth.component';
@@ -14,7 +14,10 @@ import { CensoComponent } from './censo.component';
 import { ComunidadExtractosComponent } from './comunidad-extractos.component';
 import { ComunidadFinanzasComponent } from './comunidad-finanzas.component';
 import { ComunidadLimpiezaComponent } from './comunidad-limpieza.component';
+import { LandingComponent } from './landing.component';
+import { LegalComponent } from './legal.component';
 import { AppRoutingModule } from './app-routing.module';
+
 
 @NgModule({
   declarations: [
@@ -28,7 +31,9 @@ import { AppRoutingModule } from './app-routing.module';
     CensoComponent,
     ComunidadExtractosComponent,
     ComunidadFinanzasComponent,
-    ComunidadLimpiezaComponent
+    ComunidadLimpiezaComponent,
+    LandingComponent,
+    LegalComponent
   ],
   imports: [
     BrowserModule,

@@ -3,6 +3,7 @@ import { ActivatedRoute } from '@angular/router';
 import { SupabaseService } from './supabase.service';
 import { Piso } from './models';
 import { HttpClient } from '@angular/common/http';
+import { lastValueFrom } from 'rxjs';
 
 @Component({
   selector: 'app-censo',
@@ -28,7 +29,9 @@ export class CensoComponent implements OnInit {
 
   async cargarPisos() {
     if (!this.communityId) return;
-    this.pisos = await this.http.get<Piso[]>(`/api/comunidades/${this.communityId}/pisos`).toPromise() || [];
+    const session = await this.supabase.getSession();
+    const headers = { 'Authorization': `Bearer ${session?.access_token}` };
+    this.pisos = await lastValueFrom(this.http.get<Piso[]>(`/api/comunidades/${this.communityId}/pisos`, { headers })) || [];
   }
 
   prepararNuevoPiso() {

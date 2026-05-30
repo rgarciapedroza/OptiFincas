@@ -21,7 +21,7 @@ import { Piso } from './models'; // Importamos solo lo necesario para determinar
     .sidebar-btn:hover { background: #1e293b; color: white; }
     .sidebar-btn.active { background: #1e293b; color: white; border-left-color: #818cf8; background: linear-gradient(90deg, rgba(99,102,241,0.1) 0%, rgba(30,41,59,0) 100%); }
     .sidebar-label { display: none; font-size: 0.9rem; font-weight: 500; }
-    .sidebar:hover .sidebar-label { display: block; }
+    .sidebar:hover .sidebar-label { display: block; } 
     .sidebar:hover .sidebar-btn { justify-content: flex-start; padding-left: 25px; }
     .main-content { flex: 1; overflow-y: auto; padding: 40px; background: #f8fafc; }
     .main-content.full-width { padding: 0; }
@@ -69,8 +69,10 @@ export class AppComponent implements OnInit {
             }
           } else {
             this.limpiarEstadoSesion();
-            if (!this.router.url.includes('login')) {
-              await this.router.navigate(['/login']);
+            // Ya no redirigimos a /login automáticamente. 
+            // Si no hay sesión, el router mostrará por defecto la LandingComponent ('')
+            if (this.router.url.includes('comunidades') || this.router.url.includes('optimizacion')) {
+              await this.router.navigate(['/']);
             }
           }
         } catch (err) {
@@ -110,7 +112,10 @@ export class AppComponent implements OnInit {
     try {
       if (email && admins.includes(email)) {
         this.userRole = 'admin';
-        if (this.router.url === '/' || this.router.url.includes('login')) {
+        // Solo redirigimos automáticamente si el usuario intenta entrar al login
+        // o si el evento fue de entrada explícita.
+        // Si simplemente refresca la Landing, le permitimos quedarse allí.
+        if (this.router.url.includes('login') || this.isValidating) {
           await this.router.navigate(['/comunidades']);
         }
       } else if (email) {
