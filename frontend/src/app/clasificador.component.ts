@@ -62,9 +62,9 @@ export class ClasificadorComponent implements OnInit {
         this.pantallaActual = 2;
         this.loading = false;
       },
-      error: (err) => { 
+      error: (err: any) => { 
         this.loading = false; 
-        this.error = 'Error al conectar con el servidor de IA.';
+        this.error = 'Error al conectar con el servidor de IA: ' + (err.message || 'Error desconocido');
       }
     });
   }
@@ -94,8 +94,8 @@ export class ClasificadorComponent implements OnInit {
 
       await this.http.post('/api/persistir-extracto', payload).toPromise();
       this.pantallaActual = 3;
-    } catch (err) {
-      this.error = 'Error al persistir los datos.';
+    } catch (err: any) {
+      this.error = 'Error al persistir los datos: ' + (err.message || 'Error desconocido');
     } finally {
       this.loading = false;
     }

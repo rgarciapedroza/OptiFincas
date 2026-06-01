@@ -62,6 +62,7 @@ export interface Piso {
   telefono2?: string;
   email?: string;
   observaciones?: string;
+  cargo?: string;
 }
 
 export interface Community {
