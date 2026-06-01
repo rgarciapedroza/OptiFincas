@@ -15,6 +15,8 @@ export class CensoComponent implements OnInit {
   pisos: Piso[] = [];
   communityId: string | null = null;
   loading = false;
+  cargosDisponibles = ['Ninguno', 'Presidente', 'Vicepresidente', 'Secretario', 'Tesorero', 'Vocal'];
+
   pisoForm: Piso = { 
     community_id: 0, 
     codigo: '',
@@ -22,7 +24,8 @@ export class CensoComponent implements OnInit {
     email: '',
     telefono1: '',
     telefono2: '',
-    observaciones: ''
+    observaciones: '',
+    cargo: 'Ninguno'
   };
   editandoPisoId: number | null = null;
   mostrarModalEdicionPiso = false;
@@ -52,11 +55,27 @@ export class CensoComponent implements OnInit {
     }
   }
 
+  /**
+   * Devuelve los propietarios que tienen un cargo asignado, ordenados por relevancia.
+   */
+  get juntaGobierno(): Piso[] {
+    const orden = { 'Presidente': 1, 'Vicepresidente': 2, 'Secretario': 3, 'Tesorero': 4, 'Vocal': 5 };
+    return this.pisos
+      .filter(p => p.cargo && p.cargo !== 'Ninguno')
+      .sort((a, b) => {
+        return (orden[a.cargo as keyof typeof orden] || 9) - (orden[b.cargo as keyof typeof orden] || 9);
+      });
+  }
+
   async cargarPisos() {
     if (!this.communityId) return;
     const session = await this.supabase.getSession();
     const headers = { 'Authorization': `Bearer ${session?.access_token}` };
-    this.pisos = await lastValueFrom(this.http.get<Piso[]>(`/api/comunidades/${this.communityId}/pisos`, { headers })) || [];
+    const data = await lastValueFrom(this.http.get<Piso[]>(`/api/comunidades/${this.communityId}/pisos`, { headers })) || [];
+    
+    // Ordenación alfanumérica natural (maneja correctamente 1, 2, 10...)
+    this.pisos = data.sort((a, b) => 
+      a.codigo.localeCompare(b.codigo, undefined, { numeric: true, sensitivity: 'base' }));
   }
 
   prepararNuevoPiso() {
@@ -72,7 +91,8 @@ export class CensoComponent implements OnInit {
       email: '',
       telefono1: '',
       telefono2: '',
-      observaciones: ''
+      observaciones: '',
+      cargo: 'Ninguno'
     };
     this.mostrarModalEdicionPiso = true;
   }
@@ -125,10 +145,38 @@ export class CensoComponent implements OnInit {
       return;
     }
 
+    // Validación: No permitir más de un cargo por persona (email) en la comunidad
+    if (this.pisoForm.cargo && this.pisoForm.cargo !== 'Ninguno' && this.pisoForm.email) {
+      const emailNorm = this.pisoForm.email.toLowerCase().trim();
+      const duplicado = this.pisos.find(p => 
+        p.email?.toLowerCase().trim() === emailNorm && 
+        p.id !== this.editandoPisoId && 
+        p.cargo && p.cargo !== 'Ninguno'
+      );
+      if (duplicado) {
+        this.modalService.showAlert('Cargo Duplicado', `Esta persona ya tiene asignado el cargo de "${duplicado.cargo}" en la propiedad ${duplicado.codigo}. Solo se permite un cargo por persona.`);
+        return;
+      }
+
+      // Nueva Validación 2: No puede haber dos personas con el mismo tipo de cargo en la misma comunidad
+      const cargoDuplicadoTipo = this.pisos.find(p =>
+        p.community_id === Number(this.communityId) && // Asegurarse de que es la misma comunidad
+        p.id !== this.editandoPisoId && // Excluir el piso actual que se está editando
+        p.cargo === this.pisoForm.cargo // Comprobar el mismo cargo exacto
+      );
+      if (cargoDuplicadoTipo) {
+        this.modalService.showAlert('Cargo Duplicado', `Ya existe un "${this.pisoForm.cargo}" en el piso ${cargoDuplicadoTipo.codigo} de esta comunidad. Solo puede haber uno de cada cargo.`);
+        return;
+      }
+    }
+
     this.loading = true;
     try {
       // Copiamos los datos y eliminamos campos técnicos que el backend no debe recibir o que maneja él
-      const datos = { ...this.pisoForm };
+      const datos = { 
+        ...this.pisoForm,
+        cargo: this.pisoForm.cargo === 'Ninguno' ? null : this.pisoForm.cargo
+      };
       delete (datos as any).id;
       delete (datos as any).created_at;
 
@@ -157,6 +205,27 @@ export class CensoComponent implements OnInit {
     if (confirmado) {
       await this.supabase.deletePiso(id);
       await this.cargarPisos();
+    }
+  }
+
+  /**
+   * Elimina el cargo de un propietario específico.
+   * @param piso El objeto Piso del que se eliminará el cargo.
+   */
+  async eliminarCargo(piso: Piso) {
+    const confirmado = await this.modalService.showConfirm('Eliminar Cargo', `¿Estás seguro de eliminar el cargo de "${piso.cargo}" a ${piso.propietario} (${piso.codigo})?`);
+    if (confirmado) {
+      this.loading = true;
+      try {
+        const payload = { ...piso, cargo: 'Ninguno' }; // Establecer el cargo a 'Ninguno'
+        await this.supabase.updatePiso(piso.id!, payload);
+        this.modalService.showAlert('Éxito', 'El cargo ha sido eliminado correctamente.');
+        await this.cargarPisos(); // Recargar para actualizar la lista
+      } catch (e: any) {
+        this.modalService.showAlert('Error', 'No se pudo eliminar el cargo: ' + (e.message || 'Error desconocido'));
+      } finally {
+        this.loading = false;
+      }
     }
   }
 }

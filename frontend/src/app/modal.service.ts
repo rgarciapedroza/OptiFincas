@@ -18,7 +18,7 @@ export class ModalService {
     title: '',
     message: '',
     isConfirm: false,
-    resolve: () => {}
+    resolve: (_: boolean) => {}
   });
 
   public readonly modal$: Observable<ModalState> = this.modalState.asObservable();
@@ -26,7 +26,7 @@ export class ModalService {
   constructor() { }
 
   showAlert(title: string, message: string): void {
-    this.modalState.next({ show: true, title, message, isConfirm: false, resolve: () => {} });
+    this.modalState.next({ show: true, title, message, isConfirm: false, resolve: (_: boolean) => {} });
   }
 
   showConfirm(title: string, message: string): Promise<boolean> {

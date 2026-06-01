@@ -141,7 +141,9 @@ def importar_censo_pisos_controller(community_id: int, file: UploadFile, user_id
 def get_pisos_by_community_controller(community_id: int):
     """Obtiene todos los pisos de una comunidad y desencripta los datos."""
     client = supabase_service_role_client if supabase_service_role_client else supabase_client
-    response = client.table("pisos").select("*").eq("community_id", community_id).execute()
+    
+    # Añadimos ordenación por código directamente en la consulta a la DB
+    response = client.table("pisos").select("*").eq("community_id", community_id).order("codigo").execute()
     
     if not response.data:
         return []
@@ -161,10 +163,6 @@ def get_piso_controller(piso_id: int, user_id: str):
         raise HTTPException(status_code=404, detail="Piso no encontrado")
 
     piso = response.data
-
-    # Verificar si el usuario tiene permiso para ver este piso
-    if piso.get("user_id") and piso["user_id"] != user_id:
-        raise HTTPException(status_code=403, detail="No tienes permiso para ver este piso.")
 
     piso["propietario"] = desencriptar_dato(piso.get("propietario"))
     piso["telefono1"] = desencriptar_dato(piso.get("telefono1"))
@@ -202,6 +200,26 @@ def create_piso_controller(piso_data: dict, user_id: str = None):
     if not (email or tel1 or tel2):
         raise HTTPException(status_code=400, detail="Debe indicar al menos un medio de contacto (Email o Teléfono).")
 
+    # Validación de cargo único por email
+    # Esta validación ya estaba, asegura que una persona (email) no tenga más de un cargo
+    cargo = piso_data.get("cargo")
+    if email and cargo and cargo != "Ninguno":
+        check = client.table("pisos").select("cargo", "codigo").eq("community_id", community_id).eq("email", email).execute()
+        for p in check.data:
+            if p.get("cargo") and p.get("cargo") != "Ninguno":
+                raise HTTPException(status_code=400, detail=f"Esta persona ya tiene el cargo de {p['cargo']} en el piso {p['codigo']}.")
+    
+    # Nueva validación: No puede haber dos personas con el mismo tipo de cargo en la misma comunidad
+    if cargo and cargo != "Ninguno":
+        existing_cargo_holder = client.table("pisos") \
+            .select("codigo") \
+            .eq("community_id", community_id) \
+            .eq("cargo", cargo) \
+            .maybe_single() \
+            .execute()
+        if existing_cargo_holder.data:
+            raise HTTPException(status_code=400, detail=f"Ya existe un '{cargo}' en el piso {existing_cargo_holder.data['codigo']} de esta comunidad. Solo puede haber uno de cada cargo.")
+
     # 3. Preparación de datos final (Encriptación AES)
     datos_a_insertar = {
         "community_id": community_id,
@@ -212,7 +230,8 @@ def create_piso_controller(piso_data: dict, user_id: str = None):
         "telefono2": encriptar_dato(str(tel2)) if tel2 else None,
         "observaciones": encriptar_dato(str(piso_data.get("observaciones"))) if piso_data.get("observaciones") else None,
         "user_id": user_id,
-        "activo": piso_data.get("activo", True)
+        "activo": piso_data.get("activo", True),
+        "cargo": piso_data.get("cargo") # Añadimos el campo cargo
     }
 
     client = supabase_service_role_client if supabase_service_role_client else supabase_client
@@ -237,20 +256,52 @@ def update_piso_controller(piso_id: int, piso_data: dict, user_id: str = None):
         updates["codigo"] = str(piso_data["codigo"]).upper()
     if "email" in piso_data:
         updates["email"] = piso_data["email"].lower().strip() if piso_data["email"] else None
+    if "cargo" in piso_data: # Añadimos el campo cargo para actualización
+        new_cargo = piso_data["cargo"]
+        if new_cargo and new_cargo != "Ninguno":
+            # Necesitamos el email y la comunidad del piso que se está actualizando
+            client = supabase_service_role_client if supabase_service_role_client else supabase_client
+            curr_piso_res = client.table("pisos").select("community_id, email").eq("id", piso_id).single().execute()
+            if not curr_piso_res.data:
+                raise HTTPException(status_code=404, detail="Piso no encontrado para validación de cargo.")
+            
+            target_cid = curr_piso_res.data.get("community_id")
+            target_email = updates.get("email", curr_piso_res.data.get("email")) # Usar el email actualizado si se proporciona, sino el actual
+
+            # Validación 1: Una persona (email) no puede tener más de un cargo
+            if target_email and target_cid:
+                check_person_cargo = client.table("pisos").select("id, cargo, codigo") \
+                    .eq("community_id", target_cid) \
+                    .eq("email", target_email) \
+                    .neq("id", piso_id) \
+                    .not_.is_("cargo", None) \
+                    .not_.eq("cargo", "Ninguno") \
+                    .execute()
+                if check_person_cargo.data:
+                    raise HTTPException(status_code=400, detail=f"Esta persona ya tiene el cargo de {check_person_cargo.data[0]['cargo']} en el piso {check_person_cargo.data[0]['codigo']}. Solo se permite un cargo por persona.")
+
+            # Validación 2: No puede haber dos personas con el mismo tipo de cargo en la misma comunidad
+            existing_cargo_holder_type = client.table("pisos") \
+                .select("codigo") \
+                .eq("community_id", target_cid) \
+                .eq("cargo", new_cargo) \
+                .neq("id", piso_id) \
+                .maybe_single() \
+                .execute()
+            if existing_cargo_holder_type.data:
+                raise HTTPException(status_code=400, detail=f"Ya existe un '{new_cargo}' en el piso {existing_cargo_holder_type.data['codigo']} de esta comunidad. Solo puede haber uno de cada cargo.")
+
+        updates["cargo"] = piso_data["cargo"]
 
     client = supabase_service_role_client if supabase_service_role_client else supabase_client
 
-    # Primero verificamos si el piso existe y a quién pertenece
-    existing = client.table("pisos").select("user_id").eq("id", piso_id).single().execute()
+    # Primero verificamos si el piso existe
+    existing = client.table("pisos").select("id").eq("id", piso_id).single().execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Piso no encontrado")
     
-    # Si el piso tiene un user_id y no coincide con el actual, prohibido
-    if existing.data.get("user_id") and existing.data["user_id"] != user_id:
-         raise HTTPException(status_code=403, detail="No tienes permiso para editar este piso")
-
-    # Si el registro no tiene user_id (dato huérfano), lo asignamos al usuario que lo edita
-    if not existing.data.get("user_id") and user_id:
+    # Actualizamos el user_id al del último usuario que realizó la modificación
+    if user_id:
         updates["user_id"] = user_id
 
     query = client.table("pisos").update(updates).eq("id", piso_id)
@@ -266,13 +317,10 @@ def update_piso_controller(piso_id: int, piso_data: dict, user_id: str = None):
 def delete_piso_controller(piso_id: int, user_id: str = None):
     """Elimina un piso por su ID verificado por user_id."""
     client = supabase_service_role_client if supabase_service_role_client else supabase_client
-    # Verificación similar para permitir borrar si no tiene dueño o es el dueño
-    existing = client.table("pisos").select("user_id").eq("id", piso_id).single().execute()
+    # Verificamos si existe antes de borrar
+    existing = client.table("pisos").select("id").eq("id", piso_id).single().execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Piso no encontrado")
-        
-    if existing.data.get("user_id") and existing.data["user_id"] != user_id:
-         raise HTTPException(status_code=403, detail="No tienes permiso para eliminar este piso")
 
     query = client.table("pisos").delete().eq("id", piso_id)
     response = query.execute()

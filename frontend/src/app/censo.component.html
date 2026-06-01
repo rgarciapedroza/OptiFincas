@@ -16,6 +16,44 @@
     </div>
   </div>
 
+  <!-- Sección de Junta de Gobierno -->
+  <div *ngIf="juntaGobierno.length > 0" class="card-container" style="margin-top: 30px;">
+    <h3 class="section-title" style="margin-bottom: 20px; color: #6366f1;">Junta de Gobierno</h3>
+    <table class="movimientos-table">
+      <thead>
+        <tr>
+          <th>Cargo</th>
+          <th>Piso / Código</th>
+          <th>Propietario</th>
+          <th>Email</th>
+          <th>Teléfono</th>
+          <th style="text-align: center;">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let miembro of juntaGobierno">
+          <td style="font-weight: 700; color: #6366f1;">{{ miembro.cargo }}</td>
+          <td>{{ miembro.codigo }}</td>
+          <td>{{ miembro.propietario || '-' }}</td>
+          <td>{{ miembro.email || '-' }}</td>
+          <td>
+            <span *ngIf="miembro.telefono1">{{ miembro.telefono1 }}</span>
+            <span *ngIf="miembro.telefono1 && miembro.telefono2"> / </span>
+            <span *ngIf="miembro.telefono2">{{ miembro.telefono2 }}</span>
+            <span *ngIf="!miembro.telefono1 && !miembro.telefono2">-</span>
+          </td>
+          <td style="text-align: center; white-space: nowrap;">
+            <button class="btn-action btn-delete" (click)="eliminarCargo(miembro)" title="Eliminar cargo">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
   <table class="movimientos-table" *ngIf="pisos.length > 0">
     <thead>
       <tr>
@@ -70,6 +108,13 @@
           <label>Teléfono 2</label>
           <input [(ngModel)]="pisoForm.telefono2" class="input-concepto-edit" placeholder="Opcional">
         </div>
+        <div class="form-group">
+          <label>Cargo en la Junta</label>
+          <select [(ngModel)]="pisoForm.cargo" name="cargo" class="input-concepto-edit">
+            <option *ngFor="let cargo of cargosDisponibles" [value]="cargo">{{ cargo }}</option>
+          </select>
+        </div>
+        <div class="form-group"></div> <!-- Espacio en blanco para mantener la cuadrícula -->
         <div class="form-group" style="grid-column: span 2;">
           <label>Observaciones Privadas</label>
           <textarea [(ngModel)]="pisoForm.observaciones" class="input-concepto-edit" rows="3" placeholder="Notas internas..."></textarea>

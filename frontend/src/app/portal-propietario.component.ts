@@ -4,7 +4,7 @@ import { HttpClient } from '@angular/common/http';
 import { lastValueFrom } from 'rxjs';
 import { SupabaseService } from './supabase.service';
 import { ModalService } from './modal.service';
-import { FinanzasData, MovimientoBancario } from './models';
+import { FinanzasData, MovimientoBancario, Piso } from './models';
 import { UtilsService } from './utils.service';
 
 @Component({
@@ -16,6 +16,7 @@ export class PortalPropietarioComponent implements OnInit {
   userPisos: any[] = [];
   selectedPiso: any | null = null;
   userName: string = '';
+  juntaGobierno: Piso[] = [];
   loading = true;
   allRecibosGrouped: any[] = [];
   seccionActiva: 'finanzas' | 'limpieza' | 'recibos' = 'finanzas'; // This is not used anymore as main sections are handled by router
@@ -73,16 +74,15 @@ export class PortalPropietarioComponent implements OnInit {
           // Ahora mostramos el nombre del propietario en lugar del código de la finca
           this.userName = this.userPisos[0].propietario || 'Propietario';
           
-          // Pre-seleccionar la primera propiedad si estamos en una vista de detalle y no hay ninguna seleccionada
-          if (this.seccionPrincipalActiva !== 'mis-propiedades' && !this.selectedPiso) {
-            this.selectedPiso = this.userPisos[0];
-            this.updateMonthLabels();
-            await Promise.all([
-              this.loadFinanzas(),
-              this.loadCleaningSchedule(),
-              this.loadRecibos()
-            ]);
-          }
+          // Pre-seleccionar la primera propiedad y cargar sus datos de comunidad (incluida la Junta)
+           this.selectedPiso = this.userPisos[0];
+          this.updateMonthLabels();
+          await Promise.all([
+            this.loadFinanzas(),
+            this.loadCleaningSchedule(),
+            this.loadRecibos(),
+            this.loadJuntaGobierno()
+          ]);
         }
       }
     }
@@ -98,6 +98,16 @@ export class PortalPropietarioComponent implements OnInit {
     else if (url.includes('contactar')) this.seccionPrincipalActiva = 'contactar';
   }
 
+  async loadJuntaGobierno() {
+    if (!this.selectedPiso?.comunidades?.id) return;
+    const session = await this.supabase.getSession();
+    const headers = { 'Authorization': `Bearer ${session?.access_token}` };
+    const data = await lastValueFrom(this.http.get<Piso[]>(`/api/comunidades/${this.selectedPiso.comunidades.id}/pisos`, { headers }));
+    if (data) {
+      this.juntaGobierno = data.filter(p => p.cargo && p.cargo !== 'Ninguno');
+    }
+  }
+
   async loadPisoData(piso: any) {
     this.loading = true;
     this.selectedPiso = piso;
@@ -105,7 +115,8 @@ export class PortalPropietarioComponent implements OnInit {
     await Promise.all([
       this.loadFinanzas(),
       this.loadCleaningSchedule(),
-      this.loadRecibos()
+      this.loadRecibos(),
+      this.loadJuntaGobierno()
     ]);
     this.loading = false;
   }
