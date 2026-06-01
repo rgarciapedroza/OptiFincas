@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, UploadFile, File, Form, Body, HTTPException
 from typing import List, Dict, Optional, Any, Union
 from app.controllers.movimientos_bancarios_controller import importar_movimientos_controller, get_movimientos_by_community_controller, eliminar_extracto_controller, get_extractos_by_community_controller, get_finanzas_comunidad_controller
-from app.controllers.pisos_controller import importar_censo_pisos_controller, get_piso_controller, create_piso_controller, update_piso_controller, delete_piso_controller, borrar_censo_comunidad_controller, get_pisos_by_community_controller
+from app.controllers.pisos_controller import importar_censo_pisos_controller, get_piso_controller, create_piso_controller, update_piso_controller, delete_piso_controller, borrar_censo_comunidad_controller, get_pisos_by_community_controller, buscar_piso_por_email_controller
 from app.controllers.extracto_controller import procesar_extracto_db_controller, confirmar_controller, descargar_controller, descargar_excel_controller, entrenar_controller, opciones_controller, persistir_extracto_db_controller
 from app.servicios.auth_supabase import get_current_user
 from app.schemas import PisoCreate, PisoUpdate, FinanzasReportRequest, MovimientoClasificado
@@ -114,12 +114,11 @@ async def get_piso_route(piso_id: int, user_id: str = Depends(get_current_user))
     summary="Crear piso manualmente"
 )
 async def create_piso_route(
-    piso_data: PisoCreate,
+    piso_data: Dict = Body(...),
     user_id: str = Depends(get_current_user)
 ):
     """Crea un nuevo piso."""
-    # Usamos model_dump(exclude_none=True) para no enviar valores nulos innecesarios
-    return create_piso_controller(piso_data.model_dump(exclude_none=True), user_id)
+    return create_piso_controller(piso_data, user_id)
 
 @router.put(
     "/pisos/{piso_id}",
@@ -128,12 +127,11 @@ async def create_piso_route(
 )
 async def update_piso_route(
     piso_id: int,
-    piso_data: PisoUpdate,
+    piso_data: Dict = Body(...),
     user_id: str = Depends(get_current_user)
 ):
     """Actualiza un piso existente."""
-    # exclude_unset=True evita sobrescribir campos que el usuario no ha enviado
-    return update_piso_controller(piso_id, piso_data.model_dump(exclude_unset=True, exclude_none=True), user_id)
+    return update_piso_controller(piso_id, piso_data, user_id)
 
 @router.delete(
     "/pisos/{piso_id}",
@@ -265,3 +263,9 @@ async def contacto_route(data: Dict = Body(...)):
         raise HTTPException(status_code=500, detail="No se pudo enviar el correo. Revisa la configuración del servidor.")
 
     return {"status": "success", "message": "Mensaje enviado correctamente."}
+
+@router.get("/portal/mi-piso", tags=["Portal Propietario"])
+async def get_piso_propietario_route(email: str, user_id: str = Depends(get_current_user)):
+    """Busca y desencripta la información del piso para el portal del propietario."""
+    # Este controlador debe buscar en la DB y aplicar la desencriptación AES
+    return buscar_piso_por_email_controller(email)

@@ -1,5 +1,7 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 import { SupabaseService } from './supabase.service';
+import { ModalService } from './modal.service';
 
 @Component({
   selector: 'app-auth',
@@ -11,7 +13,19 @@ import { SupabaseService } from './supabase.service';
           <p>{{ isLogin ? 'Ingresa tus credenciales para continuar' : 'Regístrate para empezar a optimizar' }}</p>
         </div>
 
+        <!-- Selector de Tipo de Registro (Solo visible en Sign Up) -->
+        <div class="type-selector" *ngIf="!isLogin">
+          <button type="button" [class.active]="regType === 'propietario'" (click)="regType = 'propietario'">Soy Propietario</button>
+          <button type="button" [class.active]="regType === 'profesional'" (click)="regType = 'profesional'">Soy Profesional</button>
+        </div>
+
         <form (ngSubmit)="handleAuth()" #authForm="ngForm">
+          <!-- Campo Nombre de Empresa (Solo para profesionales) -->
+          <div class="form-group" *ngIf="!isLogin && regType === 'profesional'">
+            <label>Nombre del Despacho / Empresa</label>
+            <input type="text" name="orgName" [(ngModel)]="orgName" required placeholder="Ej: Administraciones García Pedroza S.L.">
+          </div>
+
           <div class="form-group">
             <label>Correo Electrónico</label>
             <input type="email" name="email" [(ngModel)]="email" required placeholder="ejemplo@correo.com">
@@ -52,6 +66,12 @@ import { SupabaseService } from './supabase.service';
     .auth-header { text-align: center; margin-bottom: 30px; }
     .auth-header h2 { color: #2c3e50; margin: 0 0 10px 0; }
     .auth-header p { color: #64748b; font-size: 0.9rem; margin: 0; }
+    .type-selector { display: flex; gap: 10px; margin-bottom: 25px; background: #f1f5f9; padding: 5px; border-radius: 10px; }
+    .type-selector button { 
+      flex: 1; padding: 10px; border: none; border-radius: 8px; font-size: 0.85rem; font-weight: 600; 
+      cursor: pointer; background: transparent; color: #64748b; transition: all 0.2s;
+    }
+    .type-selector button.active { background: white; color: #3498db; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     .form-group { margin-bottom: 20px; }
     .form-group label { display: block; font-size: 0.85rem; font-weight: 600; color: #475569; margin-bottom: 8px; }
     .form-group input {
@@ -73,14 +93,30 @@ import { SupabaseService } from './supabase.service';
     .auth-footer a { color: #3498db; font-weight: 600; cursor: pointer; text-decoration: none; margin-left: 5px; }
   `]
 })
-export class AuthComponent {
+export class AuthComponent implements OnInit {
   isLogin = true;
   loading = false;
   email = '';
   password = '';
+  orgName = ''; // Nuevo campo
+  regType: 'propietario' | 'profesional' = 'propietario'; // Tipo de registro
   error = '';
 
-  constructor(private supabase: SupabaseService) {}
+  constructor(
+    private supabase: SupabaseService,
+    private route: ActivatedRoute,
+    private router: Router,
+    public modalService: ModalService // Inyectamos el ModalService
+  ) {}
+
+  ngOnInit() {
+    // Detectamos si venimos desde la landing con parámetros de registro
+    this.route.queryParams.subscribe(params => {
+      if (params['mode'] === 'signup') this.isLogin = false;
+      if (params['type'] === 'profesional' || params['type'] === 'propietario') 
+        this.regType = params['type'];
+    });
+  }
 
   toggleMode() {
     this.isLogin = !this.isLogin;
@@ -96,33 +132,81 @@ export class AuthComponent {
         const { error } = await this.supabase.signInWithPassword(this.email, this.password);
         if (error) throw error;
       } else {
-        // VALIDACIÓN PREVIA: Verificar si el email está en la base de datos de propietarios
-        const emailNorm = this.email.toLowerCase().trim();
-        const resAuth = await this.supabase.verificarEmailAutorizado(emailNorm);
-        
-        if (resAuth.error) {
-          console.error('[RPC ERROR]', resAuth.error);
-          this.error = 'Error de conexión con el servidor de validación.';
-          this.loading = false;
-          return;
-        }
+        if (this.regType === 'propietario') {
+          // VALIDACIÓN PARA PROPIETARIOS
+          const emailNorm = this.email.toLowerCase().trim();
+          const resAuth = await this.supabase.verificarEmailAutorizado(emailNorm);
+          
+          if (resAuth.error || resAuth.data !== true) {
+            this.modalService.showAlert('Acceso Denegado', 'Su correo no está registrado como propietario. Contacte con su administrador.');
+            this.loading = false;
+            return;
+          }
 
-        // Verificamos explícitamente que el resultado sea true
-        if (resAuth.data !== true) {
-          this.error = 'Su correo no está registrado en ninguna comunidad. Por favor, póngase en contacto con el administrador.';
-          this.loading = false;
-          return;
-        }
+          const { error } = await this.supabase.signUp(this.email, this.password, {
+            data: { is_professional: false, is_propietario: true } // Metadatos para el trigger
+          });
+          if (error) throw error;
+        } else {
+          // REGISTRO PARA PROFESIONALES (Empresas)
+          if (!this.orgName) {
+            this.error = 'Por favor, introduce el nombre de tu despacho.';
+            this.loading = false;
+            return;
+          }
+          
+          // 1. Verificar si ya existe un perfil con este email
+          const { data: existingProfile } = await this.supabase.getProfileByEmail(this.email);
 
-        const { error } = await this.supabase.signUp(this.email, this.password);
-        if (error) throw error;
-        alert('¡Registro exitoso! Por favor, revisa tu correo electrónico para confirmar tu cuenta.');
+          if (existingProfile) {
+            // Si el perfil ya existe, no permitimos un nuevo registro con el mismo email
+            // y redirigimos a la página de espera si ya está vinculado a una organización
+            // o informamos que ya tiene una cuenta.
+            if (existingProfile.organizacion_id && existingProfile.organizacion_id !== null) {
+              // Ya está vinculado a una organización
+              const { data: orgData } = await this.supabase.verificarOrganizacionExiste(this.orgName);
+              if (orgData && orgData.id === existingProfile.organizacion_id) {
+                // Es la misma organización, redirigir según el status
+                if (existingProfile.status === 'approved') {
+                  this.modalService.showAlert('Acceso Aprobado', 'Ya tienes acceso a esta organización. Por favor, inicia sesión.');
+                } else {
+                  this.router.navigate(['/esperando-aprobacion'], { queryParams: { empresa: this.orgName, status: existingProfile.status } });
+                }
+              } else {
+                // Vinculado a otra organización
+                this.modalService.showAlert('Acceso Denegado', 'Este correo ya está vinculado a otra organización. Contacta con soporte.');
+              }
+            } else {
+              // Perfil existe pero no está vinculado a una organización (ej. propietario que intenta ser profesional)
+              this.modalService.showAlert('Cuenta Existente', 'Ya tienes una cuenta registrada con este correo. Inicia sesión y contacta con el administrador si deseas cambiar tu rol.');
+            }
+            this.loading = false;
+            return;
+          }
+
+          // 2. Si el perfil NO existe, procedemos con el registro normal
+          const { error } = await this.supabase.signUp(this.email, this.password, {
+            data: { is_professional: true, org_name: this.orgName }
+          });
+          if (error) throw error;
+
+          // Después del registro, el usuario es automáticamente logueado por Supabase.
+          // Para forzar que confirmen email antes de entrar, cerramos la sesión inmediatamente.
+          await this.supabase.signOut();
+
+          // Redirigimos a la página de espera para que el usuario sepa qué hacer.
+          this.router.navigate(['/esperando-aprobacion'], { queryParams: { empresa: this.orgName, status: 'pending' } });
+        }
+        this.modalService.showAlert('Registro Exitoso', '¡Registro casi listo! Revisa tu email para confirmar tu cuenta antes de iniciar sesión.');
       }
     } catch (err: any) {
       console.error('[AUTH ERROR]', err);
       
-      if (err.message?.includes('rate limit')) {
-        this.error = 'Límite de seguridad alcanzado: Supabase no permite enviar más correos de confirmación por ahora. Por favor, espera una hora o contacta al administrador.';
+      const msg = err.message || '';
+      if (msg.includes('already registered')) { // Este error es de Supabase Auth, no de nuestro trigger
+        this.error = 'Este correo ya está registrado en el sistema de autenticación, pero el perfil está incompleto. Por favor, contacta con soporte o usa otro correo.';
+      } else if (msg.includes('Invalid login credentials')) {
+        this.error = 'Correo o contraseña incorrectos. Por favor, verifica tus datos.';
       } else {
         this.error = err.error_description || err.message || 'Error de validación: Verifique los datos.';
       }

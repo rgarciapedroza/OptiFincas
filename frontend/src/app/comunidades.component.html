@@ -60,32 +60,14 @@
         </div>
         <div class="form-group" style="grid-column: span 2;">
           <label>Dirección *</label>
-          <div style="display: flex; gap: 8px;">
-            <input [(ngModel)]="nuevaComunidadForm.direccion" class="input-concepto-edit" placeholder="Calle..." style="flex: 1;">
-            <button class="btn btn-info" (click)="buscarCoordenadas()" type="button" title="Localizar coordenadas" style="padding: 8px 12px; display: flex; align-items: center;">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-            </button>
-          </div>
+          <input [(ngModel)]="nuevaComunidadForm.direccion" class="input-concepto-edit" placeholder="Calle, Número, Localidad...">
         </div>
         <div class="form-group" style="grid-column: span 2;">
-          <label>Servicios Incluidos</label>
-          <input [(ngModel)]="nuevaComunidadForm.servicios" class="input-concepto-edit" placeholder="Luz, Agua, Limpieza, Piscina...">
-        </div>
-        <div class="form-group">
-          <label>Horas Visita</label>
-          <input type="number" [(ngModel)]="nuevaComunidadForm.cleaningHours" class="input-concepto-edit" step="0.5">
-        </div>
-        <div class="form-group">
-          <label>Días/Semana</label>
-          <input type="number" [(ngModel)]="nuevaComunidadForm.cleaningDaysPerWeek" class="input-concepto-edit" min="1" max="7">
-        </div>
-        <div class="form-group">
-          <label>Latitud</label>
-          <input type="number" [(ngModel)]="nuevaComunidadForm.latitude" class="input-concepto-edit" step="any">
-        </div>
-        <div class="form-group">
-          <label>Longitud</label>
-          <input type="number" [(ngModel)]="nuevaComunidadForm.longitude" class="input-concepto-edit" step="any">
+          <label>Servicio Principal (Opcional)</label>
+          <select [(ngModel)]="nuevaComunidadForm.servicios" class="input-concepto-edit" style="width: 100%; height: 42px;">
+            <option value="">Ninguno / Por definir</option>
+            <option value="limpieza">Servicio de Limpieza</option>
+          </select>
         </div>
       </div>
     </div>
