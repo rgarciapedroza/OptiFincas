@@ -3,6 +3,7 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { lastValueFrom } from 'rxjs';
 import { SupabaseService } from './supabase.service';
+import { ModalService } from './modal.service';
 import { FinanzasData, MovimientoBancario } from './models';
 import { UtilsService } from './utils.service';
 
@@ -53,7 +54,8 @@ export class PortalPropietarioComponent implements OnInit {
     private route: ActivatedRoute,
     private router: Router,
     private http: HttpClient,
-    public utils: UtilsService
+    public utils: UtilsService,
+    public modalService: ModalService // Inyectamos el ModalService
   ) {}
 
   async ngOnInit() {
@@ -68,7 +70,8 @@ export class PortalPropietarioComponent implements OnInit {
         this.userPisos = data;
         
         if (this.userPisos.length > 0) {
-          this.userName = this.userPisos[0].propietario;
+          // Ahora mostramos el nombre del propietario en lugar del código de la finca
+          this.userName = this.userPisos[0].propietario || 'Propietario';
           
           // Pre-seleccionar la primera propiedad si estamos en una vista de detalle y no hay ninguna seleccionada
           if (this.seccionPrincipalActiva !== 'mis-propiedades' && !this.selectedPiso) {
@@ -228,7 +231,7 @@ export class PortalPropietarioComponent implements OnInit {
       a.download = resData.nombre_archivo;
       a.click();
     } catch (e) {
-      alert('Error al generar el reporte financiero');
+      this.modalService.showAlert('Error', 'No se ha podido generar el informe en este momento.');
     } finally {
       this.loading = false;
     }
@@ -406,14 +409,14 @@ export class PortalPropietarioComponent implements OnInit {
 
   async sendContactMessage() {
     if (!this.contactForm.reason || !this.contactForm.message) {
-      alert('Por favor, rellene el motivo y el mensaje de su comunicación.');
+      this.modalService.showAlert('Campos Pendientes', 'Por favor, rellene el motivo y el mensaje de su comunicación.');
       return;
     }
 
     this.sendingContact = true;
 
     const session = await this.supabase.getSession();
-    const userEmail = session?.user?.email || 'desconocido@optifincas.com';
+    const userEmail = session?.user?.email || 'anonimo@optifincas.com';
     const communityId = this.selectedPiso?.comunidades?.id || null;
 
     const formData = new FormData();
@@ -431,12 +434,12 @@ export class PortalPropietarioComponent implements OnInit {
     try {
       // Llamada al backend para enviar el correo (ajusta la ruta según tu API)
       await lastValueFrom(this.http.post('/api/contacto/enviar', formData));
-      alert('Su mensaje y evidencia han sido enviados correctamente al administrador.');
+      this.modalService.showAlert('Éxito', 'Su incidencia ha sido reportada correctamente. El administrador la revisará pronto.');
       this.contactForm = { reason: '', message: '', photo: null };
     } catch (e: any) {
       console.error('[ERROR DE CONTACTO]', e);
       const errorMsg = e.error?.detail || e.message || 'Servidor no disponible';
-      alert(`Error al enviar: ${errorMsg}. Verifique que el backend esté iniciado.`);
+      this.modalService.showAlert('Error de Envío', `No se pudo entregar el mensaje: ${errorMsg}`);
     } finally {
       this.sendingContact = false;
     }

@@ -26,6 +26,13 @@
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7l5-2 5.447 2.724A1 1 0 0121 8.618v10.764a1 1 0 01-1.447.894L15 17l-6 3zM9 7v13m6-15v13"/></svg>
           <span class="sidebar-label">Optimización</span>
         </button>
+        <button *ngIf="userRole === 'admin' && specificRole === 'owner'" class="sidebar-btn" routerLink="/equipo" routerLinkActive="active">
+          <div style="position: relative; display: flex; align-items: center;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+            <span *ngIf="notificacionesEquipo > 0" style="position: absolute; top: -8px; right: -8px; background: #ef4444; color: white; font-size: 0.65rem; padding: 2px 6px; border-radius: 10px; font-weight: 800; border: 2px solid #0f172a; animation: pulse 2s infinite;">{{ notificacionesEquipo }}</span>
+          </div>
+          <span class="sidebar-label">Mi Equipo</span>
+        </button>
         <button *ngIf="userRole === 'propietario'" class="sidebar-btn" routerLink="/portal-propietario" routerLinkActive="active" [routerLinkActiveOptions]="{exact: true}">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
           <span class="sidebar-label">Mi Portal</span>
@@ -55,3 +62,33 @@
   <div class="spinner"></div>
   <p>{{ loadingSession ? 'Iniciando sistema...' : loadingMessage }}</p>
 </div>
+
+<!-- Modal Profesional de Sistema -->
+<div class="custom-modal-backdrop" *ngIf="(modalService.modal$ | async)?.show">
+  <div class="custom-modal" *ngIf="modalService.modal$ | async as modalState">
+      <div class="modal-icon">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+      </div>
+      <h3 class="modal-title">{{ modalState.title }}</h3>
+      <p class="modal-message">{{ modalState.message }}</p>
+      <div class="modal-actions">
+        <button *ngIf="modalState.isConfirm" class="btn-modal btn-modal-secondary" (click)="modalService.closeModal(false)">Cancelar</button>
+        <button class="btn-modal btn-modal-primary" (click)="modalService.closeModal(true)">
+          {{ modalState.isConfirm ? 'Confirmar' : 'Entendido' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+<!-- Estilos del Modal Profesional (movidos aquí para que sean globales) -->
+<style>
+  @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+  .custom-modal { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); max-width: 400px; width: 90%; text-align: center; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+  .modal-icon { width: 60px; height: 60px; background: #f1f5f9; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; color: #6366f1; }
+  .modal-title { font-size: 1.25rem; font-weight: 800; color: #1e293b; margin-bottom: 10px; }
+  .modal-message { color: #64748b; font-size: 0.95rem; line-height: 1.5; margin-bottom: 25px; }
+  .modal-actions { display: flex; gap: 12px; justify-content: center; }
+  .btn-modal { padding: 12px 24px; border-radius: 12px; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; flex: 1; }
+  .btn-modal-primary { background: #6366f1; color: white; }
+  .btn-modal-secondary { background: #f1f5f9; color: #64748b; }
+</style>

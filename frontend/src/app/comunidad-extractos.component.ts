@@ -1,7 +1,8 @@
 import { Component, OnInit } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { SupabaseService } from './supabase.service';
 import { ExtractoProcesado, MovimientoBancario } from './models';
+import { ModalService } from './modal.service';
 import { HttpClient } from '@angular/common/http';
 import { lastValueFrom } from 'rxjs';
 import { UtilsService } from './utils.service';
@@ -16,7 +17,17 @@ import { UtilsService } from './utils.service';
         </h3>
         
         <div *ngIf="!extractoSeleccionado" style="display: flex; gap: 10px;">
-          <button class="btn btn-primary" style="font-size: 0.85rem;">+ Subir Nueva Entrada</button>
+          <!-- Caso 1: No hay datos -> Subir Histórico -->
+          <label *ngIf="extractos.length === 0" class="btn btn-info" style="font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 8px; border-radius: 20px; padding: 8px 18px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+            Cargar Registro Histórico
+            <input type="file" (change)="onFileSelected($event)" accept=".xlsx, .xls" hidden>
+          </label>
+
+          <!-- Caso 2: Ya hay datos -> Nueva Entrada (Clasificador) -->
+          <button *ngIf="extractos.length > 0" class="btn btn-primary" (click)="irAlClasificador()" style="font-size: 0.85rem; border-radius: 20px; padding: 8px 18px;">
+            + Subir Nueva Entrada
+          </button>
         </div>
         
         <button *ngIf="extractoSeleccionado" class="btn btn-secondary" (click)="extractoSeleccionado = null" style="font-size: 0.85rem;">
@@ -61,6 +72,19 @@ import { UtilsService } from './utils.service';
 
       <!-- Detalle de Movimientos -->
       <div *ngIf="extractoSeleccionado">
+        <!-- Navegación de Mes Superior -->
+        <div style="display: flex; align-items: center; justify-content: center; gap: 20px; margin-bottom: 25px; background: #f8fafc; padding: 15px; border-radius: 12px; border: 1px solid #edf2f7;">
+          <button class="btn-action" (click)="changeMonthExtractos(-1)" style="background: white; border-radius: 50%; padding: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+          <div style="text-align: center; min-width: 160px;">
+            <span style="font-size: 1.15rem; font-weight: 800; color: #1e293b;">{{ getMesAnioLabel() }}</span>
+          </div>
+          <button class="btn-action" (click)="changeMonthExtractos(1)" style="background: white; border-radius: 50%; padding: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </button>
+        </div>
+
         <table class="movimientos-table">
           <thead>
             <tr>
@@ -76,7 +100,7 @@ import { UtilsService } from './utils.service';
           <tbody>
             <tr *ngFor="let mov of movimientosOrdenados">
               <td>{{ mov.fecha | date:'dd/MM/yyyy' }}</td> 
-              <td style="font-size: 0.9rem;">{{ mov.ORDENANTE || '-' }}</td>
+              <td style="font-size: 0.9rem;">{{ mov.ordenante || '-' }}</td>
               <td style="font-size: 0.9rem;">{{ mov.concepto_original || '-' }}</td>
               <td [style.color]="mov.importe > 0 ? '#2ecc71' : '#e74c3c'" style="text-align: right; font-weight: bold;">
                 {{ mov.importe | number:'1.2-2' }}€
@@ -119,7 +143,14 @@ export class ComunidadExtractosComponent implements OnInit {
   cambiosRealizados = false;
   loading = false;
 
-  constructor(private route: ActivatedRoute, private supabase: SupabaseService, private http: HttpClient, public utils: UtilsService) {}
+  constructor(
+    private route: ActivatedRoute, 
+    private router: Router,
+    private supabase: SupabaseService, 
+    private http: HttpClient, 
+    public utils: UtilsService,
+    public modalService: ModalService
+  ) {}
 
   async ngOnInit() {
     // El ID viene del componente padre (ComunidadDashboard)
@@ -132,10 +163,15 @@ export class ComunidadExtractosComponent implements OnInit {
     this.comunidad = coms?.find(c => c.id == this.communityId);
   }
 
+  getMesAnioLabel() {
+    if (!this.extractoSeleccionado) return '';
+    return this.utils.getMesNombre(this.extractoSeleccionado.mes_contable) + ' ' + this.extractoSeleccionado.anio_contable;
+  }
+
   get extractosFiltrados() {
-    return this.extractos
-      .filter(e => e.anio_contable === this.currentYear)
-      .sort((a, b) => {
+    return (this.extractos || [])
+      .filter((e: ExtractoProcesado) => e.anio_contable === this.currentYear)
+      .sort((a: ExtractoProcesado, b: ExtractoProcesado) => {
         return this.ordenMes === 'desc' 
           ? b.mes_contable - a.mes_contable 
           : a.mes_contable - b.mes_contable;
@@ -143,7 +179,7 @@ export class ComunidadExtractosComponent implements OnInit {
   }
 
   get movimientosOrdenados() {
-    return [...this.movimientos].sort((a, b) => {
+    return [...this.movimientos].sort((a: MovimientoBancario, b: MovimientoBancario) => {
       const da = new Date(a.fecha).getTime();
       const db = new Date(b.fecha).getTime();
       return this.ordenFecha === 'desc' ? db - da : da - db;
@@ -160,6 +196,22 @@ export class ComunidadExtractosComponent implements OnInit {
 
   toggleOrdenFecha() {
     this.ordenFecha = this.ordenFecha === 'desc' ? 'asc' : 'desc';
+  }
+
+  async changeMonthExtractos(delta: number) {
+    if (!this.extractoSeleccionado) return;
+    const currentIndex = this.extractos.findIndex(e => e.id === this.extractoSeleccionado?.id);
+    if (currentIndex !== -1) {
+      // delta 1 (Derecha) -> Mes más reciente (hacia arriba en el array desc)
+      // delta -1 (Izquierda) -> Mes más antiguo (hacia abajo en el array desc)
+      const nextIndex = currentIndex - delta;
+
+      if (nextIndex >= 0 && nextIndex < this.extractos.length) {
+        await this.seleccionarExtracto(this.extractos[nextIndex]);
+      } else {
+        this.modalService.showAlert('Navegación', 'No hay más registros en esta dirección.');
+      }
+    }
   }
 
   async cargarExtractos() {
@@ -182,12 +234,12 @@ export class ComunidadExtractosComponent implements OnInit {
     const session = await this.supabase.getSession();
     const headers = { 'Authorization': `Bearer ${session?.access_token}` }; // Aseguramos que el token se envía
     const movimientosDesencriptados = await lastValueFrom(this.http.get<any[]>(`/api/comunidades/${this.communityId}/movimientos?extracto_id=${ext.id}`, { headers }));
-    this.movimientos = (movimientosDesencriptados || []).map(m => {
+    this.movimientos = (movimientosDesencriptados || []).map((m: MovimientoBancario) => {
       const processed = {
         ...m,
       };
-      // Inicializar CONCEPTO para el input de la UI (Piso para ingresos, Categoría para gastos)
-      processed.CONCEPTO = m.tipo === 'ingreso' 
+      // Inicializar propiedad de UI
+      (processed as any).CONCEPTO = m.tipo === 'ingreso' 
         ? this.utils.formatearPiso(m.piso_detectado) 
         : (m.categoria || 'Sin categoría');
       return processed;
@@ -201,7 +253,7 @@ export class ComunidadExtractosComponent implements OnInit {
     this.loading = true;
     try {
       // Sincronizamos los cambios del input (CONCEPTO) con los campos técnicos antes de guardar
-      this.movimientos.forEach(m => {
+      this.movimientos.forEach((m: any) => {
         if (m.tipo === 'ingreso') {
           // Para ingresos, CONCEPTO es el piso. Lo desformateamos y truncamos si es necesario.
           const unformattedPiso = this.utils.unformatPiso(m.CONCEPTO || '');
@@ -243,10 +295,10 @@ export class ComunidadExtractosComponent implements OnInit {
       await lastValueFrom(this.http.put('/api/movimientos/batch', payload, { headers }));
 
       this.cambiosRealizados = false;
-      alert('Cambios guardados correctamente en la base de datos.');
+      this.modalService.showAlert('Éxito', 'Los cambios en los movimientos se han guardado correctamente.');
     } catch (err: any) {
       console.error('Error al actualizar movimientos:', err);
-      alert('Error al guardar: ' + (err.message || 'Error desconocido'));
+      this.modalService.showAlert('Error', 'No se pudieron guardar los cambios: ' + (err.message || 'Error desconocido'));
     } finally {
       this.loading = false;
     }
@@ -292,10 +344,14 @@ export class ComunidadExtractosComponent implements OnInit {
       a.download = resData.nombre_archivo;
       a.click();
     } catch (e) {
-      alert('Error al exportar los movimientos');
+      this.modalService.showAlert('Error', 'Hubo un fallo al intentar generar el archivo Excel.');
     } finally {
       this.loading = false;
     }
+  }
+
+  irAlClasificador() {
+    this.router.navigate(['/clasificador'], { queryParams: { comunidad: this.communityId } });
   }
 
   async onFileSelected(event: any) {
@@ -309,7 +365,8 @@ export class ComunidadExtractosComponent implements OnInit {
 
   async eliminar(event: Event, id: number) {
     event.stopPropagation();
-    if (confirm('¿Eliminar este extracto y todos sus movimientos?')) {
+    const confirmado = await this.modalService.showConfirm('Confirmar Borrado', '¿Deseas eliminar este extracto? Esta acción borrará permanentemente todos sus movimientos.');
+    if (confirmado) {
       await this.supabase.eliminarExtracto(id);
       await this.cargarExtractos();
     }

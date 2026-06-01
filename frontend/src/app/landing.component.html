@@ -25,7 +25,7 @@
         <p class="hero-subtitle">Digitaliza tu despacho con Inteligencia Artificial. Automatiza el procesamiento de extractos y optimiza las rutas de tu personal en un solo lugar.</p>
         <div class="hero-actions">
           <button class="btn-primary-lg" (click)="scrollTo('features')">Saber más</button>
-          <button class="btn-secondary-lg" (click)="router.navigate(['/login'])">Empezar ahora</button>
+          <button class="btn-secondary-lg" (click)="router.navigate(['/login'], { queryParams: { mode: 'signup', type: 'profesional' }})">Empezar ahora</button>
         </div>
       </div>
     </section>

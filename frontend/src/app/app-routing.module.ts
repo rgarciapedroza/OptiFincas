@@ -12,6 +12,8 @@ import { ComunidadFinanzasComponent } from './comunidad-finanzas.component';
 import { ComunidadLimpiezaComponent } from './comunidad-limpieza.component';
 import { LandingComponent } from './landing.component';
 import { LegalComponent } from './legal.component';
+import { GestionEquipoComponent } from './gestion-equipo.component';
+ import { EsperandoAprobacionComponent } from './esperando-aprobacion.component';
 
 const routes: Routes = [
   { path: '', component: LandingComponent, title: 'OptiFincas - Bienvenidos' },
@@ -30,6 +32,8 @@ const routes: Routes = [
   },
   { path: 'clasificador', component: ClasificadorComponent },
   { path: 'optimizacion', component: OptimizacionComponent },
+  { path: 'equipo', component: GestionEquipoComponent },
+  { path: 'esperando-aprobacion', component: EsperandoAprobacionComponent },
   { path: 'portal-propietario', redirectTo: 'portal-propietario/mis-propiedades', pathMatch: 'full' },
   { path: 'portal-propietario/mis-propiedades', component: PortalPropietarioComponent },
   { path: 'portal-propietario/mis-recibos', component: PortalPropietarioComponent },

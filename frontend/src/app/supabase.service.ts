@@ -1,12 +1,15 @@
 import { Injectable } from '@angular/core';
 import { createClient, SupabaseClient, AuthSession, AuthChangeEvent } from '@supabase/supabase-js';
 import { environment } from '../environments/environment';
+import { BehaviorSubject } from 'rxjs';
 
 @Injectable({
   providedIn: 'root',
 })
 export class SupabaseService {
   private supabase: SupabaseClient;
+  // Canal para notificar cambios en las solicitudes de equipo
+  public solicitudesRefresh$ = new BehaviorSubject<void>(undefined);
 
   constructor() {
     this.supabase = createClient(environment.supabaseUrl, environment.supabaseKey, {
@@ -35,8 +38,8 @@ export class SupabaseService {
     return this.supabase.auth.onAuthStateChange(callback);
   }
 
-  async signUp(email: string, pass: string) {
-    return await this.supabase.auth.signUp({ email, password: pass });
+  async signUp(email: string, pass: string, options?: { data?: object }) {
+    return await this.supabase.auth.signUp({ email, password: pass, options });
   }
 
   async signInWithPassword(email: string, pass: string) {
@@ -166,10 +169,22 @@ export class SupabaseService {
   }
 
   async buscarPisoPorEmail(email: string) {
-    return await this.supabase
-      .from('pisos')
-      .select('*, comunidades(*)') // Fetch related community data
-      .ilike('email', email.trim());
+    try {
+      const { data: { session } } = await this.supabase.auth.getSession();
+      const response = await fetch(`/api/portal/mi-piso?email=${encodeURIComponent(email.trim())}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+      });
+      
+      if (!response.ok) throw new Error('Error al obtener datos del propietario');
+      const data = await response.json();
+      return { data: Array.isArray(data) ? data : [data], error: null };
+    } catch (err) {
+      console.error('Error en búsqueda de piso:', err);
+      return { data: null, error: err };
+    }
   }
 
   async borrarCensoComunidad(communityId: number) {
@@ -339,4 +354,87 @@ export class SupabaseService {
       .maybeSingle();
   }
 
+  async updateProfile(id: string, updates: any) {
+    return await this.supabase.from('profiles').update(updates).eq('id', id);
+  }
+
+  async getProfile(userId: string) {
+    return await this.supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+  }
+
+  /**
+   * Comprueba si una organización ya existe por nombre.
+   */
+  async verificarOrganizacionExiste(nombre: string) {
+    return await this.supabase
+      .from('organizations')
+      .select('id')
+      .ilike('nombre', nombre.trim())
+      .maybeSingle();
+  }
+
+  async registerProfessional(email: string, pass: string, orgName: string) {
+    // El trigger handle_new_user_signup se encargará de crear la organización y el perfil
+    // Pasamos los metadatos necesarios para que el trigger sepa qué hacer
+    return await this.supabase.auth.signUp({
+      email,
+      password: pass,
+      options: {
+        data: { is_professional: true, org_name: orgName }
+      }
+    });
+  }
+
+  /**
+   * Obtiene todos los miembros (admins/empleados) de la organización del usuario actual.
+   */
+  async getOrganizationMembers(orgId: string) {
+    return await this.supabase
+      .from('profiles')
+      .select('*')
+      .eq('organizacion_id', orgId)
+      .neq('role', 'propietario'); // Solo personal del despacho
+  }
+
+  /**
+   * Obtiene un perfil por su dirección de correo electrónico.
+   */
+  async getProfileByEmail(email: string) {
+    return await this.supabase
+      .from('profiles')
+      .select('*')
+      .eq('email', email.toLowerCase().trim())
+      .maybeSingle();
+  }
+
+  /**
+   * Obtiene solicitudes pendientes de acceso para la organización.
+   */
+  async getPendingRequests(orgId: string) {
+    return await this.supabase
+      .from('profiles')
+      .select('*')
+      .eq('organizacion_id', orgId)
+      .eq('status', 'pending');
+  }
+
+  /**
+   * Permite al Owner añadir un nuevo administrador a su equipo.
+   * El usuario debe haber creado su cuenta previamente.
+   */
+  async addTeamMember(email: string, orgId: string, role: 'admin' | 'owner' = 'admin') {
+    return await this.supabase
+      .from('profiles')
+      .update({ 
+        role: role, 
+        organizacion_id: orgId,
+        status: 'approved'
+      })
+      .eq('email', email.toLowerCase().trim())
+      .select();
+  }
 }

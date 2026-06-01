@@ -15,6 +15,9 @@ import { ComunidadExtractosComponent } from './comunidad-extractos.component';
 import { ComunidadFinanzasComponent } from './comunidad-finanzas.component';
 import { ComunidadLimpiezaComponent } from './comunidad-limpieza.component';
 import { LandingComponent } from './landing.component';
+import { GestionEquipoComponent } from './gestion-equipo.component';
+import { EsperandoAprobacionComponent } from './esperando-aprobacion.component';
+import { ModalService } from './modal.service';
 import { LegalComponent } from './legal.component';
 import { AppRoutingModule } from './app-routing.module';
 
@@ -32,6 +35,8 @@ import { AppRoutingModule } from './app-routing.module';
     ComunidadExtractosComponent,
     ComunidadFinanzasComponent,
     ComunidadLimpiezaComponent,
+    GestionEquipoComponent,
+    EsperandoAprobacionComponent,
     LandingComponent,
     LegalComponent
   ],
@@ -41,7 +46,7 @@ import { AppRoutingModule } from './app-routing.module';
     FormsModule,
     AppRoutingModule
   ],
-  providers: [],
+  providers: [ModalService],
   bootstrap: [AppComponent]
 })
 export class AppModule { }
