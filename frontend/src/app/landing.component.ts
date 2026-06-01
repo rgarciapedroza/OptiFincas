@@ -2,6 +2,7 @@ import { Component } from '@angular/core';
 import { Router } from '@angular/router';
 import { SupabaseService } from './supabase.service';
 import { HttpClient } from '@angular/common/http';
+import { ModalService } from './modal.service';
 import { lastValueFrom } from 'rxjs';
 
 @Component({
@@ -26,7 +27,8 @@ export class LandingComponent {
   constructor(
     private supabase: SupabaseService, 
     public router: Router,
-    private http: HttpClient
+    private http: HttpClient,
+    public modalService: ModalService
   ) {}
 
   async handleSubmit() {
@@ -46,7 +48,7 @@ export class LandingComponent {
       } else {
         const { error } = await this.supabase.signUp(this.email, this.password);
         if (error) throw error;
-        alert('Registro solicitado. Por favor, verifica tu correo electrónico.');
+        this.modalService.showAlert('Registro Iniciado', 'Por favor, revisa tu correo electrónico para verificar tu cuenta.');
         this.isLogin = true; // Volvemos a login tras registro
       }
     } catch (err: any) {
@@ -74,12 +76,12 @@ export class LandingComponent {
       // Realizamos la petición POST al backend
       await lastValueFrom(this.http.post('/api/contacto', this.contactData));
       
-      alert(`Gracias ${this.contactData.nombre}, tu mensaje ha sido enviado correctamente por correo electrónico.`);
+      this.modalService.showAlert('Mensaje Recibido', `Gracias ${this.contactData.nombre}, hemos recibido tu mensaje y te contactaremos pronto.`);
       // Limpiamos el formulario
       this.contactData = { nombre: '', email: '', mensaje: '' };
     } catch (err) {
       console.error('Error al enviar contacto:', err);
-      alert('No se pudo enviar el mensaje. Por favor, inténtalo más tarde.');
+      this.modalService.showAlert('Error de Envío', 'No se pudo enviar el mensaje. Por favor, inténtalo de nuevo más tarde.');
     } finally {
       this.loading = false;
     }

@@ -1,3 +1,18 @@
+// Modelos de Usuario y Organización
+export interface Organization {
+  id: string;
+  nombre: string;
+  created_at?: string;
+}
+
+export interface Profile {
+  id: string;
+  email: string;
+  role: 'owner' | 'admin' | 'propietario';
+  organizacion_id?: string;
+  status?: 'pending' | 'approved' | 'denied';
+}
+
 // Definición de interfaz para Detalle Histórico
 export interface DetalleHistorico {
   campo_coincidencia_historico?: string;

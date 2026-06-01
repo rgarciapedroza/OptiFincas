@@ -7,6 +7,28 @@ from .security import encriptar_dato, desencriptar_dato
 
 logger = logging.getLogger(__name__)
 
+def buscar_piso_por_email_controller(email: str):
+    """Busca un piso por email y devuelve los datos desencriptados para el portal del propietario."""
+    client = supabase_service_role_client if supabase_service_role_client else supabase_client
+    try:
+        # Consultar a Supabase incluyendo la información de la comunidad relacionada
+        response = client.table("pisos").select("*, comunidades(*)").ilike("email", email.strip()).execute()
+        
+        if not response.data:
+            return []
+            
+        # Desencriptar datos sensibles antes de enviarlos al portal
+        for piso in response.data:
+            piso["propietario"] = desencriptar_dato(piso.get("propietario"))
+            piso["telefono1"] = desencriptar_dato(piso.get("telefono1"))
+            piso["telefono2"] = desencriptar_dato(piso.get("telefono2"))
+            piso["observaciones"] = desencriptar_dato(piso.get("observaciones"))
+            
+        return response.data
+    except Exception as e:
+        logger.error(f"Error en buscar_piso_por_email_controller: {e}")
+        raise HTTPException(status_code=500, detail="Error al buscar información del propietario")
+
 def importar_censo_pisos_controller(community_id: int, file: UploadFile, user_id: str = None):
     """
     Importa el censo de propietarios (pisos) desde un Excel.
@@ -153,20 +175,59 @@ def get_piso_controller(piso_id: int, user_id: str):
 
 def create_piso_controller(piso_data: dict, user_id: str = None):
     """Crea un nuevo piso, encriptando los datos sensibles."""
-    if user_id: piso_data["user_id"] = user_id
+    # 0. Aplanado total: Si Pydantic metió todo en extra_fields, lo rescatamos
+    if "extra_fields" in piso_data and isinstance(piso_data["extra_fields"], dict):
+        # Fusionamos el contenido de extra_fields al nivel principal
+        piso_data.update(piso_data.pop("extra_fields"))
+
+    # 1. Extracción de campos con fallback para camelCase (desde el frontend)
+    community_id = piso_data.get("community_id") or piso_data.get("communityId")
+    codigo = str(piso_data.get("codigo") or "").strip().upper()
+    propietario = piso_data.get("propietario")
+    email = (piso_data.get("email") or "").lower().strip() or None
+    tel1 = piso_data.get("telefono1")
+    tel2 = piso_data.get("telefono2")
+
+    # 2. Validación de Reglas de Negocio (Piso + Nombre + (Email o Tel))
+    if community_id is None:
+        logger.error(f"[CENSO] Falta ID Comunidad. Datos recibidos: {piso_data}")
+        raise HTTPException(status_code=400, detail="Error de sistema: No se ha vinculado la comunidad.")
     
-    for field in ["propietario", "telefono1", "telefono2", "observaciones"]:
-        if field in piso_data and piso_data[field]:
-            piso_data[field] = encriptar_dato(piso_data[field])
+    if not codigo:
+        raise HTTPException(status_code=400, detail="El campo 'Piso / Código' es obligatorio.")
+        
+    if not propietario:
+        raise HTTPException(status_code=400, detail="El nombre del propietario es obligatorio.")
+        
+    if not (email or tel1 or tel2):
+        raise HTTPException(status_code=400, detail="Debe indicar al menos un medio de contacto (Email o Teléfono).")
+
+    # 3. Preparación de datos final (Encriptación AES)
+    datos_a_insertar = {
+        "community_id": community_id,
+        "codigo": codigo,
+        "propietario": encriptar_dato(str(propietario)),
+        "email": email,
+        "telefono1": encriptar_dato(str(tel1)) if tel1 else None,
+        "telefono2": encriptar_dato(str(tel2)) if tel2 else None,
+        "observaciones": encriptar_dato(str(piso_data.get("observaciones"))) if piso_data.get("observaciones") else None,
+        "user_id": user_id,
+        "activo": piso_data.get("activo", True)
+    }
 
     client = supabase_service_role_client if supabase_service_role_client else supabase_client
-    response = client.table("pisos").insert(piso_data).execute()
+    response = client.table("pisos").insert(datos_a_insertar).execute()
+    
     if response.data:
         return response.data[0]
     raise HTTPException(status_code=500, detail="Error al crear el piso")
 
 def update_piso_controller(piso_id: int, piso_data: dict, user_id: str = None):
     """Actualiza un piso existente."""
+    # 0. Aplanado de datos: Defensa contra campos anidados en la actualización
+    if "extra_fields" in piso_data and isinstance(piso_data["extra_fields"], dict):
+        piso_data = {**piso_data, **piso_data["extra_fields"]}
+
     updates = {}
     for field in ["propietario", "telefono1", "telefono2", "observaciones"]:
         if field in piso_data:
@@ -174,6 +235,8 @@ def update_piso_controller(piso_id: int, piso_data: dict, user_id: str = None):
             
     if "codigo" in piso_data:
         updates["codigo"] = str(piso_data["codigo"]).upper()
+    if "email" in piso_data:
+        updates["email"] = piso_data["email"].lower().strip() if piso_data["email"] else None
 
     client = supabase_service_role_client if supabase_service_role_client else supabase_client
 

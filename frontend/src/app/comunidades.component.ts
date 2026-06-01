@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { SupabaseService } from './supabase.service';
 import { Router } from '@angular/router';
+import { ModalService } from './modal.service';
 import { UtilsService } from './utils.service';
 import {
   ComunidadDB
@@ -20,14 +21,12 @@ export class ComunidadesComponent implements OnInit {
   // Gestión de Comunidades (DB)
   comunidadesDB: ComunidadDB[] = [];
   nuevaComunidadForm = {
-    nombre: '', direccion: '', servicios: '',
-    cleaningHours: 1.0, cleaningDaysPerWeek: 1,
-    latitude: 0, longitude: 0
+    nombre: '', direccion: '', servicios: ''
   };
   editandoId: string | null = null;
   mostrarModalEdicionComunidad = false;
 
-  constructor(private http: HttpClient, private supabase: SupabaseService, private router: Router, public utils: UtilsService) {}
+  constructor(private http: HttpClient, private supabase: SupabaseService, private router: Router, public utils: UtilsService, public modalService: ModalService) {}
 
   async ngOnInit() {
     // Pequeña espera para asegurar que la sesión esté propagada en el cliente
@@ -66,11 +65,7 @@ export class ComunidadesComponent implements OnInit {
     this.nuevaComunidadForm = {
       nombre: com.nombre,
       direccion: com.direccion,
-      servicios: com.servicios || '',
-      cleaningHours: com.cleaning_hours || 1.0,
-      cleaningDaysPerWeek: com.cleaning_days_per_week || 1,
-      latitude: com.latitude || 0,
-      longitude: com.longitude || 0
+      servicios: com.servicios || ''
     };
     this.mostrarModalEdicionComunidad = true;
   }
@@ -78,16 +73,14 @@ export class ComunidadesComponent implements OnInit {
   cancelarEdicion() {
     this.editandoId = null;
     this.nuevaComunidadForm = {
-      nombre: '', direccion: '', servicios: '',
-      cleaningHours: 1.0, cleaningDaysPerWeek: 1,
-      latitude: 0, longitude: 0
+      nombre: '', direccion: '', servicios: ''
     };
     this.mostrarModalEdicionComunidad = false;
   }
 
   async guardarComunidad() {
     if (!this.nuevaComunidadForm.nombre || !this.nuevaComunidadForm.direccion) {
-      alert('Por favor, rellena los campos obligatorios.');
+      this.modalService.showAlert('Campos Obligatorios', 'Por favor, rellena los campos obligatorios.');
       return;
     }
 
@@ -96,11 +89,7 @@ export class ComunidadesComponent implements OnInit {
       const payload = {
         nombre: this.nuevaComunidadForm.nombre,
         direccion: this.nuevaComunidadForm.direccion,
-        servicios: this.nuevaComunidadForm.servicios,
-        cleaning_hours: this.nuevaComunidadForm.cleaningHours,
-        cleaning_days_per_week: this.nuevaComunidadForm.cleaningDaysPerWeek,
-        latitude: this.nuevaComunidadForm.latitude,
-        longitude: this.nuevaComunidadForm.longitude
+        servicios: this.nuevaComunidadForm.servicios
       };
 
       if (this.editandoId) {
@@ -109,63 +98,37 @@ export class ComunidadesComponent implements OnInit {
         if (data) {
           const index = this.comunidadesDB.findIndex(c => c.id === this.editandoId);
           this.comunidadesDB[index] = data[0];
-          alert('Comunidad actualizada con éxito.');
+          this.modalService.showAlert('Éxito', 'La información de la finca ha sido actualizada.');
         }
       } else {
         const { data, error } = await this.supabase.insertComunidad(payload);
         if (error) throw error;
         if (data) {
           this.comunidadesDB = [data[0], ...this.comunidadesDB];
-          alert('Comunidad guardada con éxito.');
+          this.modalService.showAlert('Éxito', 'Nueva finca registrada correctamente en el sistema.');
         }
       }
       this.cancelarEdicion();
       this.mostrarModalEdicionComunidad = false;
     } catch (err: any) {
-      alert('Error en la operación: ' + err.message);
+      this.modalService.showAlert('Error', 'No se pudo guardar la información: ' + err.message);
     } finally {
       this.loading = false;
     }
   }
 
   async eliminarComunidad(id: string) {
-    if (!confirm('¿Estás seguro de que deseas eliminar esta comunidad? Esta acción no se puede deshacer.')) return;
+    const confirmado = await this.modalService.showConfirm('Eliminar Finca', '¿Estás seguro de eliminar esta comunidad? Se borrarán también sus extractos y propietarios.');
+    if (!confirmado) return;
 
     this.loading = true;
     const { error } = await this.supabase.deleteComunidad(id);
     if (error) {
-      alert('Error al eliminar: ' + error.message);
+      this.modalService.showAlert('Error', 'Hubo un problema al eliminar el registro.');
     } else {
       this.comunidadesDB = this.comunidadesDB.filter(c => c.id !== id);
     }
     this.loading = false;
-  }
-
-  async buscarCoordenadas() {
-    if (!this.nuevaComunidadForm.direccion) {
-      alert('Por favor, introduce una dirección primero.');
-      return;
-    }
-
-    this.loading = true;
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(this.nuevaComunidadForm.direccion)}`;
-
-    this.http.get<any[]>(url).subscribe({
-      next: (data) => {
-        if (data && data.length > 0) {
-          this.nuevaComunidadForm.latitude = parseFloat(data[0].lat);
-          this.nuevaComunidadForm.longitude = parseFloat(data[0].lon);
-          console.log(`[GEO] Ubicación encontrada (Nominatim): ${data[0].display_name}`);
-        } else {
-          alert('No se han encontrado coordenadas para esa dirección. Intenta ser más específico (ej: añadir ciudad).');
-        }
-        this.loading = false;
-      },
-      error: (err) => {
-        alert('Error al conectar con el servicio de mapas (Nominatim).');
-        this.loading = false;
-      }
-    });
   }
 
   verDashboard(com: ComunidadDB) {
