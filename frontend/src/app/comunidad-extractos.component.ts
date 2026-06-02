@@ -200,16 +200,30 @@ export class ComunidadExtractosComponent implements OnInit {
 
   async changeMonthExtractos(delta: number) {
     if (!this.extractoSeleccionado) return;
-    const currentIndex = this.extractos.findIndex(e => e.id === this.extractoSeleccionado?.id);
-    if (currentIndex !== -1) {
-      // delta 1 (Derecha) -> Mes más reciente (hacia arriba en el array desc)
-      // delta -1 (Izquierda) -> Mes más antiguo (hacia abajo en el array desc)
-      const nextIndex = currentIndex - delta;
+    const currentFilteredExtractos = this.extractosFiltrados; // Usamos la lista filtrada y ordenada
+    const currentIndex = currentFilteredExtractos.findIndex(e => e.id === this.extractoSeleccionado?.id);
 
-      if (nextIndex >= 0 && nextIndex < this.extractos.length) {
-        await this.seleccionarExtracto(this.extractos[nextIndex]);
+    if (currentIndex !== -1) {
+      const nextIndex = currentIndex - delta; // delta 1 (Siguiente) -> índice menor (mes más reciente)
+                                            // delta -1 (Anterior) -> índice mayor (mes más antiguo)
+
+      if (nextIndex >= 0 && nextIndex < currentFilteredExtractos.length) {
+        // Si el siguiente mes está dentro del año actual, lo seleccionamos
+        await this.seleccionarExtracto(currentFilteredExtractos[nextIndex]);
       } else {
-        this.modalService.showAlert('Navegación', 'No hay más registros en esta dirección.');
+        // Si nos salimos del rango, cambiamos de año
+        this.currentYear += (delta === 1 ? 1 : -1); // Avanzamos o retrocedemos un año
+        await this.cargarExtractos(); // Recargamos los extractos para el nuevo año
+
+        const newFilteredExtractos = this.extractosFiltrados;
+        if (newFilteredExtractos.length > 0) {
+          // Si hay extractos en el nuevo año, seleccionamos el mes adecuado
+          // Si vamos hacia atrás (delta -1), queremos el mes más reciente del año anterior (índice 0)
+          // Si vamos hacia adelante (delta 1), queremos el mes más antiguo del año siguiente (último índice)
+          await this.seleccionarExtracto(newFilteredExtractos[delta === -1 ? 0 : newFilteredExtractos.length - 1]);
+        } else {
+          this.modalService.showAlert('Navegación', 'No hay más registros en esta dirección.');
+        }
       }
     }
   }

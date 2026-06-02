@@ -31,6 +31,8 @@ export class PortalPropietarioComponent implements OnInit {
   viewDateFinanzas: Date = new Date();
   currentMonthLabelFinanzas: string = '';
   extractoActualFinanzas: any = null;
+  availableExtractosFinanzas: any[] = [];
+  currentYearFinanzas: number = new Date().getFullYear();
 
   // Propiedades para Limpieza
   cleaningSchedule: { date: string, tasks: any[] }[] = [];
@@ -40,6 +42,7 @@ export class PortalPropietarioComponent implements OnInit {
   // Propiedades para Recibos
   viewDateRecibos: Date = new Date();
   currentMonthLabelRecibos: string = '';
+  extractoActualRecibos: any = null;
   mostrarPendientes: boolean = false;
 
   // Formulario de contacto
@@ -112,6 +115,8 @@ export class PortalPropietarioComponent implements OnInit {
     this.loading = true;
     this.selectedPiso = piso;
     this.updateMonthLabels();
+    this.extractoActualRecibos = null; // Resetear vista al cambiar de propiedad
+    this.extractoActualFinanzas = null; // Resetear vista al cambiar de propiedad
     await Promise.all([
       this.loadFinanzas(),
       this.loadCleaningSchedule(),
@@ -141,73 +146,89 @@ export class PortalPropietarioComponent implements OnInit {
   // --- Lógica de Finanzas ---
   async loadFinanzas() {
     if (!this.selectedPiso?.comunidades?.id) return;
+    const { data: extData } = await this.supabase.getExtractosByCommunity(this.selectedPiso.comunidades.id);
+    this.availableExtractosFinanzas = extData || [];
+    
+    if (this.extractoActualFinanzas) {
+      await this.cargarDetalleFinanzas();
+    }
+  }
+
+  isMonthPaid(group: any): boolean {
+    if (!group || !group.detalles) return false;
+    // El mes está "al día" si todos los recibos de las propiedades del usuario están pagados
+    return group.detalles.every((d: any) => d.pagado);
+  }
+
+  async cargarDetalleFinanzas() {
+    if (!this.extractoActualFinanzas) return;
     this.loading = true;
     try {
-      const mes = this.viewDateFinanzas.getMonth() + 1;
-      const anio = this.viewDateFinanzas.getFullYear();
+        const mes = this.extractoActualFinanzas.mes_contable;
+        const anio = this.extractoActualFinanzas.anio_contable;
+        const session = await this.supabase.getSession();
+        const headers = { 'Authorization': `Bearer ${session?.access_token}` };
 
-      const { data: extData } = await this.supabase.getExtractosByCommunity(this.selectedPiso.comunidades.id);
-      this.extractoActualFinanzas = extData?.find((e: any) => e.mes_contable === mes && e.anio_contable === anio) || null;
-
-      if (this.extractoActualFinanzas) {
-        const session = await this.supabase.getSession(); // Obtenemos la sesión para el token
-        const headers = { 'Authorization': `Bearer ${session?.access_token}` }; // Añadimos el token a las cabeceras
-        // LLAMADA AL BACKEND: Obtenemos datos ya desencriptados por el servidor
-        const movs = await lastValueFrom(this.http.get<any[]>(`/api/comunidades/${this.selectedPiso.comunidades.id}/movimientos`, { headers }));
-        const allPisos = await lastValueFrom(this.http.get<any[]>(`/api/comunidades/${this.selectedPiso.comunidades.id}/pisos`, { headers }));
+        // LLAMADA AL BACKEND: Usamos el endpoint de finanzas que ya filtra por mes y año
+        const data = await lastValueFrom(this.http.get<FinanzasData>(
+          `/api/comunidades/${this.selectedPiso.comunidades.id}/finanzas?mes=${mes}&anio=${anio}`, 
+          { headers }
+        ));
         
-        if (movs && allPisos) {
-          const ingresos = movs.filter(m => this.utils.asNumber(m.importe) > 0);
-          const gastos = movs.filter(m => this.utils.asNumber(m.importe) < 0);
-          
-          // Identificar los pisos del propietario para resaltarlos
+        if (data) {
+          // Identificamos los pisos del usuario para resaltarlos en la lista
           const misPisosNorm = new Set(this.userPisos.map(p => this.utils.unformatPiso(p.codigo)));
+          
+          data.ingresosPorPiso = data.ingresosPorPiso.map((p: any) => ({
+            ...p,
+            esMio: misPisosNorm.has(this.utils.unformatPiso(p.codigo))
+          })).sort((a: any, b: any) => 
+            a.codigo.localeCompare(b.codigo, undefined, { numeric: true, sensitivity: 'base' })
+          );
 
-          this.finanzasData.ingresosPorPiso = allPisos.map(p => {
-            const pNorm = this.utils.unformatPiso(p.codigo);
-            const movsDelPiso = ingresos.filter(m => this.utils.unformatPiso(m.piso_detectado) === pNorm);
-            const total = movsDelPiso.reduce((acc, m) => acc + this.utils.asNumber(m.importe), 0);
-            
-            return {
-              codigo: p.codigo,
-              importe: total,
-              pagado: movsDelPiso.length > 0,
-              fecha: movsDelPiso.length > 0 ? movsDelPiso[0].fecha : null,
-              esMio: misPisosNorm.has(pNorm)
-            };
-          });
-
-          this.finanzasData.gastos = gastos.map(g => ({
-            concepto: g.categoria !== 'Sin Categoría' ? g.categoria : g.concepto_original,
-            importe: Math.abs(this.utils.asNumber(g.importe))
-          })).sort((a, b) => b.importe - a.importe);
-
-          const totalIngresosCom = ingresos.reduce((acc, m) => acc + this.utils.asNumber(m.importe), 0);
-          const totalGastosCom = gastos.reduce((acc, m) => acc + Math.abs(this.utils.asNumber(m.importe)), 0);
-          const saldoF = movs.length > 0 ? this.utils.asNumber(movs[0].saldo_resultante) : 0;
-
-          this.finanzasData.resumenCuentas = {
-            saldoAnterior: saldoF - totalIngresosCom + totalGastosCom,
-            ingresosMes: totalIngresosCom,
-            gastosMes: totalGastosCom,
-            saldoTotal: saldoF
-          };
+          this.finanzasData = data;
         }
-      } else {
-        this.finanzasData = {
-          ingresosPorPiso: [], gastos: [],
-          resumenCuentas: { saldoAnterior: 0, ingresosMes: 0, gastosMes: 0, saldoTotal: 0 }
-        };
-      }
     } finally {
       this.loading = false;
     }
   }
 
-  changeMonthFinanzas(delta: number) {
-    this.viewDateFinanzas = new Date(this.viewDateFinanzas.getFullYear(), this.viewDateFinanzas.getMonth() + delta, 1);
+  get extractosFinanzasFiltrados() {
+    const hoy = new Date();
+    const currentM = hoy.getMonth() + 1;
+    const currentY = hoy.getFullYear();
+    return this.availableExtractosFinanzas.filter(e => 
+      e.anio_contable === this.currentYearFinanzas && 
+      (e.anio_contable < currentY || (e.anio_contable === currentY && e.mes_contable <= currentM))
+    );
+  }
+
+  cambiarAnioFinanzas(delta: number) {
+    this.currentYearFinanzas += delta;
+  }
+
+  async seleccionarExtractoFinanzas(ext: any) {
+    this.extractoActualFinanzas = ext;
     this.updateMonthLabels();
-    this.loadFinanzas();
+    await this.cargarDetalleFinanzas();
+  }
+
+  async changeMonthFinanzas(delta: number) {
+    if (!this.extractoActualFinanzas) return;
+    
+    // Buscamos el índice del extracto actual en la lista filtrada por año
+    const lista = this.extractosFinanzasFiltrados;
+    const currentIndex = lista.findIndex(e => e.id === this.extractoActualFinanzas?.id);
+
+    if (currentIndex !== -1) {
+      // delta 1 (Siguiente) -> índice menor en lista desc / delta -1 (Anterior) -> índice mayor
+      const nextIndex = currentIndex - delta;
+      if (nextIndex >= 0 && nextIndex < lista.length) {
+        await this.seleccionarExtractoFinanzas(lista[nextIndex]);
+      } else {
+        this.modalService.showAlert('Navegación', 'No hay más meses cerrados en esta dirección para el año seleccionado.');
+      }
+    }
   }
 
   async generarReportePDF() {
@@ -402,12 +423,38 @@ export class PortalPropietarioComponent implements OnInit {
     }
   }
 
-  changeMonthRecibos(delta: number) {
-    // Navegación anual para recibos
-    this.viewDateRecibos = new Date(this.viewDateRecibos.getFullYear(), this.viewDateRecibos.getMonth() + delta, 1);
-    console.log(`[DEBUG RECIBOS] Cambiando año de recibos a: ${this.viewDateRecibos.getFullYear()}`);
+  async changeMonthRecibos(delta: number) {
+    if (this.extractoActualRecibos) {
+      // Si hay un mes seleccionado, navegamos por el array de meses
+      const currentIndex = this.allRecibosGrouped.findIndex(g => g.mes === this.extractoActualRecibos.mes);
+      if (currentIndex !== -1) {
+        const nextIndex = currentIndex - delta; // delta 1 (Siguiente) -> índice menor (más reciente)
+        if (nextIndex >= 0 && nextIndex < this.allRecibosGrouped.length) {
+          this.seleccionarMesRecibo(this.allRecibosGrouped[nextIndex]);
+          return;
+        } else {
+          // Si nos salimos del año, cambiamos de año y cargamos los nuevos meses
+          const yearDelta = delta > 0 ? 1 : -1;
+          this.viewDateRecibos = new Date(this.viewDateRecibos.getFullYear() + yearDelta, 0, 1);
+          this.updateMonthLabels();
+          this.extractoActualRecibos = null;
+          await this.loadRecibos();
+          if (this.allRecibosGrouped.length > 0) {
+            this.seleccionarMesRecibo(this.allRecibosGrouped[delta > 0 ? this.allRecibosGrouped.length - 1 : 0]);
+          }
+          return;
+        }
+      }
+    }
+    const yearDelta = (Math.abs(delta) === 12) ? delta / 12 : (delta > 0 ? 1 : -1);
+    this.viewDateRecibos = new Date(this.viewDateRecibos.getFullYear() + yearDelta, 0, 1);
     this.updateMonthLabels();
-    this.loadRecibos();
+    this.extractoActualRecibos = null;
+    await this.loadRecibos();
+  }
+
+  seleccionarMesRecibo(group: any) {
+    this.extractoActualRecibos = group;
   }
 
   // --- Lógica de Contacto ---
