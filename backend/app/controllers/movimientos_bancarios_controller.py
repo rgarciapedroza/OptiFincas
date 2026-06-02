@@ -226,18 +226,22 @@ async def importar_movimientos_controller(community_id: int, file: UploadFile, u
         "skipped_sheets": skipped_sheets_info
     }
 
-async def get_movimientos_by_community_controller(community_id: int, user_id: str, extracto_id: Optional[int] = None):
+async def get_movimientos_by_community_controller(community_id: int, user_id: str, extracto_id: Optional[int] = None, piso_codigo: Optional[str] = None):
     """
     Obtiene todos los movimientos bancarios asociados a una comunidad específica.
     Filtra por extracto_id si se proporciona (selección de mes).
+    Filtra por piso_codigo si se proporciona.
     """
     try:
         query = supabase_service_role_client.table("movimientos") \
             .select("*") \
             .eq("community_id", community_id)
-
+ 
         if extracto_id:
             query = query.eq("extracto_id", extracto_id)
+        
+        if piso_codigo:
+            query = query.eq("piso_detectado", piso_codigo) # Filter by piso_detectado
 
         response = query.order("fecha", desc=True).execute()
 

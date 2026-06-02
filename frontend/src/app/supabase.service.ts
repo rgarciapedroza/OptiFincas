@@ -330,6 +330,35 @@ export class SupabaseService {
     return { data, error };
   }
 
+  async getMovimientosByPiso(communityId: number | string, pisoId: number) {
+    const pisoDetails = await this.getPiso(pisoId); // getPiso returns the data directly, not {data, error}
+    if (!pisoDetails || !pisoDetails.codigo) throw new Error("Piso no encontrado o sin código.");
+
+    // IMPORTANTE: Normalizar el código para la búsqueda (ej: "1º A" -> "1A")
+    const pisoCodigo = pisoDetails.codigo.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+    const { data: { session } } = await this.supabase.auth.getSession();
+    if (!session) throw new Error("No hay sesión activa");
+
+    try {
+      const response = await fetch(`/api/comunidades/${communityId}/movimientos?piso_codigo=${encodeURIComponent(pisoCodigo)}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.json();
+        throw new Error(errorBody.detail || 'Error al obtener movimientos del piso');
+      }
+      const data = await response.json();
+      return { data, error: null };
+    } catch (err: any) {
+      console.error('Error en getMovimientosByPiso:', err);
+      return { data: null, error: err };
+    }
+  }
+
   async eliminarExtracto(extractoId: number) {
     const { data: { session } } = await this.supabase.auth.getSession();
     if (!session) throw new Error("No hay sesión activa");

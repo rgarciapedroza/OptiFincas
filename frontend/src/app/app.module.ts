@@ -16,6 +16,7 @@ import { ComunidadActasComponent } from './comunidad-actas.component';
 import { ComunidadFinanzasComponent } from './comunidad-finanzas.component';
 import { ComunidadFacturasComponent } from './comunidad-facturas.component';
 import { ComunidadLimpiezaComponent } from './comunidad-limpieza.component';
+import { ComunidadPisoMovimientosComponent } from './comunidad-piso-movimientos.component';
 import { LandingComponent } from './landing.component';
 import { ComunidadOverviewComponent } from './comunidad-overview.component';
 import { GestionEquipoComponent } from './gestion-equipo.component';
@@ -40,6 +41,7 @@ import { AppRoutingModule } from './app-routing.module';
     ComunidadExtractosComponent,
     ComunidadFinanzasComponent,
     ComunidadLimpiezaComponent,
+    ComunidadPisoMovimientosComponent, // Add this
     GestionEquipoComponent,
     ComunidadOverviewComponent,
     EsperandoAprobacionComponent,
