@@ -12,9 +12,11 @@ import { PortalPropietarioComponent } from './portal-propietario.component';
 import { ComunidadDashboardComponent } from './comunidad-dashboard.component';
 import { CensoComponent } from './censo.component';
 import { ComunidadExtractosComponent } from './comunidad-extractos.component';
+import { ComunidadActasComponent } from './comunidad-actas.component';
 import { ComunidadFinanzasComponent } from './comunidad-finanzas.component';
 import { ComunidadLimpiezaComponent } from './comunidad-limpieza.component';
 import { LandingComponent } from './landing.component';
+import { ComunidadOverviewComponent } from './comunidad-overview.component';
 import { GestionEquipoComponent } from './gestion-equipo.component';
 import { EsperandoAprobacionComponent } from './esperando-aprobacion.component';
 import { ModalService } from './modal.service';
@@ -29,6 +31,7 @@ import { AppRoutingModule } from './app-routing.module';
     ComunidadesComponent,
     ClasificadorComponent,
     OptimizacionComponent,
+    ComunidadActasComponent,
     PortalPropietarioComponent,
     ComunidadDashboardComponent,
     CensoComponent,
@@ -36,6 +39,7 @@ import { AppRoutingModule } from './app-routing.module';
     ComunidadFinanzasComponent,
     ComunidadLimpiezaComponent,
     GestionEquipoComponent,
+    ComunidadOverviewComponent,
     EsperandoAprobacionComponent,
     LandingComponent,
     LegalComponent

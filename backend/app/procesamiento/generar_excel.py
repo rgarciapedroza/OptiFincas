@@ -7,6 +7,7 @@ from openpyxl.utils import get_column_letter
 import io
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
+import math
 
 ESTILO_CONCILIADO = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
 ESTILO_NO_CONCILIADO = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
@@ -231,7 +232,9 @@ def crear_excel_informe_finanzas(
         if imp is None or (isinstance(imp, str) and imp.strip() == ""):
             continue
         try:
-            ingresos_total_mes += float(imp)
+            val_i = float(imp)
+            if not math.isnan(val_i) and not math.isinf(val_i):
+                ingresos_total_mes += val_i
         except:
             continue
 
@@ -290,9 +293,13 @@ def crear_excel_informe_finanzas(
         hoja.cell(row=current_row, column=1, value=item.get("concepto")).alignment = ALINEACION_ESTANDAR
         hoja.cell(row=current_row, column=2, value=item.get("importe")).number_format = '#,##0.00"€"'
         imp_gasto = item.get("importe", 0)
+        try:
+            val_g = float(imp_gasto)
+            if not math.isnan(val_g) and not math.isinf(val_g):
+                gastos_total_mes += val_g
+        except: pass
         hoja.cell(row=current_row, column=2, value=imp_gasto).number_format = '#,##0.00"€"'
         hoja.cell(row=current_row, column=2).alignment = ALINEACION_DERECHA
-        gastos_total_mes += float(imp_gasto)
         for col_idx in range(1, 3):
             hoja.cell(row=current_row, column=col_idx).border = BORDE_GRUESO
         current_row += 1
@@ -307,6 +314,30 @@ def crear_excel_informe_finanzas(
     current_row += 1
     
     current_row += 2 # Espacio entre tablas
+
+    # --- Nueva Tabla: Gastos sin Identificar (Ingresos no asignados) ---
+    sin_id = finanzas_data.get("ingresosSinIdentificar", [])
+    if sin_id:
+        hoja.cell(row=current_row, column=1, value="GASTOS SIN IDENTIFICAR").font = Font(bold=True, size=12, color="F59E0B")
+        current_row += 1
+        headers_sin_id = ["Observaciones", "Fecha", "Importe"]
+        for col_idx, text in enumerate(headers_sin_id, 1):
+            cell = hoja.cell(row=current_row, column=col_idx, value=text)
+            cell.font = FUENTE_NEGRITA
+            cell.alignment = ALINEACION_CENTRO
+            cell.fill = ESTILO_CABECERA
+            cell.border = BORDE_GRUESO
+        current_row += 1
+        for item in sin_id:
+            hoja.cell(row=current_row, column=1, value=item.get("observaciones")).alignment = ALINEACION_ESTANDAR
+            hoja.cell(row=current_row, column=2, value=item.get("fecha")).alignment = ALINEACION_CENTRO
+            cell_imp = hoja.cell(row=current_row, column=3, value=item.get("importe"))
+            cell_imp.number_format = '#,##0.00"€"'
+            cell_imp.alignment = ALINEACION_DERECHA
+            for col_idx in range(1, 4):
+                hoja.cell(row=current_row, column=col_idx).border = BORDE_GRUESO
+            current_row += 1
+        current_row += 2 # Espacio entre tablas
 
     # --- Tabla 3: Resumen de Cuentas (Tabla final de cálculo) ---
     hoja.cell(row=current_row, column=1, value="RESUMEN DE CUENTAS").font = Font(bold=True, size=12, color="6366F1")
@@ -331,6 +362,12 @@ def crear_excel_informe_finanzas(
     ingresos_mes = resumen_cuentas.get("ingresosMes", 0)
     gastos_mes = resumen_cuentas.get("gastosMes", 0)
     saldo_mes = saldo_anterior + ingresos_mes - gastos_mes
+
+    # Asegurar que no pasamos NaNs al generador de celdas de Excel
+    saldo_anterior = 0.0 if math.isnan(saldo_anterior) else saldo_anterior
+    ingresos_mes = 0.0 if math.isnan(ingresos_mes) else ingresos_mes
+    gastos_mes = 0.0 if math.isnan(gastos_mes) else gastos_mes
+    saldo_mes = 0.0 if math.isnan(saldo_mes) else saldo_mes
 
     filas_resumen = [
         ("Saldo Anterior", saldo_anterior, "Saldo antes de este mes"),

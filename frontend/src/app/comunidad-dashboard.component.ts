@@ -6,38 +6,171 @@ import { ComunidadDB } from './models';
 @Component({
   selector: 'app-comunidad-dashboard',
   template: `
-    <div class="dashboard-container" *ngIf="comunidad">
-      <div style="margin-bottom: 25px;">
-        <button class="btn btn-secondary" routerLink="/comunidades" style="padding: 6px 12px; font-size: 0.85rem; margin-bottom: 10px;">
-          ← Volver al listado
-        </button>
-        <h2 style="margin: 0; color: #111827;">{{ comunidad.nombre }}</h2>
-        <p style="margin: 5px 0 0 0; color: #64748b; font-size: 0.95rem;">{{ comunidad.direccion }}</p>
-      </div>
+    <div class="admin-layout" *ngIf="comunidad">
+      <!-- Barra Superior Profesional -->
+      <header class="top-nav">
+        <div class="top-nav-left">
+          <button class="back-pill" routerLink="/comunidades">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg>
+            <span>Volver</span>
+          </button>
+          <div class="v-divider"></div>
+          <div class="community-identity">
+            <h1>{{ comunidad.nombre }}</h1>
+            <p>{{ comunidad.direccion }}</p>
+          </div>
+        </div>
+        <div class="top-nav-right">
+          <div class="status-indicator">
+            <span class="dot"></span>
+            <span>Panel de Gestión</span>
+          </div>
+        </div>
+      </header>
 
-      <div class="summary-cards" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 20px; gap: 10px;">
-        <div class="card" routerLinkActive="active-tab" [routerLink]="['censo']" style="cursor: pointer; padding: 15px;">
-          <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-          Propietarios
-        </div>
-        <div class="card" routerLinkActive="active-tab" [routerLink]="['extractos']" style="cursor: pointer; padding: 15px;">
-          <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-          Extractos
-        </div>
-        <div class="card" routerLinkActive="active-tab" [routerLink]="['finanzas']" style="cursor: pointer; padding: 15px;">
-          <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-          Finanzas
-        </div>
-        <div class="card" *ngIf="comunidad.servicios?.toLowerCase()?.includes('limpieza')" routerLinkActive="active-tab" [routerLink]="['limpieza']" style="cursor: pointer; padding: 15px;">
-          <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path><path d="m5 3 1 1"></path><path d="m19 3-1 1"></path><path d="m5 21 1-1"></path><path d="m19 21-1-1"></path></svg>
-          Limpieza
-        </div>
-      </div>
+      <div class="main-body">
+        <!-- Sidebar de Navegación -->
+        <nav class="side-menu">
+          <div class="menu-group">
+            <p class="group-title">Principal</p>
+            <a [routerLink]="['overview']" routerLinkActive="active" class="menu-item">
+              <div class="icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg></div>
+              <span>Visión General</span>
+            </a>
+            <a [routerLink]="['censo']" routerLinkActive="active" class="menu-item">
+              <div class="icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg></div>
+              <span>Censo Propietarios</span>
+            </a>
+            <a [routerLink]="['actas']" routerLinkActive="active" class="menu-item">
+              <div class="icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg></div>
+              <span>Actas de Reunión</span>
+            </a>
+            <a [routerLink]="['finanzas']" routerLinkActive="active" class="menu-item">
+              <div class="icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="22"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></div>
+              <span>Informes Mensuales</span>
+            </a>
+          </div>
 
-      <router-outlet></router-outlet>
+          <div class="menu-group">
+            <p class="group-title">Economía</p>
+            <a [routerLink]="['extractos']" routerLinkActive="active" class="menu-item">
+              <div class="icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line></svg></div>
+              <span>Registros Bancarios</span>
+            </a>
+          </div>
+
+          <div class="menu-group" *ngIf="comunidad.servicios?.toLowerCase()?.includes('limpieza')">
+            <p class="group-title">Mantenimiento</p>
+            <a [routerLink]="['limpieza']" routerLinkActive="active" class="menu-item">
+              <div class="icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></div>
+              <span>Plan de Limpieza</span>
+            </a>
+          </div>
+
+          <div class="menu-group experimental">
+            <p class="group-title">Próximamente</p>
+            <div class="menu-item disabled">
+              <div class="icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></div>
+              <span>Centro de Mensajes</span>
+            </div>
+          </div>
+        </nav>
+
+        <!-- Área de Contenido -->
+        <main class="content-area">
+          <router-outlet></router-outlet>
+        </main>
+      </div>
     </div>
   `,
-  styleUrls: ['./comunidades.component.css']
+  styles: [`
+    .admin-layout {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      background: #f1f5f9;
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* Barra Superior */
+    .top-nav {
+      height: 70px;
+      background: white;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 30px;
+      z-index: 50;
+    }
+    .top-nav-left { display: flex; align-items: center; gap: 20px; }
+    .back-pill {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 16px; border-radius: 20px;
+      background: #f8fafc; border: 1px solid #e2e8f0;
+      color: #64748b; font-size: 0.85rem; font-weight: 600;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .back-pill:hover { background: #f1f5f9; color: #1e293b; }
+    .v-divider { width: 1px; height: 30px; background: #e2e8f0; }
+    .community-identity h1 { font-size: 1.1rem; font-weight: 800; color: #1e293b; margin: 0; }
+    .community-identity p { font-size: 0.75rem; color: #64748b; margin: 0; }
+    .status-indicator {
+      display: flex; align-items: center; gap: 8px;
+      background: #ecfdf5; color: #059669;
+      padding: 6px 14px; border-radius: 20px; font-size: 0.75rem; font-weight: 700;
+    }
+    .status-indicator .dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; }
+
+    /* Cuerpo Principal */
+    .main-body { display: flex; flex: 1; overflow: hidden; }
+
+    /* Sidebar */
+    .side-menu {
+      width: 260px;
+      background: white;
+      border-right: 1px solid #e2e8f0;
+      padding: 25px 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 30px;
+      overflow-y: auto;
+    }
+    .menu-group { display: flex; flex-direction: column; gap: 4px; }
+    .group-title {
+      font-size: 0.65rem; font-weight: 800; text-transform: uppercase;
+      color: #94a3b8; letter-spacing: 0.05em; padding-left: 12px; margin-bottom: 8px;
+    }
+    .menu-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 12px; border-radius: 10px;
+      text-decoration: none; color: #64748b;
+      font-size: 0.9rem; font-weight: 600;
+      transition: all 0.2s;
+    }
+    .menu-item .icon-box {
+      width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+      background: #f8fafc; border-radius: 8px; color: #94a3b8; transition: all 0.2s;
+    }
+    .menu-item:hover { background: #f8fafc; color: #4338ca; }
+    .menu-item:hover .icon-box { background: white; color: #4338ca; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .menu-item.active { background: #eff6ff; color: #2563eb; }
+    .menu-item.active .icon-box { background: white; color: #2563eb; box-shadow: 0 2px 4px rgba(37, 99, 235, 0.1); }
+    .menu-item.disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Área de Contenido */
+    .content-area {
+      flex: 1;
+      padding: 30px;
+      overflow-y: auto;
+    }
+
+    @media (max-width: 1024px) {
+      .side-menu { width: 80px; padding: 25px 10px; }
+      .side-menu span, .group-title { display: none; }
+      .menu-item { justify-content: center; }
+    }
+  `]
 })
 export class ComunidadDashboardComponent implements OnInit {
   comunidad: ComunidadDB | null = null;

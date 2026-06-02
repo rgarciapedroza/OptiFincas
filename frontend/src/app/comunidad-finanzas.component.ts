@@ -81,9 +81,10 @@ import { ModalService } from './modal.service';
           </div>
         </div>
 
-        <div *ngIf="data.resumenCuentas.saldoTotal !== 0; else noDataForMonth" style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
-          <!-- Tabla de Ingresos por Piso -->
-          <div class="card-container" style="max-width: 100%; margin: 0;">
+        <div *ngIf="data.resumenCuentas.saldoTotal !== 0; else noDataForMonth" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+          <div style="display: flex; flex-direction: column; gap: 30px;">
+            <!-- Tabla de Ingresos por Piso -->
+            <div class="card-container" style="max-width: 100%; margin: 0;">
             <h3 class="section-title" style="color: #10b981; font-size: 1rem;">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;"><path d="M12 5v14M5 12l7-7 7 7"/></svg>
               Ingresos por Piso
@@ -114,11 +115,58 @@ import { ModalService } from './modal.service';
             </table>
           </div>
 
+            <!-- Nueva Tabla: Gastos sin Identificar (Ingresos no asignados) -->
+            <div *ngIf="data.ingresosSinIdentificar && data.ingresosSinIdentificar.length > 0" class="card-container" style="max-width: 100%; margin: 0;">
+              <h3 class="section-title" style="color: #f59e0b; font-size: 1rem; border-bottom: 2px solid #fef3c7; padding-bottom: 8px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                Ingresos sin Identificar
+              </h3>
+              <table class="movimientos-table" style="font-size: 0.85rem;">
+                <thead>
+                  <tr>
+                    <th style="background: #fdfaf6;">Observaciones</th>
+                    <th style="text-align: center; background: #fdfaf6;">Fecha</th>
+                    <th style="text-align: right; background: #fdfaf6;">Importe</th>
+                  </tr>
+                </thead>
+                <tbody style="background: white;">
+                  <tr *ngFor="let item of data.ingresosSinIdentificar">
+                    <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-size: 0.8rem;">{{ item.observaciones }}</td>
+                    <td style="text-align: center; padding: 10px; border-bottom: 1 solid #e2e8f0; color: #64748b;">{{ item.fecha | date:'dd/MM/yyyy' }}</td>
+                    <td style="text-align: right; padding: 10px; border-bottom: 1px solid #e2e8f0; font-weight: 700; color: #10b981;">{{ item.importe | number:'1.2-2' }}€</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <div style="display: flex; flex-direction: column; gap: 30px;">
-            <!-- Resumen de Cuentas (Fórmula General) -->
-            <div class="card-container" style="max-width: 100%; margin: 0; background: white; border: 1px solid #e2e8f0; box-shadow: none;">
-              <h3 class="section-title" style="border-bottom: 1px solid #f1f5f9; padding-bottom: 15px; color: #1e293b;">Resumen de Tesorería</h3>
-              <div style="display: flex; flex-direction: column; gap: 18px; margin-top: 20px; padding: 0 5px;">
+            <!-- Tabla de Gastos (AHORA PRIMERO) -->
+            <div style="max-width: 100%; margin: 0;">
+              <h3 class="section-title" style="color: #ef4444; font-size: 1rem; border-bottom: 2px solid #fee2e2; padding-bottom: 8px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;"><path d="M12 19V5M5 12l7 7 7-7"/></svg>
+                Detalle de Gastos
+              </h3>
+              <table class="movimientos-table" style="font-size: 0.85rem; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+                <thead>
+                  <tr>
+                    <th style="padding: 12px 10px; border-bottom: 2px solid #f1f5f9; background: #f8fafc;">Concepto</th>
+                    <th style="text-align: right; padding: 12px 10px; border-bottom: 2px solid #f1f5f9; background: #f8fafc;">Importe</th>
+                  </tr>
+                </thead>
+                <tbody style="background: white;">
+                  <tr *ngFor="let g of data.gastos">
+                    <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">{{ g.concepto }}</td>
+                    <td style="text-align: right; font-weight: 700; color: #ef4444; padding: 10px; border-bottom: 1px solid #e2e8f0;">{{ g.importe | number:'1.2-2' }}€</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <!-- Resumen de Cuentas (Saldo Actual - AHORA SEGUNDO) -->
+            <div style="max-width: 100%; margin: 0;">
+              <h3 class="section-title" style="border-bottom: 2px solid #f1f5f9; padding-bottom: 8px; color: #1e293b;">Resumen</h3>
+              <div class="card-container" style="margin: 0; background: white; border: 1px solid #e2e8f0; box-shadow: none; padding: 20px;">
+                <div style="display: flex; flex-direction: column; gap: 18px; padding: 0 5px;">
                 <div style="display: flex; justify-content: space-between; font-size: 0.95rem;">
                   <span style="color: #64748b;">Saldo Anterior:</span>
                   <span style="font-weight: 600;">{{ data.resumenCuentas.saldoAnterior | number:'1.2-2' }}€</span>
@@ -135,27 +183,11 @@ import { ModalService } from './modal.service';
                   <span style="font-weight: 800; font-size: 1.1rem; color: #1e293b;">SALDO ACTUAL:</span>
                   <span style="font-weight: 900; font-size: 1.8rem; color: #6366f1;">{{ data.resumenCuentas.saldoTotal | number:'1.2-2' }}€</span>
                 </div>
-              </div>
-              <button class="btn btn-info" (click)="generarReportePDF()" style="width: 100%; margin-top: 25px; font-size: 0.85rem; border-radius: 12px;">Descargar Informe PDF</button>
-            </div>
-
-            <!-- Tabla de Gastos -->
-            <div class="card-container" style="max-width: 100%; margin: 0;">
-              <h3 class="section-title" style="color: #ef4444; font-size: 1rem;">Detalle de Gastos</h3>
-              <table class="movimientos-table" style="font-size: 0.85rem;">
-                <thead>
-                  <tr>
-                    <th style="padding: 30px 50px; border-bottom: 2px solid #f1f5f9;">Concepto</th>
-                    <th style="text-align: right; padding: 30px 50px; border-bottom: 2px solid #f1f5f9;">Importe</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr *ngFor="let g of data.gastos">
-                    <td style="padding: 30px 50px; border-bottom: 1px solid #f8fafc;">{{ g.concepto }}</td>
-                    <td style="text-align: right; font-weight: 700; color: #ef4444; padding: 30px 50px; border-bottom: 1px solid #f8fafc;">{{ g.importe | number:'1.2-2' }}€</td>
-                  </tr>
-                </tbody>
-              </table>
+                </div>
+                <button class="btn btn-info" (click)="generarReportePDF()" style="width: fit-content; margin-top: 25px; font-size: 0.85rem; border-radius: 12px; display: flex; align-items: center; gap: 8px; padding: 8px 18px;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                  Informe PDF
+                </button>
             </div>
           </div>
         </div>
@@ -179,6 +211,7 @@ export class ComunidadFinanzasComponent implements OnInit {
   data: FinanzasData = {
     ingresosPorPiso: [],
     gastos: [],
+    ingresosSinIdentificar: [],
     resumenCuentas: { saldoAnterior: 0, ingresosMes: 0, gastosMes: 0, saldoTotal: 0 }
   };
   extractos: ExtractoProcesado[] = [];
@@ -292,6 +325,7 @@ export class ComunidadFinanzasComponent implements OnInit {
       this.data = {
         ingresosPorPiso: [],
         gastos: [],
+        ingresosSinIdentificar: [],
         resumenCuentas: { saldoAnterior: 0, ingresosMes: 0, gastosMes: 0, saldoTotal: 0 }
       };
       this.loading = false;
@@ -307,6 +341,11 @@ export class ComunidadFinanzasComponent implements OnInit {
       );
 
       if (result) {
+        // Ordenar ingresos por piso de forma alfanumérica natural
+        result.ingresosPorPiso.sort((a: any, b: any) => 
+          a.codigo.localeCompare(b.codigo, undefined, { numeric: true, sensitivity: 'base' })
+        );
+        
         this.data = result;
       } else {
         this.extractoSeleccionado = null; // Si no hay datos, deseleccionamos

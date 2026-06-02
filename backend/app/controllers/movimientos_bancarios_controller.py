@@ -3,6 +3,7 @@ import logging
 import pandas as pd
 from fastapi import UploadFile, HTTPException, BackgroundTasks
 from typing import List, Dict, Optional
+import math
 from app.servicios.supabase_db import supabase_client, supabase_service_role_client
 from app.servicios.procesar_extracto import limpiar_importe, normalizar_fecha, load_df_from_excel_sheet_robust, detectar_columnas, buscar_piso_regex_en_fila
 import re
@@ -10,6 +11,19 @@ from datetime import datetime
 from app.controllers.security import encriptar_dato, desencriptar_dato
 
 logger = logging.getLogger(__name__)
+
+def limpiar_nan(obj):
+    """Limpia recursivamente valores NaN o Inf de diccionarios y listas para que sean JSON compliant."""
+    if isinstance(obj, dict):
+        return {k: limpiar_nan(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [limpiar_nan(i) for i in obj]
+    elif isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return 0.0
+        return obj
+    else:
+        return obj
 
 async def importar_movimientos_controller(community_id: int, file: UploadFile, user_id: str):
     """
@@ -341,6 +355,7 @@ async def get_finanzas_comunidad_controller(community_id: int, mes: int, anio: i
 
         # 3. Resumen de Ingresos por Piso
         resumen_pisos = []
+        codigos_norm_comunidad = {normalizar_piso_simple(p['codigo']) for p in pisos_res.data}
 
         for p in pisos_res.data:
             codigo = p['codigo']
@@ -355,6 +370,18 @@ async def get_finanzas_comunidad_controller(community_id: int, mes: int, anio: i
                 "importe": total,
                 "pagado": total > 0,
                 "fecha": movs_piso.iloc[0]['fecha'] if len(movs_piso) > 0 else None
+            })
+
+        # 3.1 Ingresos sin identificar (No asignados a ningún piso de la lista)
+        ingresos_sin_piso_df = ingresos[~ingresos['piso_norm'].isin(codigos_norm_comunidad)]
+        ingresos_sin_identificar = []
+        for _, row in ingresos_sin_piso_df.iterrows():
+            # Desencriptar concepto_original para el informe
+            obs = desencriptar_dato(row.get("concepto_original")) or row.get("concepto_original") or ""
+            ingresos_sin_identificar.append({
+                "fecha": row.get("fecha"),
+                "observaciones": obs,
+                "importe": float(row.get("importe", 0))
             })
 
         # 4. Resumen de Gastos
@@ -376,13 +403,18 @@ async def get_finanzas_comunidad_controller(community_id: int, mes: int, anio: i
         saldo_total = 0.0
         if 'saldo_resultante' in df.columns and not df_sorted.empty:
             val = df_sorted.iloc[0]['saldo_resultante']
-            if pd.notna(val):
-                try: saldo_total = float(val)
-                except: saldo_total = 0.0
+            if pd.notna(val) and val is not None:
+                try: 
+                    temp_val = float(val)
+                    if not math.isnan(temp_val) and not math.isinf(temp_val):
+                        saldo_total = temp_val
+                except: 
+                    saldo_total = 0.0
 
-        return {
+        res = {
             "ingresosPorPiso": resumen_pisos,
             "gastos": resumen_gastos,
+            "ingresosSinIdentificar": ingresos_sin_identificar,
             "resumenCuentas": {
                 "saldoAnterior": round(saldo_total - total_ingresos + total_gastos, 2),
                 "ingresosMes": round(total_ingresos, 2),
@@ -390,6 +422,8 @@ async def get_finanzas_comunidad_controller(community_id: int, mes: int, anio: i
                 "saldoTotal": round(saldo_total, 2)
             }
         }
+        
+        return limpiar_nan(res)
     except Exception as e:
         logger.error(f"Error calculando finanzas: {e}")
         raise HTTPException(status_code=500, detail="Error al calcular el informe financiero")
