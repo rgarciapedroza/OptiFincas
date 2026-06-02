@@ -20,12 +20,13 @@ export class PortalPropietarioComponent implements OnInit {
   loading = true;
   allRecibosGrouped: any[] = [];
   seccionActiva: 'finanzas' | 'limpieza' | 'recibos' = 'finanzas'; // This is not used anymore as main sections are handled by router
-  seccionPrincipalActiva: 'mis-propiedades' | 'mis-recibos' | 'finanzas' | 'limpieza' | 'contactar' = 'mis-propiedades'; // Top-level sections
+  seccionPrincipalActiva: 'mis-propiedades' | 'mis-recibos' | 'finanzas' | 'limpieza' | 'contactar' | 'actas' = 'mis-propiedades'; // Top-level sections
 
   // Propiedades para Finanzas
   finanzasData: FinanzasData = {
     ingresosPorPiso: [],
     gastos: [],
+    ingresosSinIdentificar: [],
     resumenCuentas: { saldoAnterior: 0, ingresosMes: 0, gastosMes: 0, saldoTotal: 0 }
   };
   viewDateFinanzas: Date = new Date();
@@ -98,6 +99,7 @@ export class PortalPropietarioComponent implements OnInit {
     else if (url.includes('mis-recibos')) this.seccionPrincipalActiva = 'mis-recibos';
     else if (url.includes('finanzas')) this.seccionPrincipalActiva = 'finanzas';
     else if (url.includes('limpieza')) this.seccionPrincipalActiva = 'limpieza';
+    else if (url.includes('actas')) this.seccionPrincipalActiva = 'actas';
     else if (url.includes('contactar')) this.seccionPrincipalActiva = 'contactar';
   }
 
@@ -138,8 +140,12 @@ export class PortalPropietarioComponent implements OnInit {
     this.seccionActiva = seccion;
   }
 
-  async setSeccionPrincipal(seccion: 'mis-propiedades' | 'mis-recibos' | 'finanzas' | 'limpieza' | 'contactar') {
+  async setSeccionPrincipal(seccion: 'mis-propiedades' | 'mis-recibos' | 'finanzas' | 'limpieza' | 'contactar' | 'actas') {
     // Navegación mediante router para cumplir con el requisito de "páginas distintas"
+    if (seccion === 'actas' && this.selectedPiso?.comunidades?.id) {
+      this.router.navigate(['/portal-propietario/actas', this.selectedPiso.comunidades.id]);
+      return;
+    }
     this.router.navigate(['/portal-propietario', seccion]);
   }
 
@@ -185,6 +191,11 @@ export class PortalPropietarioComponent implements OnInit {
           })).sort((a: any, b: any) => 
             a.codigo.localeCompare(b.codigo, undefined, { numeric: true, sensitivity: 'base' })
           );
+
+          // Ordenar ingresos sin identificar por fecha descendente
+          if (data.ingresosSinIdentificar) {
+            data.ingresosSinIdentificar.sort((a: any, b: any) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+          }
 
           this.finanzasData = data;
         }

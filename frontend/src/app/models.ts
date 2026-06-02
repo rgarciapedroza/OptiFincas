@@ -99,6 +99,7 @@ export interface ExtractoProcesado {
 export interface FinanzasData {
   ingresosPorPiso: any[];
   gastos: any[];
+  ingresosSinIdentificar?: any[];
   resumenCuentas: {
     saldoAnterior: number;
     ingresosMes: number;
@@ -110,4 +111,15 @@ export interface FinanzasData {
 export interface ImportProgress {
   processed: { name: string, count: number }[];
   skipped: { name: string, reason: string }[];
+}
+
+export interface Acta {
+  id?: number;
+  community_id: number;
+  anio: number;
+  mes: number;
+  nombre_archivo: string;
+  url_archivo: string;
+  ruta_archivo: string;
+  created_at?: string;
 }

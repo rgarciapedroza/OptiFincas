@@ -2,12 +2,16 @@ import { Injectable } from '@angular/core';
 import { createClient, SupabaseClient, AuthSession, AuthChangeEvent } from '@supabase/supabase-js';
 import { environment } from '../environments/environment';
 import { BehaviorSubject } from 'rxjs';
+import { Acta } from './models';
 
 @Injectable({
   providedIn: 'root',
 })
 export class SupabaseService {
   private supabase: SupabaseClient;
+  // Centralizamos el nombre del bucket. Al ser genérico, 
+  // nos servirá para actas, facturas, contratos, etc.
+  private readonly BUCKET_NAME = 'comunidades-documentos';
   // Canal para notificar cambios en las solicitudes de equipo
   public solicitudesRefresh$ = new BehaviorSubject<void>(undefined);
 
@@ -436,5 +440,69 @@ export class SupabaseService {
       })
       .eq('email', email.toLowerCase().trim())
       .select();
+  }
+
+  // --- Métodos para Actas ---
+  async getActas(communityId: string) {
+    return await this.supabase
+      .from('actas')
+      .select('*')
+      .eq('community_id', communityId)
+      .order('anio', { ascending: false })
+      .order('mes', { ascending: false });
+  }
+
+  async uploadActa(communityId: string, anio: number, mes: number, file: File) {
+    // 1. Subir el archivo al Storage de Supabase (Bucket: comunidades-documentos)
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}.${fileExt}`;
+    const filePath = `actas/${communityId}/${fileName}`;
+
+    const { error: uploadError } = await this.supabase.storage
+      .from(this.BUCKET_NAME)
+      .upload(filePath, file);
+
+    if (uploadError) throw uploadError;
+
+    // 2. Obtener la URL pública del archivo
+    const { data: urlData } = this.supabase.storage
+      .from(this.BUCKET_NAME)
+      .getPublicUrl(filePath);
+
+    // 3. Guardar el registro en la tabla 'actas'
+    const { error: dbError } = await this.supabase
+      .from('actas')
+      .insert([{
+        community_id: communityId,
+        anio: anio,
+        mes: mes,
+        nombre_archivo: file.name,
+        url_archivo: urlData.publicUrl,
+        ruta_archivo: filePath
+      }]);
+
+    if (dbError) throw dbError;
+  }
+
+  async deleteActa(acta: Acta) {
+    // 1. Borrar el archivo físico del Storage
+    if (acta.ruta_archivo) {
+      await this.supabase.storage
+        .from(this.BUCKET_NAME)
+        .remove([acta.ruta_archivo]);
+    }
+
+    // 2. Borrar el registro de la base de datos
+    return await this.supabase
+      .from('actas')
+      .delete()
+      .eq('id', acta.id);
+  }
+
+  async updateActaName(actaId: number, nuevoNombre: string) {
+    return await this.supabase
+      .from('actas')
+      .update({ nombre_archivo: nuevoNombre })
+      .eq('id', actaId);
   }
 }

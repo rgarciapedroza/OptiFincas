@@ -16,6 +16,10 @@
       <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
       <span class="tab-label">Mis Recibos</span>
     </div>
+    <div class="card tab-button" [class.active-tab]="seccionPrincipalActiva === 'actas'" (click)="setSeccionPrincipal('actas')" style="cursor: pointer; padding: 15px;">
+      <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+      <span class="tab-label">Actas</span>
+    </div>
     <div class="card tab-button" [class.active-tab]="seccionPrincipalActiva === 'finanzas'" (click)="setSeccionPrincipal('finanzas')" style="cursor: pointer; padding: 15px;">
       <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
       <span class="tab-label">Finanzas</span>
@@ -182,6 +186,42 @@
           </div>
         </div>
       </div>
+      <!-- Nueva Tabla: Gastos sin Identificar (Ingresos no asignados) -->
+      <div *ngIf="finanzasData.ingresosSinIdentificar && finanzasData.ingresosSinIdentificar.length > 0" 
+          class="card-container" style="max-width: 100%; margin: 20px 0 0 0; background: transparent; border: none; box-shadow: none;">
+        
+        <h3 class="section-title" style="color: #f59e0b; font-size: 1rem; border-bottom: 2px solid #fef3c7; padding-bottom: 8px; display: flex; align-items: center;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          Ingresos sin Identificar
+        </h3>
+
+        <table class="movimientos-table" style="font-size: 0.85rem; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+          <thead>
+            <tr>
+              <th style="background: #fdfaf6; padding: 10px;">Observaciones</th>
+              <th style="text-align: center; background: #fdfaf6; padding: 10px;">Fecha</th>
+              <th style="text-align: right; background: #fdfaf6; padding: 10px;">Importe</th>
+            </tr>
+          </thead>
+          <tbody style="background: white;">
+            <tr *ngFor="let item of finanzasData.ingresosSinIdentificar">
+              <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; font-size: 0.8rem; line-height: 1.2;">
+                {{ item.observaciones }}
+              </td>
+              <td style="text-align: center; padding: 10px; border-bottom: 1px solid #e2e8f0; color: #64748b;">
+                {{ item.fecha | date:'dd/MM/yyyy' }}
+              </td>
+              <td style="text-align: right; padding: 10px; border-bottom: 1px solid #e2e8f0; font-weight: 700; color: #10b981;">
+                {{ item.importe | number:'1.2-2' }}€
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
     </div>
   </div>
 
@@ -300,6 +340,41 @@
         <p>¡Felicidades! No tienes ningún recibo pendiente de pago.</p>
       </div>
     </div>
+  </div>
+
+  <!-- SECCIÓN: ACTAS -->
+  <div *ngIf="seccionPrincipalActiva === 'actas'" class="tab-content" style="animation: fadeIn 0.4s ease;">
+    <div class="section-title-wrapper">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+      <h2>Libro de Actas de la Comunidad</h2>
+    </div>
+
+    <div class="month-navigation-finanzas">
+      <button class="btn-nav" (click)="cambiarAnioActas(-1)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+      <span class="month-label" style="min-width: 100px;">{{ currentYearActas }}</span>
+      <button class="btn-nav" (click)="cambiarAnioActas(1)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+    </div>
+
+    <table class="movimientos-table" style="max-width: 800px; margin: 0 auto;">
+      <thead>
+        <tr>
+          <th>Mes</th>
+          <th style="text-align: center;">Documento Acta</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let m of meses; let i = index">
+          <td style="font-weight: 700;">{{ m }}</td>
+          <td style="text-align: center;">
+            <a *ngIf="getActaMes(i + 1) as acta" [href]="acta.url_archivo" target="_blank" class="badge badge-success" style="text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              Ver Acta
+            </a>
+            <span *ngIf="!getActaMes(i + 1)" style="color: #94a3b8; font-size: 0.8rem; font-style: italic;">Pendiente de subir</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 
   <!-- SECCIÓN: LIMPIEZA -->

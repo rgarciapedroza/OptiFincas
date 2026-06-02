@@ -9,8 +9,10 @@ import { ComunidadDashboardComponent } from './comunidad-dashboard.component';
 import { CensoComponent } from './censo.component';
 import { ComunidadExtractosComponent } from './comunidad-extractos.component';
 import { ComunidadFinanzasComponent } from './comunidad-finanzas.component';
+import { ComunidadActasComponent } from './comunidad-actas.component';
 import { ComunidadLimpiezaComponent } from './comunidad-limpieza.component';
 import { LandingComponent } from './landing.component';
+import { ComunidadOverviewComponent } from './comunidad-overview.component';
 import { LegalComponent } from './legal.component';
 import { GestionEquipoComponent } from './gestion-equipo.component';
  import { EsperandoAprobacionComponent } from './esperando-aprobacion.component';
@@ -24,10 +26,12 @@ const routes: Routes = [
     component: ComunidadDashboardComponent,
     children: [
       { path: 'censo', component: CensoComponent },
+      { path: 'overview', component: ComunidadOverviewComponent },
       { path: 'extractos', component: ComunidadExtractosComponent },
+      { path: 'actas', component: ComunidadActasComponent },
       { path: 'finanzas', component: ComunidadFinanzasComponent },
       { path: 'limpieza', component: ComunidadLimpiezaComponent },
-      { path: '', redirectTo: 'censo', pathMatch: 'full' }
+      { path: '', redirectTo: 'overview', pathMatch: 'full' }
     ]
   },
   { path: 'clasificador', component: ClasificadorComponent },
@@ -38,6 +42,7 @@ const routes: Routes = [
   { path: 'portal-propietario/mis-propiedades', component: PortalPropietarioComponent },
   { path: 'portal-propietario/mis-recibos', component: PortalPropietarioComponent },
   { path: 'portal-propietario/finanzas', component: PortalPropietarioComponent },
+  { path: 'portal-propietario/actas/:id', component: ComunidadActasComponent },
   { path: 'portal-propietario/limpieza', component: PortalPropietarioComponent },
   { path: 'portal-propietario/contactar', component: PortalPropietarioComponent },
   { path: 'privacidad', component: LegalComponent, data: { type: 'privacidad' } },
