@@ -1,5 +1,5 @@
 import { Component, OnInit } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { SupabaseService } from './supabase.service';
 import { Piso } from './models';
 import { ModalService } from './modal.service';
@@ -30,7 +30,7 @@ export class CensoComponent implements OnInit {
   editandoPisoId: number | null = null;
   mostrarModalEdicionPiso = false;
 
-  constructor(private route: ActivatedRoute, private supabase: SupabaseService, private http: HttpClient, public modalService: ModalService) {}
+  constructor(private route: ActivatedRoute, private router: Router, private supabase: SupabaseService, private http: HttpClient, public modalService: ModalService) {}
 
   async ngOnInit() {
     // Detección robusta: buscamos en la ruta actual, luego en la del padre, 
@@ -76,6 +76,14 @@ export class CensoComponent implements OnInit {
     // Ordenación alfanumérica natural (maneja correctamente 1, 2, 10...)
     this.pisos = data.sort((a, b) => 
       a.codigo.localeCompare(b.codigo, undefined, { numeric: true, sensitivity: 'base' }));
+  }
+
+  verMovimientosPropietario(piso: Piso) {
+    if (!this.communityId || !piso.id) {
+      this.modalService.showAlert('Error', 'No se pudo obtener la información necesaria para ver los movimientos.');
+      return;
+    }
+    this.router.navigate(['./', piso.id, 'movimientos'], { relativeTo: this.route });
   }
 
   prepararNuevoPiso() {

@@ -40,12 +40,13 @@ async def importar_movimientos_route(
 async def get_movimientos_by_community_route(
     community_id: int,
     extracto_id: Optional[int] = None,
+    piso_codigo: Optional[str] = None, # Add this parameter
     user_id: str = Depends(get_current_user)
 ):
     """
     Obtiene todos los movimientos bancarios de una comunidad específica.
     """
-    return await get_movimientos_by_community_controller(community_id, user_id, extracto_id)
+    return await get_movimientos_by_community_controller(community_id, user_id, extracto_id, piso_codigo)
 
 @router.get(
     "/comunidades/{community_id}/finanzas",

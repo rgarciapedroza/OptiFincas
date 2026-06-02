@@ -12,6 +12,7 @@ import { ComunidadFinanzasComponent } from './comunidad-finanzas.component';
 import { ComunidadActasComponent } from './comunidad-actas.component';
 import { ComunidadFacturasComponent } from './comunidad-facturas.component';
 import { ComunidadLimpiezaComponent } from './comunidad-limpieza.component';
+import { ComunidadPisoMovimientosComponent } from './comunidad-piso-movimientos.component';
 import { LandingComponent } from './landing.component';
 import { ComunidadOverviewComponent } from './comunidad-overview.component';
 import { LegalComponent } from './legal.component';
@@ -27,6 +28,7 @@ const routes: Routes = [
     component: ComunidadDashboardComponent,
     children: [
       { path: 'censo', component: CensoComponent },
+      { path: 'censo/:pisoId/movimientos', component: ComunidadPisoMovimientosComponent }, // New route for owner movements
       { path: 'overview', component: ComunidadOverviewComponent },
       { path: 'extractos', component: ComunidadExtractosComponent },
       { path: 'actas', component: ComunidadActasComponent },
