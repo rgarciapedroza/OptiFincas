@@ -20,6 +20,10 @@
       <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
       <span class="tab-label">Actas</span>
     </div>
+    <div class="card tab-button" [class.active-tab]="seccionPrincipalActiva === 'facturas'" (click)="setSeccionPrincipal('facturas')" style="cursor: pointer; padding: 15px;">
+      <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+      <span class="tab-label">Facturas</span>
+    </div>
     <div class="card tab-button" [class.active-tab]="seccionPrincipalActiva === 'finanzas'" (click)="setSeccionPrincipal('finanzas')" style="cursor: pointer; padding: 15px;">
       <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="22"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
       <span class="tab-label">Finanzas</span>
@@ -159,8 +163,28 @@
         <div>
           <h3 class="section-subtitle"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" style="margin-right: 10px;"><path d="M12 19V5M5 12l7 7 7-7"/></svg>Gastos</h3>
           <table class="movimientos-table" style="font-size: 0.8rem;">
-            <thead><tr><th>Concepto</th><th style="text-align: right;">Importe</th></tr></thead>
-            <tbody><tr *ngFor="let g of finanzasData.gastos"><td>{{ g.concepto }}</td><td style="text-align: right; color: #ef4444; font-weight: 700;">{{ g.importe | number:'1.2-2' }}€</td></tr></tbody>
+            <thead>
+              <tr>
+                <th>Concepto</th>
+                <th style="text-align: right;">Importe</th>
+                <th style="text-align: center;">Factura</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let g of finanzasData.gastos">
+                <td>
+                  <div style="font-weight: 600; color: #1e293b;">{{ g.categoria }}</div>
+                  <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase;">{{ g.concepto }}</div>
+                </td>
+                <td style="text-align: right; color: #ef4444; font-weight: 700;">{{ g.importe | number:'1.2-2' }}€</td>
+                <td style="text-align: center;">
+                  <button *ngIf="getFacturaGasto(g.id) as fac" (click)="verFactura(fac)" class="btn-action-minimalist" title="Ver Factura" style="color: #6366f1; margin: 0 auto;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                  </button>
+                  <span *ngIf="!getFacturaGasto(g.id)" style="color: #94a3b8; font-size: 0.7rem; font-style: italic;">Sin archivo</span>
+                </td>
+              </tr>
+            </tbody>
           </table>
 
           <!-- TABLA DE RESUMEN DE TESORERÍA AHORA DEBAJO DE GASTOS -->

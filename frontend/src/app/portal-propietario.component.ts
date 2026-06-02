@@ -4,7 +4,7 @@ import { HttpClient } from '@angular/common/http';
 import { lastValueFrom } from 'rxjs';
 import { SupabaseService } from './supabase.service';
 import { ModalService } from './modal.service';
-import { FinanzasData, MovimientoBancario, Piso } from './models';
+import { FinanzasData, MovimientoBancario, Piso, Factura } from './models';
 import { UtilsService } from './utils.service';
 
 @Component({
@@ -20,7 +20,7 @@ export class PortalPropietarioComponent implements OnInit {
   loading = true;
   allRecibosGrouped: any[] = [];
   seccionActiva: 'finanzas' | 'limpieza' | 'recibos' = 'finanzas'; // This is not used anymore as main sections are handled by router
-  seccionPrincipalActiva: 'mis-propiedades' | 'mis-recibos' | 'finanzas' | 'limpieza' | 'contactar' | 'actas' = 'mis-propiedades'; // Top-level sections
+  seccionPrincipalActiva: 'mis-propiedades' | 'mis-recibos' | 'finanzas' | 'limpieza' | 'contactar' | 'actas' | 'facturas' = 'mis-propiedades'; // Top-level sections
 
   // Propiedades para Finanzas
   finanzasData: FinanzasData = {
@@ -34,6 +34,8 @@ export class PortalPropietarioComponent implements OnInit {
   extractoActualFinanzas: any = null;
   availableExtractosFinanzas: any[] = [];
   currentYearFinanzas: number = new Date().getFullYear();
+  facturasMes: Factura[] = [];
+  currentYearActas: number = new Date().getFullYear();
 
   // Propiedades para Limpieza
   cleaningSchedule: { date: string, tasks: any[] }[] = [];
@@ -100,6 +102,7 @@ export class PortalPropietarioComponent implements OnInit {
     else if (url.includes('finanzas')) this.seccionPrincipalActiva = 'finanzas';
     else if (url.includes('limpieza')) this.seccionPrincipalActiva = 'limpieza';
     else if (url.includes('actas')) this.seccionPrincipalActiva = 'actas';
+    else if (url.includes('facturas')) this.seccionPrincipalActiva = 'facturas';
     else if (url.includes('contactar')) this.seccionPrincipalActiva = 'contactar';
   }
 
@@ -140,10 +143,14 @@ export class PortalPropietarioComponent implements OnInit {
     this.seccionActiva = seccion;
   }
 
-  async setSeccionPrincipal(seccion: 'mis-propiedades' | 'mis-recibos' | 'finanzas' | 'limpieza' | 'contactar' | 'actas') {
+  async setSeccionPrincipal(seccion: 'mis-propiedades' | 'mis-recibos' | 'finanzas' | 'limpieza' | 'contactar' | 'actas' | 'facturas') {
     // Navegación mediante router para cumplir con el requisito de "páginas distintas"
     if (seccion === 'actas' && this.selectedPiso?.comunidades?.id) {
       this.router.navigate(['/portal-propietario/actas', this.selectedPiso.comunidades.id]);
+      return;
+    }
+    if (seccion === 'facturas' && this.selectedPiso?.comunidades?.id) {
+      this.router.navigate(['/portal-propietario/facturas', this.selectedPiso.comunidades.id]);
       return;
     }
     this.router.navigate(['/portal-propietario', seccion]);
@@ -198,9 +205,27 @@ export class PortalPropietarioComponent implements OnInit {
           }
 
           this.finanzasData = data;
+          await this.cargarFacturas();
         }
     } finally {
       this.loading = false;
+    }
+  }
+
+  async cargarFacturas() {
+    if (!this.selectedPiso?.comunidades?.id) return;
+    const { data } = await this.supabase.getFacturas(this.selectedPiso.comunidades.id);
+    this.facturasMes = data || [];
+  }
+
+  getFacturaGasto(movimientoId: number): Factura | undefined {
+    // Coerción de tipos para garantizar que el propietario vea los documentos
+    return this.facturasMes.find(f => Number(f.movimiento_id) === Number(movimientoId));
+  }
+
+  verFactura(factura: Factura | undefined) {
+    if (factura) {
+      window.open(factura.url_archivo, '_blank');
     }
   }
 
@@ -216,6 +241,10 @@ export class PortalPropietarioComponent implements OnInit {
 
   cambiarAnioFinanzas(delta: number) {
     this.currentYearFinanzas += delta;
+  }
+
+  cambiarAnioActas(delta: number) {
+    this.currentYearActas += delta;
   }
 
   async seleccionarExtractoFinanzas(ext: any) {
@@ -345,19 +374,18 @@ export class PortalPropietarioComponent implements OnInit {
         const extractosDelAnio = extractos?.filter((e: any) => e.anio_contable === targetAnio) || [];
         
         let movimientosAcumulados: any[] = [];
+        const session = await this.supabase.getSession();
+        const headers = { 'Authorization': `Bearer ${session?.access_token}` };
+
         for (const ext of extractosDelAnio) {
-          // Intentamos cargar los movimientos. Si devuelve 0, es probable que falten permisos RLS para el propietario.
-          const { data: movs, error: movError } = await this.supabase.getMovimientosByExtracto(ext.id);
-          
-          if (movError) {
-            console.error(`[ERROR RLS/DB] No se pudieron cargar movimientos del extracto ${ext.id}:`, movError);
-          }
-          
-          if (movs && movs.length > 0) {
+          // CRITICAL: Fetch movements via API to get decrypted data, otherwise matching and display will fail.
+          try {
+            const movs = await lastValueFrom(this.http.get<any[]>(`/api/comunidades/${cid}/movimientos?extracto_id=${ext.id}`, { headers }));
+            
             console.log(`[OK] Extracto ${ext.id} (${this.getMesNombre(ext.mes_contable)}): ${movs.length} movimientos encontrados.`);
             movimientosAcumulados = [...movimientosAcumulados, ...movs];
-          } else {
-            console.warn(`[AVISO] El extracto ${ext.id} no devolvió movimientos. Revisa las políticas RLS de la tabla 'movimientos' en Supabase.`);
+          } catch (e) {
+            console.error(`[ERROR API] No se pudieron cargar movimientos del extracto ${ext.id}:`, e);
           }
         }
         

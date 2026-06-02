@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { SupabaseService } from './supabase.service';
-import { FinanzasData, ExtractoProcesado } from './models';
+import { FinanzasData, ExtractoProcesado, Factura } from './models';
 import { HttpClient } from '@angular/common/http';
 import { lastValueFrom } from 'rxjs';
 import { UtilsService } from './utils.service';
@@ -152,12 +152,38 @@ import { ModalService } from './modal.service';
                   <tr>
                     <th style="padding: 12px 10px; border-bottom: 2px solid #f1f5f9; background: #f8fafc;">Concepto</th>
                     <th style="text-align: right; padding: 12px 10px; border-bottom: 2px solid #f1f5f9; background: #f8fafc;">Importe</th>
+                    <th style="text-align: center; padding: 12px 10px; border-bottom: 2px solid #f1f5f9; background: #f8fafc;">Factura</th>
                   </tr>
                 </thead>
                 <tbody style="background: white;">
                   <tr *ngFor="let g of data.gastos">
-                    <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">{{ g.concepto }}</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #e2e8f0;">
+                      <div style="font-weight: 600; color: #1e293b;">{{ g.categoria }}</div>
+                      <div style="font-size: 0.65rem; color: #94a3b8; text-transform: uppercase;">{{ g.concepto }}</div>
+                    </td>
                     <td style="text-align: right; font-weight: 700; color: #ef4444; padding: 10px; border-bottom: 1px solid #e2e8f0;">{{ g.importe | number:'1.2-2' }}€</td>
+                    <td style="text-align: center; border-bottom: 1px solid #e2e8f0;">
+                      <div style="display: flex; justify-content: center; gap: 8px; align-items: center;">
+                        <ng-container *ngIf="getFacturaGasto(g.id) as fac; else noFacFin">
+                          <!-- Ver Factura -->
+                          <button (click)="verFactura(fac)" class="btn-action" title="Ver Factura" style="color: #6366f1;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                          </button>
+                          <!-- Borrar Factura (Solo Admin) -->
+                          <button *ngIf="!isPropietario" (click)="eliminarFactura(fac)" class="btn-action btn-delete" title="Eliminar">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                          </button>
+                        </ng-container>
+                        <ng-template #noFacFin>
+                          <!-- Subir Factura (Solo Admin) -->
+                          <label *ngIf="!isPropietario" class="btn-action" style="cursor: pointer; color: #10b981;" title="Subir Factura">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                            <input type="file" (change)="onFacturaSelected($event, g.id)" accept=".pdf,image/*" hidden>
+                          </label>
+                          <span *ngIf="isPropietario" style="color: #94a3b8; font-size: 0.75rem; font-style: italic;">Pendiente</span>
+                        </ng-template>
+                      </div>
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -219,6 +245,8 @@ export class ComunidadFinanzasComponent implements OnInit {
   ordenMes: 'asc' | 'desc' = 'desc';
   currentYear: number = new Date().getFullYear();
   viewDate: Date = new Date();
+  facturasMes: Factura[] = [];
+  isPropietario: boolean = false;
 
   constructor(
     private route: ActivatedRoute, 
@@ -234,6 +262,14 @@ export class ComunidadFinanzasComponent implements OnInit {
     if (this.communityId) {
       await this.cargarExtractos(); // Primero cargamos la lista de extractos
     }
+
+    // Detectar rol del usuario
+    const session = await this.supabase.getSession();
+    if (session?.user?.id) {
+      const { data: profile } = await this.supabase.getProfile(session.user.id);
+      this.isPropietario = profile?.role === 'propietario';
+    }
+
     const { data: coms } = await this.supabase.getComunidades();
     this.comunidad = coms?.find(c => c.id == this.communityId);
   }
@@ -347,6 +383,8 @@ export class ComunidadFinanzasComponent implements OnInit {
         );
         
         this.data = result;
+        // Una vez cargados los datos financieros, cargamos las facturas vinculadas
+        await this.cargarFacturas();
       } else {
         this.extractoSeleccionado = null; // Si no hay datos, deseleccionamos
       }
@@ -355,6 +393,56 @@ export class ComunidadFinanzasComponent implements OnInit {
       this.extractoSeleccionado = null;
     } finally {
       this.loading = false;
+    }
+  }
+
+  async cargarFacturas() {
+    if (!this.communityId) return;
+    const { data } = await this.supabase.getFacturas(parseInt(this.communityId));
+    this.facturasMes = data || [];
+  }
+
+  getFacturaGasto(movimientoId: number): Factura | undefined {
+    // Coerción a Number para evitar fallos si el ID viene como string desde la API
+    return this.facturasMes.find(f => Number(f.movimiento_id) === Number(movimientoId));
+  }
+
+  async onFacturaSelected(event: any, movimientoId: number) {
+    const file = event.target.files[0];
+    if (file && this.communityId) {
+      this.loading = true;
+      try {
+        await this.supabase.uploadFactura(parseInt(this.communityId), file, movimientoId);
+      await this.cargarDatos(); // Recargar todos los datos, incluyendo facturas
+        this.modalService.showAlert('Éxito', 'Factura vinculada correctamente al gasto.');
+      } catch (e: any) {
+        console.error('[FINANZAS] Error subiendo factura:', e);
+        this.modalService.showAlert('Error', 'No se pudo subir la factura: ' + e.message);
+      } finally {
+        this.loading = false;
+        event.target.value = ''; // Resetear el input para permitir re-selección
+      }
+    }
+  }
+
+  async eliminarFactura(factura: Factura) {
+    const confirm = await this.modalService.showConfirm('Eliminar Factura', '¿Deseas quitar el documento vinculado a este gasto?');
+    if (confirm) {
+      this.loading = true;
+      try {
+        await this.supabase.deleteFactura(factura);
+        await this.cargarDatos(); // Recargar todos los datos, incluyendo facturas
+      } catch (e: any) {
+        this.modalService.showAlert('Error', e.message);
+      } finally {
+        this.loading = false;
+      }
+    }
+  }
+
+  verFactura(factura: Factura | undefined) {
+    if (factura) {
+      window.open(factura.url_archivo, '_blank');
     }
   }
 

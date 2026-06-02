@@ -32,8 +32,8 @@ export interface DetalleHistorico {
 
 // Definición de interfaz para Movimientos Bancarios
 export interface MovimientoBancario {
-  id: string;
-  community_id: string;
+  id: number;
+  community_id: number;
   extracto_id?: any;
   fecha: string;
   concepto_original: string;
@@ -75,7 +75,7 @@ export interface Community {
 }
 
 export interface ComunidadDB {
-  id: string;
+  id: number;
   nombre: string;
   direccion: string;
   servicios?: string;
@@ -118,6 +118,16 @@ export interface Acta {
   community_id: number;
   anio: number;
   mes: number;
+  nombre_archivo: string;
+  url_archivo: string;
+  ruta_archivo: string;
+  created_at?: string;
+}
+
+export interface Factura {
+  id?: number;
+  community_id: number;
+  movimiento_id?: number;
   nombre_archivo: string;
   url_archivo: string;
   ruta_archivo: string;

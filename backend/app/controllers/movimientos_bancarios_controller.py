@@ -250,7 +250,10 @@ async def get_movimientos_by_community_controller(community_id: int, user_id: st
                 except Exception:
                     desc_con = mov.get("concepto_original")
                     desc_ord = mov.get("ordenante")
-
+                
+                # Si la desencriptación falló (devuelve el token cifrado), usamos la categoría como fallback
+                if desc_con == mov.get("concepto_original") and mov.get("categoria"):
+                    desc_con = mov.get("categoria")
                 mov["concepto_original"] = desc_con
                 mov["ordenante"] = desc_ord or ""
                 mov["ORDENANTE"] = desc_ord or "-"
@@ -299,7 +302,7 @@ async def eliminar_extracto_controller(extracto_id: int):
         raise HTTPException(status_code=500, detail=f"Error al eliminar registro: {e}")
 
 async def get_finanzas_comunidad_controller(community_id: int, mes: int, anio: int):
-    """
+    """ 
     Calcula el estado financiero de una comunidad para un mes dado.
     Lógica centralizada en el backend para Matrícula de Honor.
     """
@@ -377,22 +380,35 @@ async def get_finanzas_comunidad_controller(community_id: int, mes: int, anio: i
         ingresos_sin_identificar = []
         for _, row in ingresos_sin_piso_df.iterrows():
             # Desencriptar concepto_original para el informe
-            obs = desencriptar_dato(row.get("concepto_original")) or row.get("concepto_original") or ""
+            raw_obs = row.get("concepto_original") or ""
+            obs = desencriptar_dato(raw_obs)
+            if not obs or obs == raw_obs:
+                obs = "Ingreso sin identificar"
+                
             ingresos_sin_identificar.append({
                 "fecha": row.get("fecha"),
                 "observaciones": obs,
                 "importe": float(row.get("importe", 0))
             })
 
-        # 4. Resumen de Gastos
+        # 4. Resumen de Gastos (Ahora devolvemos movimientos individuales para permitir adjuntar facturas)
+        resumen_gastos = []
         if not gastos.empty:
-            gastos_copy = gastos.copy()
-            gastos_copy['categoria'] = gastos_copy['categoria'].fillna('Sin Categoría')
-            resumen_gastos = gastos_copy.groupby('categoria')['importe'].sum().abs().reset_index()
-            resumen_gastos = resumen_gastos.rename(columns={'categoria': 'concepto', 'importe': 'importe'})
-            resumen_gastos = resumen_gastos.to_dict('records')
-        else:
-            resumen_gastos = []
+            for _, row in gastos.iterrows():
+                # Recuperamos el concepto del extracto bancario tal cual
+                raw_obs = row.get("concepto_original") or ""
+                obs_desencriptado = desencriptar_dato(raw_obs)
+                
+                # Robustez: Si el texto sigue siendo el token cifrado o está vacío, usamos la categoría
+                if not obs_desencriptado or obs_desencriptado == raw_obs:
+                    obs_desencriptado = row.get("categoria") or "Gasto"
+                    
+                resumen_gastos.append({
+                    "id": int(row.get("id")),
+                    "concepto": obs_desencriptado, # Enviamos el concepto del banco desencriptado
+                    "importe": abs(float(row.get("importe", 0))),
+                    "categoria": row.get("categoria") or "Sin Categoría"
+                })
 
         # 5. Totales
         total_ingresos = float(ingresos['importe'].sum())

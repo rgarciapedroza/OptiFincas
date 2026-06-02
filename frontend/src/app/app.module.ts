@@ -14,6 +14,7 @@ import { CensoComponent } from './censo.component';
 import { ComunidadExtractosComponent } from './comunidad-extractos.component';
 import { ComunidadActasComponent } from './comunidad-actas.component';
 import { ComunidadFinanzasComponent } from './comunidad-finanzas.component';
+import { ComunidadFacturasComponent } from './comunidad-facturas.component';
 import { ComunidadLimpiezaComponent } from './comunidad-limpieza.component';
 import { LandingComponent } from './landing.component';
 import { ComunidadOverviewComponent } from './comunidad-overview.component';
@@ -33,6 +34,7 @@ import { AppRoutingModule } from './app-routing.module';
     OptimizacionComponent,
     ComunidadActasComponent,
     PortalPropietarioComponent,
+    ComunidadFacturasComponent,
     ComunidadDashboardComponent,
     CensoComponent,
     ComunidadExtractosComponent,

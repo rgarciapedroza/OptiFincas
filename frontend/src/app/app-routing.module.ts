@@ -10,6 +10,7 @@ import { CensoComponent } from './censo.component';
 import { ComunidadExtractosComponent } from './comunidad-extractos.component';
 import { ComunidadFinanzasComponent } from './comunidad-finanzas.component';
 import { ComunidadActasComponent } from './comunidad-actas.component';
+import { ComunidadFacturasComponent } from './comunidad-facturas.component';
 import { ComunidadLimpiezaComponent } from './comunidad-limpieza.component';
 import { LandingComponent } from './landing.component';
 import { ComunidadOverviewComponent } from './comunidad-overview.component';
@@ -29,6 +30,7 @@ const routes: Routes = [
       { path: 'overview', component: ComunidadOverviewComponent },
       { path: 'extractos', component: ComunidadExtractosComponent },
       { path: 'actas', component: ComunidadActasComponent },
+      { path: 'facturas', component: ComunidadFacturasComponent },
       { path: 'finanzas', component: ComunidadFinanzasComponent },
       { path: 'limpieza', component: ComunidadLimpiezaComponent },
       { path: '', redirectTo: 'overview', pathMatch: 'full' }
@@ -43,6 +45,7 @@ const routes: Routes = [
   { path: 'portal-propietario/mis-recibos', component: PortalPropietarioComponent },
   { path: 'portal-propietario/finanzas', component: PortalPropietarioComponent },
   { path: 'portal-propietario/actas/:id', component: ComunidadActasComponent },
+  { path: 'portal-propietario/facturas/:id', component: ComunidadFacturasComponent },
   { path: 'portal-propietario/limpieza', component: PortalPropietarioComponent },
   { path: 'portal-propietario/contactar', component: PortalPropietarioComponent },
   { path: 'privacidad', component: LegalComponent, data: { type: 'privacidad' } },
