@@ -136,9 +136,11 @@ export class ComunidadActasComponent implements OnInit {
         await this.cargarActas();
         this.modalService.showAlert('Éxito', 'El acta se ha subido correctamente.');
       } catch (e: any) {
+        console.error('[ACTAS] Error en subida:', e);
         this.modalService.showAlert('Error', 'No se pudo subir el archivo: ' + e.message);
       } finally {
         this.loading = false;
+        event.target.value = ''; // Resetear input
       }
     }
   }

@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { createClient, SupabaseClient, AuthSession, AuthChangeEvent } from '@supabase/supabase-js';
 import { environment } from '../environments/environment';
 import { BehaviorSubject } from 'rxjs';
-import { Acta } from './models';
+import { Acta, Factura } from './models';
 
 @Injectable({
   providedIn: 'root',
@@ -67,7 +67,7 @@ export class SupabaseService {
     return await this.supabase.from('comunidades').insert([comunidad]).select();
   }
 
-  async updateComunidad(id: string, updates: any) {
+  async updateComunidad(id: number | string, updates: any) {
     return await this.supabase
       .from('comunidades')
       .update(updates)
@@ -75,7 +75,7 @@ export class SupabaseService {
       .select();
   }
 
-  async deleteComunidad(id: string) {
+  async deleteComunidad(id: number | string) {
     return await this.supabase.from('comunidades').delete().eq('id', id);
   }
 
@@ -313,12 +313,20 @@ export class SupabaseService {
     return { data, error };
   }
 
-  async getMovimientosByExtracto(extractoId: number) {
-    const { data, error } = await this.supabase
+  // Unificamos el método getMovimientosByExtracto
+  async getMovimientosByExtracto(communityId: number | string, extractoId: number, type?: 'ingreso' | 'gasto') {
+    let query = this.supabase
       .from('movimientos')
       .select('*')
+      .eq('community_id', communityId) // Aseguramos que los movimientos pertenecen a la comunidad
       .eq('extracto_id', extractoId)
       .order('fecha', { ascending: false });
+
+    if (type) {
+      query = query.eq('tipo', type);
+    }
+
+    const { data, error } = await query;
     return { data, error };
   }
 
@@ -443,7 +451,7 @@ export class SupabaseService {
   }
 
   // --- Métodos para Actas ---
-  async getActas(communityId: string) {
+  async getActas(communityId: number | string) {
     return await this.supabase
       .from('actas')
       .select('*')
@@ -452,7 +460,7 @@ export class SupabaseService {
       .order('mes', { ascending: false });
   }
 
-  async uploadActa(communityId: string, anio: number, mes: number, file: File) {
+  async uploadActa(communityId: number | string, anio: number, mes: number, file: File) {
     // 1. Subir el archivo al Storage de Supabase (Bucket: comunidades-documentos)
     const fileExt = file.name.split('.').pop();
     const fileName = `${Date.now()}.${fileExt}`;
@@ -504,5 +512,72 @@ export class SupabaseService {
       .from('actas')
       .update({ nombre_archivo: nuevoNombre })
       .eq('id', actaId);
+  }
+
+  // --- Métodos para Facturas ---
+  async getFacturas(communityId: number, movimientoId?: number) {
+    let query = this.supabase
+      .from('facturas')
+      .select('*')
+      .eq('community_id', communityId)
+      .order('created_at', { ascending: false });
+
+    if (movimientoId) {
+      query = query.eq('movimiento_id', movimientoId);
+    }
+    return await query;
+  }
+
+  async uploadFactura(communityId: number, file: File, movimientoId?: number) {
+    // 1. Subir el archivo al Storage de Supabase (Bucket: comunidades-documentos)
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}.${fileExt}`;
+    const filePath = `facturas/${communityId}/${fileName}`;
+
+    const { error: uploadError } = await this.supabase.storage
+      .from(this.BUCKET_NAME)
+      .upload(filePath, file);
+
+    if (uploadError) throw uploadError;
+
+    // 2. Obtener la URL pública del archivo
+    const { data: urlData } = this.supabase.storage
+      .from(this.BUCKET_NAME)
+      .getPublicUrl(filePath);
+
+    // 3. Guardar el registro en la tabla 'facturas'
+    const { error: dbError } = await this.supabase
+      .from('facturas')
+      .insert([{
+        community_id: communityId,
+        movimiento_id: movimientoId,
+        nombre_archivo: file.name,
+        url_archivo: urlData.publicUrl,
+        ruta_archivo: filePath
+      }]);
+
+    if (dbError) throw dbError;
+  }
+
+  async deleteFactura(factura: Factura) {
+    // 1. Borrar el archivo físico del Storage
+    if (factura.ruta_archivo) {
+      await this.supabase.storage
+        .from(this.BUCKET_NAME)
+        .remove([factura.ruta_archivo]);
+    }
+
+    // 2. Borrar el registro de la base de datos
+    return await this.supabase
+      .from('facturas')
+      .delete()
+      .eq('id', factura.id);
+  }
+
+  async updateFacturaName(facturaId: number, nuevoNombre: string) {
+    return await this.supabase
+      .from('facturas')
+      .update({ nombre_archivo: nuevoNombre })
+      .eq('id', facturaId);
   }
 }

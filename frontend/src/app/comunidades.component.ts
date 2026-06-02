@@ -23,7 +23,7 @@ export class ComunidadesComponent implements OnInit {
   nuevaComunidadForm = {
     nombre: '', direccion: '', servicios: ''
   };
-  editandoId: string | null = null;
+  editandoId: number | null = null;
   mostrarModalEdicionComunidad = false;
 
   constructor(private http: HttpClient, private supabase: SupabaseService, private router: Router, public utils: UtilsService, public modalService: ModalService) {}
@@ -117,7 +117,7 @@ export class ComunidadesComponent implements OnInit {
     }
   }
 
-  async eliminarComunidad(id: string) {
+  async eliminarComunidad(id: number) {
     const confirmado = await this.modalService.showConfirm('Eliminar Finca', '¿Estás seguro de eliminar esta comunidad? Se borrarán también sus extractos y propietarios.');
     if (!confirmado) return;
 
