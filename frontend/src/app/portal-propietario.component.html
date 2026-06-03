@@ -32,6 +32,14 @@
       <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path></svg>
       <span class="tab-label">Limpieza</span>
     </div>
+    <div class="card tab-button" [class.active-tab]="seccionPrincipalActiva === 'anuncios'" (click)="setSeccionPrincipal('anuncios')" style="cursor: pointer; padding: 15px; position: relative; overflow: visible;">
+      <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m3 11 18-5v12L3 14v-3z"></path>
+        <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"></path>
+      </svg>
+      <span class="tab-label">Tablón de anuncios</span>
+      <span *ngIf="nuevosAnunciosCount > 0" class="notification-badge">{{ nuevosAnunciosCount }}</span>
+    </div>
   </div>
 
   <!-- SECCIÓN: MIS PROPIEDADES -->
@@ -434,6 +442,34 @@
       <p>No se han programado turnos de limpieza para este mes todavía.</p>
     </div>
   </div>
+
+  <!-- SECCIÓN: ANUNCIOS -->
+  <div *ngIf="seccionPrincipalActiva === 'anuncios'" class="tab-content" style="animation: fadeIn 0.4s ease;">
+    <div class="section-title-wrapper">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m3 11 18-5v12L3 14v-3z"></path>
+        <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"></path>
+      </svg>
+      <h2>Tablón de Anuncios</h2>
+    </div>
+
+    <div *ngIf="anuncios.length === 0" class="empty-state-tab">
+      <p>No hay anuncios publicados para esta comunidad.</p>
+    </div>
+
+    <div *ngFor="let a of anuncios" class="card" style="margin-bottom: 20px; border-left: 5px solid" [style.border-left-color]="a.es_importante ? '#ef4444' : '#6366f1'">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+        <h4 style="margin: 0; font-weight: 800; color: #1e293b;">
+          {{ a.titulo }}
+          <span *ngIf="a.es_importante" class="badge" style="background: #fee2e2; color: #ef4444; margin-left: 10px;">IMPORTANTE</span>
+        </h4>
+      </div>
+      <p style="color: #475569; white-space: pre-wrap; margin-bottom: 15px;">{{ a.contenido }}</p>
+      <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">
+        Publicado el {{ a.fecha_publicacion | date:'dd/MM/yyyy HH:mm' }}
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="portal-loading" *ngIf="loading">
@@ -512,6 +548,7 @@
 .btn-action-minimalist:hover { color: #6366f1; transform: scale(1.1); }
 
 /* Nuevos estilos para la tabla de resumen de tesorería */
+.notification-badge { position: absolute; top: -5px; right: -5px; background: #ef4444; color: white; font-size: 0.7rem; font-weight: 800; padding: 2px 7px; border-radius: 10px; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
 .summary-cards-finanzas {
   display: grid;
   grid-template-columns: repeat(4, 1fr); /* Cuatro columnas para Saldo Anterior, Ingresos, Gastos, Saldo Actual */

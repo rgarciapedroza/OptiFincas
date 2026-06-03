@@ -71,12 +71,21 @@ import { ComunidadDB } from './models';
             </a>
           </div>
 
-          <div class="menu-group experimental">
-            <p class="group-title">Próximamente</p>
-            <div class="menu-item disabled">
+          <div class="menu-group">
+            <p class="group-title">Comunicación</p>
+            <a [routerLink]="['anuncios']" routerLinkActive="active" class="menu-item">
+              <div class="icon-box">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="m3 11 18-5v12L3 14v-3z"></path>
+                  <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"></path>
+                </svg>
+              </div>
+              <span>Tablón de Anuncios</span>
+            </a>
+            <a [routerLink]="['mensajes']" routerLinkActive="active" class="menu-item disabled">
               <div class="icon-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></div>
               <span>Centro de Mensajes</span>
-            </div>
+            </a>
           </div>
         </nav>
 

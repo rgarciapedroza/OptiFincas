@@ -86,6 +86,18 @@ export interface ComunidadDB {
   created_at?: string;
 }
 
+export interface Anuncio {
+  id?: number;
+  community_id: number;
+  titulo: string;
+  contenido: string;
+  es_importante: boolean;
+  fecha_publicacion?: string;
+  user_id?: string;
+  anuncios_leidos?: any;
+  is_read_by_me?: boolean;
+}
+
 export interface ExtractoProcesado {
   id: number;
   comunidad_id: number;
