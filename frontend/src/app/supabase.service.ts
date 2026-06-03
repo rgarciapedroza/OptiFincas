@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { createClient, SupabaseClient, AuthSession, AuthChangeEvent } from '@supabase/supabase-js';
 import { environment } from '../environments/environment';
 import { BehaviorSubject } from 'rxjs';
-import { Acta, Factura } from './models';
+import { Acta, Factura, Anuncio } from './models';
 
 @Injectable({
   providedIn: 'root',
@@ -159,12 +159,27 @@ export class SupabaseService {
   }
 
   async getPisos(communityId: number | string) {
-    const { data, error } = await this.supabase
-      .from('pisos')
-      .select('*')
-      .eq('community_id', communityId)
-      .order('codigo', { ascending: true });
-    return { data, error };
+    const { data: { session } } = await this.supabase.auth.getSession();
+    if (!session) throw new Error("No hay sesión activa");
+
+    try {
+      // Usamos el endpoint del backend que ya desencripta los datos
+      const response = await fetch(`/api/comunidades/${communityId}/pisos`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorBody = await response.json();
+        throw new Error(errorBody.detail || 'Error al obtener pisos');
+      }
+      const data = await response.json();
+      return { data, error: null };
+    } catch (err: any) {
+      console.error('Error en getPisos:', err);
+      return { data: null, error: err };
+    }
   }
 
   async verificarEmailAutorizado(email: string) {
@@ -608,5 +623,63 @@ export class SupabaseService {
       .from('facturas')
       .update({ nombre_archivo: nuevoNombre })
       .eq('id', facturaId);
+  }
+
+  // --- Métodos para Anuncios ---
+  async getAnuncios(communityId: number | string) {
+    return await this.supabase
+      .from('anuncios')
+      .select('*, anuncios_leidos(count)')
+      .eq('community_id', communityId)
+      .order('fecha_publicacion', { ascending: false });
+  }
+
+  async getLectoresAnuncio(anuncioId: number) {
+    return await this.supabase
+      .from('anuncios_leidos')
+      .select('fecha_lectura, profiles(email)')
+      .eq('anuncio_id', anuncioId);
+  }
+
+  async getAnunciosWithReadStatus(communityId: number | string, userId: string) {
+    const { data, error } = await this.supabase
+      .from('anuncios')
+      .select('*, anuncios_leidos(user_id)')
+      .eq('community_id', communityId)
+      .order('fecha_publicacion', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching anuncios with read status:', error);
+      return { data: null, error };
+    }
+
+    const anunciosWithReadStatus = (data || []).map(anuncio => ({
+      ...anuncio,
+      is_read_by_me: (anuncio.anuncios_leidos || []).some((readEntry: any) => readEntry.user_id === userId)
+    }));
+
+    return { data: anunciosWithReadStatus, error: null };
+  }
+
+  async markAnuncioAsRead(anuncioId: number, userId: string) {
+    return await this.supabase
+      .from('anuncios_leidos')
+      .upsert({ anuncio_id: anuncioId, user_id: userId }, { onConflict: 'anuncio_id,user_id' });
+  }
+
+  async createAnuncio(anuncio: Anuncio) {
+    const { data: { session } } = await this.supabase.auth.getSession();
+    if (!session) throw new Error("No hay sesión activa");
+    
+    return await this.supabase
+      .from('anuncios')
+      .insert([{ ...anuncio, user_id: session.user.id }]);
+  }
+
+  async deleteAnuncio(id: number) {
+    return await this.supabase
+      .from('anuncios')
+      .delete()
+      .eq('id', id);
   }
 }

@@ -82,6 +82,13 @@ import { ComunidadDB } from './models';
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="22"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
             Ver Informe Mensual
           </button>
+          <button [routerLink]="['../anuncios']" class="access-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m3 11 18-5v12L3 14v-3z"></path>
+              <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"></path>
+            </svg>
+            Tablón de Anuncios
+          </button>
         </div>
       </div>
     </div>
