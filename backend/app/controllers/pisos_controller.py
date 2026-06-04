@@ -138,23 +138,6 @@ def importar_censo_pisos_controller(community_id: int, file: UploadFile, user_id
 
 # --- Nuevas funciones CRUD para Pisos ---
 
-def get_pisos_by_community_controller(community_id: int):
-    """Obtiene todos los pisos de una comunidad y desencripta los datos."""
-    client = supabase_service_role_client if supabase_service_role_client else supabase_client
-    
-    # Añadimos ordenación por código directamente en la consulta a la DB
-    response = client.table("pisos").select("*").eq("community_id", community_id).order("codigo").execute()
-    
-    if not response.data:
-        return []
-
-    for piso in response.data:
-        piso["propietario"] = desencriptar_dato(piso.get("propietario"))
-        piso["telefono1"] = desencriptar_dato(piso.get("telefono1"))
-        piso["telefono2"] = desencriptar_dato(piso.get("telefono2"))
-        piso["observaciones"] = desencriptar_dato(piso.get("observaciones"))
-    return response.data
-
 def get_piso_controller(piso_id: int, user_id: str):
     """Obtiene un piso por su ID y desencripta los datos sensibles."""
     client = supabase_service_role_client if supabase_service_role_client else supabase_client
@@ -236,8 +219,20 @@ def create_piso_controller(piso_data: dict, user_id: str = None):
 
     client = supabase_service_role_client if supabase_service_role_client else supabase_client
     response = client.table("pisos").insert(datos_a_insertar).execute()
-    
+
     if response.data:
+        # Sincronización con el perfil si existe
+        new_piso = response.data[0]
+        if email:
+            profile_res = client.table("profiles").select("id").eq("email", email).maybe_single().execute()
+            if profile_res.data:
+                client.table("profiles").update({
+                    "full_name": propietario,
+                    "phone1": tel1,
+                    "phone2": tel2
+                }).eq("id", profile_res.data["id"]).execute()
+                logger.info(f"Perfil sincronizado tras creación de piso para {email}")
+
         return response.data[0]
     raise HTTPException(status_code=500, detail="Error al crear el piso")
 
@@ -309,6 +304,20 @@ def update_piso_controller(piso_id: int, piso_data: dict, user_id: str = None):
 
     if response.data:
         updated = response.data[0]
+
+        # Sincronización: Si el administrador cambia datos, actualizar el perfil vinculado
+        target_email = updated.get("email") or piso_data.get("email")
+        if target_email:
+            profile_res = client.table("profiles").select("id").eq("email", target_email).maybe_single().execute()
+            if profile_res.data:
+                profile_updates = {
+                    "full_name": desencriptar_dato(updated.get("propietario")),
+                    "phone1": desencriptar_dato(updated.get("telefono1")),
+                    "phone2": desencriptar_dato(updated.get("telefono2"))
+                }
+                client.table("profiles").update(profile_updates).eq("id", profile_res.data["id"]).execute()
+                logger.info(f"Perfil sincronizado tras actualización de censo para {target_email}")
+
         for field in ["propietario", "telefono1", "telefono2", "observaciones"]:
             updated[field] = desencriptar_dato(updated.get(field))
         return updated
@@ -334,3 +343,70 @@ def borrar_censo_comunidad_controller(community_id: int):
     client = supabase_service_role_client if supabase_service_role_client else supabase_client
     response = client.table("pisos").delete().eq("community_id", community_id).execute()
     return {"status": "success", "message": f"Se han eliminado {len(response.data)} registros del censo."}
+
+def get_pisos_by_community_controller(community_id: int):
+    """Obtiene todos los pisos de una comunidad y desencripta los datos, incluyendo info de perfil."""
+    client = supabase_service_role_client if supabase_service_role_client else supabase_client
+    
+    response = client.table("pisos").select("*").eq("community_id", community_id).order("codigo").execute()
+    
+    if not response.data:
+        return []
+
+    pisos_data = response.data
+    
+    # Recopilar todos los emails únicos de los pisos
+    unique_emails = {piso["email"].lower().strip() for piso in pisos_data if piso.get("email")}
+    
+    # Si hay emails, buscar los perfiles correspondientes
+    profiles_map = {}
+    if unique_emails:
+        profiles_res = client.table("profiles").select("email, full_name, avatar_url").in_("email", list(unique_emails)).execute()
+        if profiles_res.data:
+            profiles_map = {profile["email"].lower().strip(): profile for profile in profiles_res.data}
+
+    for piso in pisos_data:
+        piso["propietario"] = desencriptar_dato(piso.get("propietario"))
+        piso["telefono1"] = desencriptar_dato(piso.get("telefono1"))
+        piso["telefono2"] = desencriptar_dato(piso.get("telefono2"))
+        piso["observaciones"] = desencriptar_dato(piso.get("observaciones"))
+        
+        # Añadir datos del perfil si se encuentra una coincidencia por email
+        if piso.get("email") and piso["email"].lower().strip() in profiles_map:
+            profile_info = profiles_map[piso["email"].lower().strip()]
+            piso["profile_full_name"] = profile_info.get("full_name")
+            piso["profile_avatar_url"] = profile_info.get("avatar_url")
+        else:
+            piso["profile_full_name"] = None
+            piso["profile_avatar_url"] = None
+            
+    return pisos_data
+
+async def sync_pisos_from_profile_controller(user_id: str, full_name: str, phone1: str, phone2: str):
+    """
+    Sincroniza los cambios del perfil del usuario hacia la tabla de pisos.
+    """
+    client = supabase_service_role_client if supabase_service_role_client else supabase_client
+
+    # 1. Obtener el email del perfil para saber qué registros de 'pisos' actualizar
+    profile_res = client.table("profiles").select("email").eq("id", user_id).single().execute()
+    if not profile_res.data:
+        raise HTTPException(status_code=404, detail="Perfil no encontrado")
+    
+    email = profile_res.data.get("email")
+    
+    # 2. Preparar actualización (encriptando para proteger el censo)
+    updates = {}
+    if full_name:
+        updates["propietario"] = encriptar_dato(full_name)
+    if phone1 is not None:
+        updates["telefono1"] = encriptar_dato(phone1)
+    if phone2 is not None:
+        updates["telefono2"] = encriptar_dato(phone2)
+    
+    if not updates:
+        return {"status": "info", "message": "No hay datos de contacto para sincronizar"}
+
+    # 3. Actualizar todas las fincas que pertenezcan a este email
+    response = client.table("pisos").update(updates).eq("email", email).execute()
+    return {"status": "success", "message": f"Se han actualizado {len(response.data)} propiedades vinculadas a su perfil."}

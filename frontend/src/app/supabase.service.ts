@@ -422,6 +422,21 @@ export class SupabaseService {
       .single();
   }
 
+  async syncPisosFromProfile(userId: string, fullName: string, phone1: string | null, phone2: string | null) {
+    const { data: { session } } = await this.supabase.auth.getSession();
+    if (!session) throw new Error("No hay sesión activa");
+
+    return await fetch(`/api/profiles/${userId}/sync-pisos`, {
+      method: 'PUT',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ full_name: fullName, phone1: phone1, phone2: phone2 }),
+    });
+  }
+
+
   /**
    * Comprueba si una organización ya existe por nombre.
    */
@@ -623,6 +638,26 @@ export class SupabaseService {
       .from('facturas')
       .update({ nombre_archivo: nuevoNombre })
       .eq('id', facturaId);
+  }
+
+  async uploadAvatar(userId: string, file: File) {
+    const fileExt = file.name.split('.').pop();
+    // Generamos un nombre único para evitar problemas de caché
+    const fileName = `${userId}/${Date.now()}.${fileExt}`;
+    const filePath = `avatars/${fileName}`;
+
+    const { error: uploadError } = await this.supabase.storage
+      .from(this.BUCKET_NAME)
+      .upload(filePath, file, { upsert: true });
+
+    if (uploadError) throw uploadError;
+
+    // Obtenemos la URL pública para guardarla en el perfil
+    const { data: urlData } = this.supabase.storage
+      .from(this.BUCKET_NAME)
+      .getPublicUrl(filePath);
+
+    return urlData.publicUrl;
   }
 
   // --- Métodos para Anuncios ---

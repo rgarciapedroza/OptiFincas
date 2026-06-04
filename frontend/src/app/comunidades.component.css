@@ -2,7 +2,7 @@
 
 /* Contenedores y Tarjetas */
 .container { width: 100%; max-width: 1200px; margin: 0 auto; }
-n en .card-container { background: white; border-radius: 16px; padding: 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); border: 1px solid #f1f5f9; max-width: 900px; margin: 0 auto; }
+.card-container { background: white; border-radius: 16px; padding: 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); border: 1px solid #f1f5f9; max-width: 900px; margin: 0 auto; }
 .section-title { color: #111827; margin-bottom: 25px; font-weight: 600; display: flex; align-items: center; gap: 10px; font-size: 1.25rem; }
 
 /* Botones */

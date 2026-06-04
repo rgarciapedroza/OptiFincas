@@ -18,6 +18,7 @@ import { ComunidadFacturasComponent } from './comunidad-facturas.component';
 import { ComunidadLimpiezaComponent } from './comunidad-limpieza.component';
 import { ComunidadPisoMovimientosComponent } from './comunidad-piso-movimientos.component';
 import { ComunidadAnunciosComponent } from './comunidad-anuncios.component';
+import { PerfilComponent } from './perfil.component';
 import { LandingComponent } from './landing.component';
 import { ComunidadOverviewComponent } from './comunidad-overview.component';
 import { GestionEquipoComponent } from './gestion-equipo.component';
@@ -44,6 +45,7 @@ import { AppRoutingModule } from './app-routing.module';
     ComunidadLimpiezaComponent,
     ComunidadPisoMovimientosComponent, // Add this
     ComunidadAnunciosComponent,
+    PerfilComponent,
     GestionEquipoComponent,
     ComunidadOverviewComponent,
     EsperandoAprobacionComponent,
