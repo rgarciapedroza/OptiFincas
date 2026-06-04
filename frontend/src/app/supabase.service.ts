@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { createClient, SupabaseClient, AuthSession, AuthChangeEvent } from '@supabase/supabase-js';
 import { environment } from '../environments/environment';
 import { BehaviorSubject } from 'rxjs';
-import { Acta, Factura, Anuncio } from './models';
+import { Acta, Factura, Anuncio, Profile } from './models';
 
 @Injectable({
   providedIn: 'root',
@@ -448,6 +448,31 @@ export class SupabaseService {
       .maybeSingle();
   }
 
+  /**
+   * Obtiene todos los perfiles registrados en el sistema (Solo para SuperAdmin)
+   */
+  async getAllProfiles() {
+    // Usamos el nombre de la columna organizacion_id para forzar el join correcto
+    return await this.supabase
+      .from('profiles')
+      .select('*, organizations:organizacion_id(nombre)')
+      .order('email', { ascending: true }); // Ordenamos por email por seguridad
+  }
+
+  /**
+   * Obtiene estadísticas globales para el SuperAdmin
+   */
+  async getGlobalStats() {
+    const { count: orgs } = await this.supabase.from('organizations').select('*', { count: 'exact', head: true });
+    const { count: communities } = await this.supabase.from('comunidades').select('*', { count: 'exact', head: true });
+    const { count: owners } = await this.supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'owner').eq('status', 'approved');
+    return { 
+      orgs: orgs ?? 0, 
+      communities: communities ?? 0, 
+      owners: owners ?? 0 
+    };
+  }
+
   async registerProfessional(email: string, pass: string, orgName: string) {
     // El trigger handle_new_user_signup se encargará de crear la organización y el perfil
     // Pasamos los metadatos necesarios para que el trigger sepa qué hacer
@@ -491,6 +516,51 @@ export class SupabaseService {
       .select('*')
       .eq('organizacion_id', orgId)
       .eq('status', 'pending');
+  }
+
+  /**
+   * Obtiene todas las solicitudes de registro de nuevos profesionales (dueños de empresas)
+   * que están pendientes de aprobación por el administrador global.
+   */
+  async getGlobalPendingRequests() {
+    return await this.supabase
+      .from('profiles')
+      .select('*, organizations:organizacion_id(nombre)')
+      .eq('role', 'owner')
+      .eq('status', 'pending');
+  }
+
+  async responderSolicitudRegistroEmpresa(profileId: string, status: 'approved' | 'denied') {
+    return await this.supabase
+      .from('profiles')
+      .update({ status: status })
+      .eq('id', profileId);
+  }
+
+  /**
+   * Lógica atómica para eliminar una empresa y bloquear al dueño.
+   * SOLID: Encapsula la lógica de negocio fuera del componente.
+   */
+  async eliminarEmpresaCompleta(usuario: Profile) {
+    // 1. Si hay organización, se borra. Gracias al CASCADE de SQL, 
+    // se borrarán comunidades, censo, actas, etc.
+    if (usuario.organizacion_id) {
+      const { error: orgErr } = await this.deleteOrganization(usuario.organizacion_id);
+      if (orgErr) return { error: orgErr };
+    }
+
+    // 2. Desactivamos al usuario principal
+    return await this.updateProfile(usuario.id, { 
+      status: 'denied', 
+      organizacion_id: null 
+    });
+  }
+
+  async deleteOrganization(orgId: string) {
+    return await this.supabase
+      .from('organizations')
+      .delete()
+      .eq('id', orgId);
   }
 
   /**

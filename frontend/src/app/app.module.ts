@@ -22,6 +22,7 @@ import { PerfilComponent } from './perfil.component';
 import { LandingComponent } from './landing.component';
 import { ComunidadOverviewComponent } from './comunidad-overview.component';
 import { GestionEquipoComponent } from './gestion-equipo.component';
+import { SuperAdminDashboardComponent } from './super-admin-dashboard.component';
 import { EsperandoAprobacionComponent } from './esperando-aprobacion.component';
 import { ModalService } from './modal.service';
 import { LegalComponent } from './legal.component';
@@ -45,6 +46,7 @@ import { AppRoutingModule } from './app-routing.module';
     ComunidadLimpiezaComponent,
     ComunidadPisoMovimientosComponent, // Add this
     ComunidadAnunciosComponent,
+    SuperAdminDashboardComponent,
     PerfilComponent,
     GestionEquipoComponent,
     ComunidadOverviewComponent,
