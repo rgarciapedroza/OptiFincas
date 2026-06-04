@@ -85,7 +85,7 @@ export class PortalPropietarioComponent implements OnInit {
           this.userName = this.userPisos[0].propietario || 'Propietario';
           
           // Pre-seleccionar la primera propiedad y cargar sus datos de comunidad (incluida la Junta)
-           this.selectedPiso = this.userPisos[0];
+          this.selectedPiso = this.userPisos[0];
           this.updateMonthLabels();
           await Promise.all([
             this.loadFinanzas(),
@@ -140,24 +140,18 @@ export class PortalPropietarioComponent implements OnInit {
 
   async loadAnuncios() {
     const communityId = this.selectedPiso?.comunidades?.id || this.selectedPiso?.community_id;
-    if (!communityId) {
-      console.warn('[PORTAL] No se detectó ID de comunidad para cargar anuncios');
-      return;
-    }
+    if (!communityId) return;
 
     const session = await this.supabase.getSession();
     if (!session) return;
-    const userId = session.user.id;
     
-    console.log('[PORTAL PROPIETARIO] Cargando anuncios para communityId:', communityId, 'y userId:', userId);
-    const { data } = await this.supabase.getAnunciosWithReadStatus(communityId, userId);
+    const { data } = await this.supabase.getAnunciosWithReadStatus(communityId, session.user.id);
     this.anuncios = data || [];
-    console.log('[PORTAL PROPIETARIO] Anuncios cargados:', this.anuncios);
 
-    // Contamos como no leídos aquellos que no tienen el registro en la DB
+    // Contamos anuncios no leídos según el estado de la base de datos
     this.nuevosAnunciosCount = this.anuncios.filter(a => !a.is_read_by_me).length;
 
-    // Si el usuario ya está viendo anuncios, los marcamos todos como leídos
+    // Si el usuario ya está en la sección de anuncios, los marcamos como leídos automáticamente
     if (this.seccionPrincipalActiva === 'anuncios') {
       this.marcarTodosAnunciosComoLeidos();
     }
@@ -199,9 +193,9 @@ export class PortalPropietarioComponent implements OnInit {
   }
 
   async setSeccionPrincipal(seccion: 'mis-propiedades' | 'mis-recibos' | 'finanzas' | 'limpieza' | 'contactar' | 'actas' | 'facturas' | 'anuncios') {
-    // Si el usuario entra en la sección de anuncios, limpiamos las notificaciones (basado en localStorage)
+    // Si el usuario entra en la sección de anuncios, limpiamos las notificaciones
     if (seccion === 'anuncios') {
-      this.marcarTodosAnunciosComoLeidos();
+      await this.marcarTodosAnunciosComoLeidos();
     }
 
     // Navegación mediante router para cumplir con el requisito de "páginas distintas"

@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { SupabaseService } from './supabase.service';
 import { ModalService } from './modal.service';
-import { Piso } from './models'; // Importamos solo lo necesario para determinarPropietario
+import { Piso, Profile } from './models'; // Importamos solo lo necesario para determinarPropietario
 
 @Component({
   selector: 'app-root',
@@ -47,6 +47,7 @@ import { Piso } from './models'; // Importamos solo lo necesario para determinar
 })
 export class AppComponent implements OnInit {
   session: any = null;
+  userProfile: Profile | null = null;
   loadingSession = true;
   error = ''; // Para errores de autenticación globales
   userRole: 'admin' | 'propietario' | null = null;
@@ -138,6 +139,7 @@ export class AppComponent implements OnInit {
 
   private limpiarEstadoSesion() {
     this.session = null;
+    this.userProfile = null;
     this.userRole = null;
     this.notificacionesEquipo = 0;
     this.specificRole = null;
@@ -151,12 +153,14 @@ export class AppComponent implements OnInit {
     try {
       // Consultamos el perfil real y capturamos el error para diagnóstico
       const { data: profile, error: profileError } = await this.supabase.getProfile(this.session.user.id);
+      this.userProfile = profile;
 
       if (profileError || !profile) {
         console.error('[AUTH] Error recuperando perfil:', profileError);
         
         // SI EL USUARIO NO EXISTE EN AUTH (Error 500 de sub claim), FORZAMOS CIERRE
         if (profileError?.message?.includes('sub claim') || (profileError as any)?.status === 403 || !profile) {
+
           console.warn('[AUTH] Sesión huérfana detectada. Limpiando...');
           await this.supabase.signOut();
           this.limpiarEstadoSesion();

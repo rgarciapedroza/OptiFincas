@@ -14,16 +14,18 @@ import { ComunidadFacturasComponent } from './comunidad-facturas.component';
 import { ComunidadLimpiezaComponent } from './comunidad-limpieza.component';
 import { ComunidadPisoMovimientosComponent } from './comunidad-piso-movimientos.component';
 import { ComunidadAnunciosComponent } from './comunidad-anuncios.component';
+import { PerfilComponent } from './perfil.component';
 import { LandingComponent } from './landing.component';
 import { ComunidadOverviewComponent } from './comunidad-overview.component';
 import { LegalComponent } from './legal.component';
 import { GestionEquipoComponent } from './gestion-equipo.component';
- import { EsperandoAprobacionComponent } from './esperando-aprobacion.component';
+import { EsperandoAprobacionComponent } from './esperando-aprobacion.component';
 
 const routes: Routes = [
   { path: '', component: LandingComponent, title: 'OptiFincas - Bienvenidos' },
   { path: 'login', component: AuthComponent, title: 'OptiFincas - Login' },
   { path: 'comunidades', component: ComunidadesComponent },
+  { path: 'perfil', component: PerfilComponent },
   { 
     path: 'comunidades/:id', 
     component: ComunidadDashboardComponent,

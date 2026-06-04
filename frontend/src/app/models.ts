@@ -11,6 +11,10 @@ export interface Profile {
   role: 'owner' | 'admin' | 'propietario';
   organizacion_id?: string;
   status?: 'pending' | 'approved' | 'denied';
+  full_name?: string;
+  phone1?: string; // Nuevo campo para el teléfono 1
+  phone2?: string; // Nuevo campo para el teléfono 2
+  avatar_url?: string;
 }
 
 // Definición de interfaz para Detalle Histórico
@@ -63,6 +67,8 @@ export interface Piso {
   email?: string;
   observaciones?: string;
   cargo?: string;
+  profile_full_name?: string; // Full name from the associated profile
+  profile_avatar_url?: string; // Avatar URL from the associated profile
 }
 
 export interface Community {

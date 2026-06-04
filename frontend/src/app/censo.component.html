@@ -35,7 +35,13 @@
         <tr *ngFor="let miembro of juntaGobierno">
           <td style="font-weight: 600;">{{ miembro.cargo }}</td>
           <td>{{ miembro.codigo }}</td>
-          <td>{{ miembro.propietario || '-' }}</td>
+          <td>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <img *ngIf="miembro.profile_avatar_url" [src]="miembro.profile_avatar_url" class="profile-avatar-small" alt="Avatar" />
+              <div *ngIf="!miembro.profile_avatar_url" class="profile-avatar-placeholder-small"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></div>
+              <span>{{ miembro.profile_full_name || miembro.propietario || '-' }}</span>
+            </div>
+          </td>
           <td>{{ miembro.email || '-' }}</td>
           <td>
             <span *ngIf="miembro.telefono1">{{ miembro.telefono1 }}</span>
@@ -73,7 +79,13 @@
     <tbody>
       <tr *ngFor="let p of pisos">
         <td style="font-weight: 700;">{{ p.codigo }}</td>
-        <td>{{ p.propietario || '-' }}</td>
+        <td>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <img *ngIf="p.profile_avatar_url" [src]="p.profile_avatar_url" class="profile-avatar-small" alt="Avatar" />
+            <div *ngIf="!p.profile_avatar_url" class="profile-avatar-placeholder-small"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></div>
+            <span>{{ p.profile_full_name || p.propietario || '-' }}</span>
+          </div>
+        </td>
         <td>{{ p.email || '-' }}</td>
         <td style="text-align: center; white-space: nowrap;">
           <button class="btn-action btn-info" (click)="verMovimientosPropietario(p)" title="Ver Movimientos">

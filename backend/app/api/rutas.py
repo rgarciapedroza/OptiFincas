@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, UploadFile, File, Form, Body, HTTPException
 from typing import List, Dict, Optional, Any, Union
 from app.controllers.movimientos_bancarios_controller import importar_movimientos_controller, get_movimientos_by_community_controller, eliminar_extracto_controller, get_extractos_by_community_controller, get_finanzas_comunidad_controller
-from app.controllers.pisos_controller import importar_censo_pisos_controller, get_piso_controller, create_piso_controller, update_piso_controller, delete_piso_controller, borrar_censo_comunidad_controller, get_pisos_by_community_controller, buscar_piso_por_email_controller
+from app.controllers.pisos_controller import importar_censo_pisos_controller, get_piso_controller, create_piso_controller, update_piso_controller, delete_piso_controller, borrar_censo_comunidad_controller, get_pisos_by_community_controller, buscar_piso_por_email_controller, sync_pisos_from_profile_controller
 from app.controllers.extracto_controller import procesar_extracto_db_controller, confirmar_controller, descargar_controller, descargar_excel_controller, entrenar_controller, opciones_controller, persistir_extracto_db_controller
 from app.servicios.auth_supabase import get_current_user
 from app.schemas import PisoCreate, PisoUpdate, FinanzasReportRequest, MovimientoClasificado
@@ -145,6 +145,19 @@ async def delete_piso_route(
 ):
     """Elimina un piso por su ID."""
     return delete_piso_controller(piso_id, user_id)
+
+@router.put(
+    "/profiles/{user_id}/sync-pisos",
+    tags=["Pisos", "Perfiles"],
+    summary="Sincronizar datos de pisos desde el perfil del usuario"
+)
+async def sync_pisos_from_profile_route(
+    user_id: str,
+    data: Dict = Body(...),
+    current_user_id: str = Depends(get_current_user)
+):
+    """Sincroniza el teléfono del perfil con los registros del censo."""
+    return await sync_pisos_from_profile_controller(user_id, data.get("full_name"), data.get("phone1"), data.get("phone2"))
 
 @router.put("/movimientos/batch", tags=["Movimientos"])
 async def update_movimientos_batch_route(data: Dict = Body(...), user_id: str = Depends(get_current_user)):

@@ -10,8 +10,14 @@
     <!-- SIDEBAR: Solo visible si hay sesión activa Y no estamos en la landing page ni login -->
     <aside class="sidebar" *ngIf="session && router.url !== '/' && !router.url.includes('login')">
       <div class="sidebar-header">
-        <img src="assets/logo.png" class="sidebar-logo" alt="OptiFincas">
-        <h2 class="sidebar-title">OptiFincas</h2>
+        <img *ngIf="userProfile?.avatar_url; else defaultLogo" [src]="userProfile?.avatar_url" class="sidebar-logo" style="object-fit: cover; border-radius: 50%;">
+        <ng-template #defaultLogo>
+          <img src="assets/logo.png" class="sidebar-logo" alt="OptiFincas">
+        </ng-template>
+        <div class="sidebar-title-container" style="display: flex; flex-direction: column; overflow: hidden;">
+          <h2 class="sidebar-title" style="margin: 0; line-height: 1;">OptiFincas</h2>
+          <span *ngIf="userProfile?.full_name" class="sidebar-label" style="font-size: 0.7rem; color: #94a3b8; margin-top: 4px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">{{ userProfile?.full_name }}</span>
+        </div>
       </div>
       <nav>
         <button *ngIf="userRole === 'admin'" class="sidebar-btn" routerLink="/clasificador" routerLinkActive="active">
@@ -43,6 +49,10 @@
         </button>
       </nav>
       <div class="logout-section">
+        <button class="sidebar-btn" routerLink="/perfil" routerLinkActive="active" style="margin-bottom: 5px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          <span class="sidebar-label">Perfil</span>
+        </button>
         <button class="sidebar-btn" (click)="logout()" style="color: #ef4444;">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
           <span class="sidebar-label">Salir</span>
