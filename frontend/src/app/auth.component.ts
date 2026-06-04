@@ -184,6 +184,14 @@ export class AuthComponent implements OnInit {
             return;
           }
 
+          // 1.5. Verificar si el nombre del despacho ya está en uso por otra empresa
+          const { data: orgExists } = await this.supabase.verificarOrganizacionExiste(this.orgName);
+          if (orgExists) {
+            this.error = 'Este nombre de despacho ya está registrado. Si eres un empleado, contacta con tu administrador.';
+            this.loading = false;
+            return;
+          }
+
           // 2. Si el perfil NO existe, procedemos con el registro normal
           const { error } = await this.supabase.signUp(this.email, this.password, {
             data: { is_professional: true, org_name: this.orgName }

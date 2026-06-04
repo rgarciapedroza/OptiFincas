@@ -219,12 +219,12 @@ def create_piso_controller(piso_data: dict, user_id: str = None):
 
     client = supabase_service_role_client if supabase_service_role_client else supabase_client
     response = client.table("pisos").insert(datos_a_insertar).execute()
-
+    
     if response.data:
         # Sincronización con el perfil si existe
-        new_piso = response.data[0]
         if email:
-            profile_res = client.table("profiles").select("id").eq("email", email).maybe_single().execute()
+            target_email = email.lower().strip()
+            profile_res = client.table("profiles").select("id").eq("email", target_email).maybe_single().execute()
             if profile_res.data:
                 client.table("profiles").update({
                     "full_name": propietario,
@@ -393,7 +393,7 @@ async def sync_pisos_from_profile_controller(user_id: str, full_name: str, phone
     if not profile_res.data:
         raise HTTPException(status_code=404, detail="Perfil no encontrado")
     
-    email = profile_res.data.get("email")
+    email = profile_res.data.get("email").lower().strip()
     
     # 2. Preparar actualización (encriptando para proteger el censo)
     updates = {}

@@ -8,13 +8,14 @@ export interface Organization {
 export interface Profile {
   id: string;
   email: string;
-  role: 'owner' | 'admin' | 'propietario';
+  role: 'owner' | 'admin' | 'propietario' | 'superadmin';
   organizacion_id?: string;
   status?: 'pending' | 'approved' | 'denied';
   full_name?: string;
   phone1?: string; // Nuevo campo para el teléfono 1
   phone2?: string; // Nuevo campo para el teléfono 2
   avatar_url?: string;
+  organizations?: any; // Datos vinculados de la empresa
 }
 
 // Definición de interfaz para Detalle Histórico

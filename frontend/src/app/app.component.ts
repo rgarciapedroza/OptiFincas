@@ -155,12 +155,18 @@ export class AppComponent implements OnInit {
       const { data: profile, error: profileError } = await this.supabase.getProfile(this.session.user.id);
       this.userProfile = profile;
 
-      if (profileError || !profile) {
+      if (profileError) {
         console.error('[AUTH] Error recuperando perfil:', profileError);
         
-        // SI EL USUARIO NO EXISTE EN AUTH (Error 500 de sub claim), FORZAMOS CIERRE
-        if (profileError?.message?.includes('sub claim') || (profileError as any)?.status === 403 || !profile) {
-
+        // Error de recursión o error interno (500): NO CERRAR SESIÓN
+        if (profileError.message?.includes('recursion') || (profileError as any).status === 500) {
+          this.error = 'Error de base de datos (RLS Recursion). Por favor, ejecute el script SQL de limpieza.';
+          this.loading = false;
+          return;
+        }
+        
+        // Solo cerramos sesión si es un error de permisos (403) o el usuario no existe (406)
+        if ((profileError as any).status === 403 || (profileError as any).status === 406) {
           console.warn('[AUTH] Sesión huérfana detectada. Limpiando...');
           await this.supabase.signOut();
           this.limpiarEstadoSesion();
@@ -172,10 +178,39 @@ export class AppComponent implements OnInit {
         return;
       }
 
-      if (profile && (profile.role === 'admin' || profile.role === 'owner')) {
-        // SEGURIDAD: Si está pendiente, no puede entrar al sistema de gestión
-        if (profile.status === 'pending') {
-          this.router.navigate(['/esperando-aprobacion'], { queryParams: { empresa: profile.organizacion_id ? 'su organización' : 'una organización', status: profile.status } });
+      if (!profile) {
+        console.warn('[AUTH] Perfil no encontrado para el usuario logueado.');
+        await this.determinarPropietario(email);
+        return;
+      }
+
+      if (profile && (profile.role === 'admin' || profile.role === 'owner' || profile.role === 'superadmin')) {
+        
+        // 1. Manejo de SuperAdmin (Acceso Global)
+        if (profile.role === 'superadmin') {
+          this.userRole = null; 
+          this.specificRole = 'superadmin';
+          profile.status = 'approved';
+
+          const rutasRestringidas = ['comunidades', 'optimizacion', 'clasificador', 'equipo'];
+          const urlActual = this.router.url;
+          if (urlActual === '/' || urlActual.includes('login') || rutasRestringidas.some(r => urlActual.includes(r)) || this.isValidating) {
+            await this.router.navigate(['/admin-global']);
+          }
+          this.loading = false;
+          return;
+        }
+
+        // 2. Control de Acceso Profesional (SOLID: Fail-fast principle)
+        // Si el estado no es estrictamente 'approved', redirigimos a la página de bloqueo/espera
+        if (profile.status !== 'approved') {
+          console.warn(`[AUTH] Acceso restringido. Estado actual: ${profile.status}`);
+          this.router.navigate(['/esperando-aprobacion'], { 
+            queryParams: { 
+              empresa: profile.role === 'owner' ? 'tu nuevo despacho' : 'la organización', 
+              status: profile.status 
+            } 
+          });
           this.loading = false;
           return;
         }
