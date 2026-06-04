@@ -94,7 +94,8 @@ import { UtilsService } from './utils.service';
               <th>ORDENANTE</th>
               <th>CONCEPTO ORIGINAL</th>
               <th style="text-align: right;">IMPORTE</th>
-              <th style="text-align: center;">CONCEPTO</th>
+              <th style="text-align: center;">CONCEPTO / ASIGNACIÓN</th>
+              <th style="text-align: center;">ACCIONES</th>
             </tr>
           </thead>
           <tbody>
@@ -106,9 +107,14 @@ import { UtilsService } from './utils.service';
                 {{ mov.importe | number:'1.2-2' }}€
               </td>
               <td style="text-align: center;">
-                <div style="display: flex; align-items: center; justify-content: center; width: 100%;">
-                  <input [(ngModel)]="mov.CONCEPTO" (ngModelChange)="cambiosRealizados = true" class="input-concepto-edit" style="text-align: center;">
-                </div>
+                <span class="badge">
+                  {{ mov.CONCEPTO || 'Sin asignar' }}
+                </span>
+              </td>
+              <td style="text-align: center;">
+                <button class="btn-action" (click)="abrirEdicion(mov)" title="Editar Concepto" style="color: #6366f1;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                </button>
               </td>
             </tr>
           </tbody>
@@ -120,6 +126,44 @@ import { UtilsService } from './utils.service';
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
             Exportar Excel Mensual
           </button>
+        </div>
+      </div>
+
+      <!-- Modal de Edición de Movimiento -->
+      <div class="modal-overlay" *ngIf="mostrarModalEdicion" style="z-index: 1100;">
+        <div class="modal-card" style="max-width: 500px;">
+          <div class="modal-header">
+            <h3>Editar Asignación</h3>
+            <button class="btn-action" (click)="cerrarEdicion()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+          </div>
+          <div class="modal-body" *ngIf="movimientoEnEdicion">
+            <div style="background: #f8fafc; padding: 15px; border-radius: 10px; margin-bottom: 20px; font-size: 0.9rem;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                <span style="color: #64748b;">Fecha:</span>
+                <span style="font-weight: 600;">{{ movimientoEnEdicion.fecha | date:'dd/MM/yyyy' }}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                <span style="color: #64748b;">Importe:</span>
+                <span style="font-weight: 700;">{{ movimientoEnEdicion.importe | number:'1.2-2' }}€</span>
+              </div>
+              <div style="border-top: 1px solid #e2e8f0; margin-top: 10px; padding-top: 10px;">
+                <label style="display: block; color: #64748b; font-size: 0.75rem; text-transform: uppercase; margin-bottom: 4px;">Concepto Original</label>
+                <div style="color: #1e293b; font-style: italic;">{{ movimientoEnEdicion.concepto_original }}</div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>{{ movimientoEnEdicion.tipo === 'ingreso' ? 'Identificación del Piso' : 'Categoría del Gasto' }}</label>
+              <input [(ngModel)]="tempConcepto" 
+                     [placeholder]="movimientoEnEdicion.tipo === 'ingreso' ? 'Ej: 1º A' : 'Ej: Reparación Ascensor'" 
+                     class="input-concepto-edit" 
+                     (keyup.enter)="confirmarEdicion()">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" (click)="cerrarEdicion()">Cancelar</button>
+            <button class="btn btn-primary" (click)="confirmarEdicion()">Aplicar Cambio</button>
+          </div>
         </div>
       </div>
 
@@ -142,6 +186,11 @@ export class ComunidadExtractosComponent implements OnInit {
   ordenFecha: 'asc' | 'desc' = 'desc';
   cambiosRealizados = false;
   loading = false;
+
+  // Estado del modal de edición
+  mostrarModalEdicion = false;
+  movimientoEnEdicion: any = null;
+  tempConcepto: string = '';
 
   constructor(
     private route: ActivatedRoute, 
@@ -196,6 +245,25 @@ export class ComunidadExtractosComponent implements OnInit {
 
   toggleOrdenFecha() {
     this.ordenFecha = this.ordenFecha === 'desc' ? 'asc' : 'desc';
+  }
+
+  abrirEdicion(mov: any) {
+    this.movimientoEnEdicion = mov;
+    this.tempConcepto = mov.CONCEPTO;
+    this.mostrarModalEdicion = true;
+  }
+
+  cerrarEdicion() {
+    this.mostrarModalEdicion = false;
+    this.movimientoEnEdicion = null;
+  }
+
+  confirmarEdicion() {
+    if (this.movimientoEnEdicion.CONCEPTO !== this.tempConcepto) {
+      this.movimientoEnEdicion.CONCEPTO = this.tempConcepto;
+      this.cambiosRealizados = true;
+    }
+    this.cerrarEdicion();
   }
 
   async changeMonthExtractos(delta: number) {
