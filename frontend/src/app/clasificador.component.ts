@@ -1,8 +1,9 @@
 import { Component, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { SupabaseService } from './supabase.service';
-import { ComunidadDB } from './models';
+import { ComunidadDB, ExtractoProcesado } from './models';
 import { UtilsService } from './utils.service';
+import { ModalService } from './modal.service';
 
 @Component({
   selector: 'app-clasificador',
@@ -26,7 +27,12 @@ export class ClasificadorComponent implements OnInit {
   historicalTooltipContent = '';
   loadingMessage = 'Procesando...';
 
-  constructor(private http: HttpClient, private supabase: SupabaseService, public utils: UtilsService) {}
+  constructor(
+    private http: HttpClient, 
+    private supabase: SupabaseService, 
+    public utils: UtilsService,
+    private modalService: ModalService
+  ) {}
 
   async ngOnInit() {
     await this.cargarComunidades();
@@ -71,6 +77,22 @@ export class ClasificadorComponent implements OnInit {
 
   async guardarEnBaseDeDatos() {
     if (!this.clasificadorCommunityId) return;
+
+    // 1. Verificar si ya existe un registro para este mes y año en esta comunidad
+    const { data: existing } = await this.supabase.getExtractosByCommunity(this.clasificadorCommunityId);
+    const duplicado = (existing || []).find((e: ExtractoProcesado) => 
+      e.mes_contable === this.currentExtractoMes && 
+      e.anio_contable === this.currentExtractoAnio
+    );
+
+    if (duplicado) {
+      const mesTxt = this.utils.getMesNombre(this.currentExtractoMes);
+      const ok = await this.modalService.showConfirm('Mes ya registrado', 
+        `Ya existe información contable para ${mesTxt} de ${this.currentExtractoAnio}. Si continúas, la información anterior se borrará y se sobrescribirá con estos nuevos datos. ¿Estás seguro?`);
+      
+      if (!ok) return; // Detenemos el proceso si el usuario cancela
+    }
+    
     this.loading = true;
     this.loadingMessage = 'Guardando...';
 
@@ -92,7 +114,7 @@ export class ClasificadorComponent implements OnInit {
         }))
       };
 
-      await this.http.post('/api/persistir-extracto', payload).toPromise();
+      await this.supabase.persistirExtracto(payload);
       this.pantallaActual = 3;
     } catch (err: any) {
       this.error = 'Error al persistir los datos: ' + (err.message || 'Error desconocido');

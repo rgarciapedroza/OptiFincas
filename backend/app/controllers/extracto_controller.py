@@ -256,13 +256,23 @@ async def persistir_extracto_db_controller(data: dict):
     try:
         community_id = data.get("community_id")
         movimientos = data.get("movimientos", [])
+        mes = data.get("mes")
+        anio = data.get("anio")
+
+        # 0. Limpiar duplicados previos para asegurar la sobrescritura
+        if community_id and mes is not None and anio is not None:
+            supabase_service_role_client.table("extractos_procesados").delete() \
+                .eq("comunidad_id", int(community_id)) \
+                .eq("mes_contable", int(mes)) \
+                .eq("anio_contable", int(anio)) \
+                .execute()
         
         # 1. Crear el extracto padre
         extracto_payload = {
             "comunidad_id": community_id,
             "nombre_archivo": data.get("nombre_archivo", "Extracto IA"),
-            "mes_contable": data.get("mes"),
-            "anio_contable": data.get("anio"),
+            "mes_contable": mes,
+            "anio_contable": anio,
             "fecha_subida": datetime.now().isoformat()
         }
         
