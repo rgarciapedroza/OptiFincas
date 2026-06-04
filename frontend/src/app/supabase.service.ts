@@ -410,6 +410,25 @@ export class SupabaseService {
       .maybeSingle();
   }
 
+  /**
+   * Envía los resultados de la IA al backend para su persistencia segura.
+   * SOLID: Centraliza la lógica de comunicación con la API.
+   */
+  async persistirExtracto(payload: any) {
+    const { data: { session } } = await this.supabase.auth.getSession();
+    if (!session) throw new Error("No hay sesión activa");
+
+    const response = await fetch('/api/persistir-extracto', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${session.access_token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+    return response.json();
+  }
+
   async updateProfile(id: string, updates: any) {
     return await this.supabase.from('profiles').update(updates).eq('id', id);
   }
@@ -463,9 +482,10 @@ export class SupabaseService {
    * Obtiene estadísticas globales para el SuperAdmin
    */
   async getGlobalStats() {
-    const { count: orgs } = await this.supabase.from('organizations').select('*', { count: 'exact', head: true });
-    const { count: communities } = await this.supabase.from('comunidades').select('*', { count: 'exact', head: true });
-    const { count: owners } = await this.supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'owner').eq('status', 'approved');
+    // Optimizamos pidiendo solo 'id' en lugar de '*' para evitar conflictos de RLS con columnas específicas
+    const { count: orgs } = await this.supabase.from('organizations').select('id', { count: 'exact', head: true });
+    const { count: communities } = await this.supabase.from('comunidades').select('id', { count: 'exact', head: true });
+    const { count: owners } = await this.supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'owner').eq('status', 'approved');
     return { 
       orgs: orgs ?? 0, 
       communities: communities ?? 0, 
