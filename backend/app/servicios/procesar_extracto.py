@@ -6,7 +6,7 @@ from fastapi import UploadFile, HTTPException
 from typing import Dict, Optional, List
 from app.adaptadores.csv_bbva import leer_extracto_csv
 from app.adaptadores.excel_bbva import leer_extracto_excel
-from app.procesamiento.buscar_pisos import find_col_by_keywords
+from app.procesamiento.buscar_pisos import find_col_by_keywords, extraer_piso
 
 
 def detectar_columnas(df: pd.DataFrame) -> Dict[str, str]:
@@ -177,35 +177,19 @@ def cargar_registros_a_excel(registros: UploadFile):
     return pd.ExcelFile(io.BytesIO(contenido))
 
 
-def buscar_piso_regex_en_fila(row: pd.Series, columnas: Dict[str, str]):
+def buscar_piso_regex_en_fila(row: pd.Series, columnas: Dict[str, str], community_id: Optional[int] = None):
     """
     Busca un patrón de piso (ej: 2J, 01-A, B3) en varias columnas del registro.
     """
     # Columnas donde buscar, en orden de prioridad
     columnas_a_revisar = ["ordenante", "concepto", "observaciones", "texto_mezclado"]
     
-    # Patrones sincronizados con clasificador_ml.py
-    patrones = [
-        r'\b(?:PISO|PIZO|PIS0)\s*(\d{1,2}\s*[A-Z]?)\b',
-        r'\b(?:PLANTA|PLNTA|PLTA)\s*(\d{1,2}\s*[A-Z]?)\b',
-        r'\bP\.?\s*(\d{1,2}\s*[A-Z]?)\b',
-        r'\bPL\.?\s*(\d{1,2}\s*[A-Z]?)\b',
-        r'\b(\d{1,2}\s*[-/]\s*[A-Z])\b',
-        r'\b(\d{1,2}\s*[A-Z])\b',
-        r'\b(\d{1,2}\s*(?:IZQUIERDA|IZQ|DERECHA|DRCHA|DCHA|EXTERIOR|EXT|INTERIOR|INT))\b',
-        r'\b(\d{1,2}[ºª]\s*[A-Z]?)\b',
-    ]
-
     for col_key in columnas_a_revisar:
         col_name = columnas.get(col_key)
         if col_name:
             texto = str(row.get(col_name, "")).strip()
-            if texto and texto.lower() != 'nan':
-                for pat in patrones:
-                    m = re.search(pat, texto, re.IGNORECASE)
-                    if m:
-                        # Retornar el primer grupo capturado (el valor del piso)
-                        for group in m.groups():
-                            if group:
-                                return re.sub(r"[\s\-/ºª]", "", str(group)).upper()
+            piso_encontrado = extraer_piso(texto, community_id)
+            if piso_encontrado:
+                return piso_encontrado
+
     return None

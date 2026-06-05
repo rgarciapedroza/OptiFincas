@@ -18,6 +18,12 @@ export interface Profile {
   organizations?: any; // Datos vinculados de la empresa
 }
 
+export interface RegexRule {
+  description: string;
+  pattern: string;
+  assigned_value?: string; // Nuevo: Valor a asignar si la regla coincide (ej: "PLAZAS GARAJE")
+}
+
 // Definición de interfaz para Detalle Histórico
 export interface DetalleHistorico {
   campo_coincidencia_historico?: string;

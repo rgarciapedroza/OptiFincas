@@ -39,7 +39,7 @@ def formatear_piso(piso: str) -> str:
         
     return piso_str
 
-def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
+def construir_movimientos(df_extracto, columnas, clasificador, es_csv, community_id: Optional[int] = None):
     movimientos_con_piso = []
     movimientos_sin_piso = []
 
@@ -116,7 +116,7 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv):
 
         # --- MEJORA: Búsqueda Regex Proactiva ---
         # Si el ML no encontró piso, o devolvió algo muy largo (erróneo), intentamos Regex
-        piso_regex = buscar_piso_regex_en_fila(row, columnas)
+        piso_regex = buscar_piso_regex_en_fila(row, columnas, community_id)
         piso_final_detectado = piso_regex if piso_regex else (piso_ml if (piso_ml and len(str(piso_ml)) <= 5) else None)
 
         mov = {
@@ -190,12 +190,14 @@ def procesar_extracto_y_registros(extracto: UploadFile, registros: Optional[Uplo
     else:
         excel_registros = {}
 
+    community_id = int(db_historico['community_id'].iloc[0]) if db_historico is not None and not db_historico.empty else None
+
     columnas = detectar_columnas(df_extracto)
 
     es_csv = extracto.filename.lower().endswith(".csv")
 
     movimientos_con_piso, movimientos_sin_piso = construir_movimientos( # type: ignore
-        df_extracto, columnas, clasificador, es_csv
+        df_extracto, columnas, clasificador, es_csv, community_id
     )
 
     recuperados = completar_pisos(movimientos_sin_piso, excel_registros, es_csv, extractos_map)

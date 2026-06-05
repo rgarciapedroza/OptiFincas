@@ -133,7 +133,7 @@ export class AppComponent implements OnInit {
   async verificarSolicitudesPendientes(orgId: string) {
     if (!orgId) return;
     const { data } = await this.supabase.getPendingRequests(orgId);
-    console.log(`[APP-COMPONENT] Solicitudes pendientes para org ${orgId}:`, data);
+    // console.log(`[APP-COMPONENT] Solicitudes pendientes para org ${orgId}:`, data); // Eliminado para limpiar la consola
     this.notificacionesEquipo = data?.length || 0;
   }
 
