@@ -24,6 +24,7 @@ import { ComunidadOverviewComponent } from './comunidad-overview.component';
 import { GestionEquipoComponent } from './gestion-equipo.component';
 import { SuperAdminDashboardComponent } from './super-admin-dashboard.component';
 import { EsperandoAprobacionComponent } from './esperando-aprobacion.component';
+import { ComunidadConfigComponent } from './comunidad-config.component';
 import { ModalService } from './modal.service';
 import { LegalComponent } from './legal.component';
 import { AppRoutingModule } from './app-routing.module';
@@ -47,6 +48,7 @@ import { AppRoutingModule } from './app-routing.module';
     ComunidadPisoMovimientosComponent, // Add this
     ComunidadAnunciosComponent,
     SuperAdminDashboardComponent,
+    ComunidadConfigComponent, // Declarar el nuevo componente aquí
     PerfilComponent,
     GestionEquipoComponent,
     ComunidadOverviewComponent,

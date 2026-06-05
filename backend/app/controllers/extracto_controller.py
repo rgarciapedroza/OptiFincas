@@ -151,7 +151,7 @@ async def procesar_extracto_db_controller(
     if anio_search:
         anio_detectado = int(anio_search.group())
 
-    resultado = procesar_extracto_y_registros(extracto, None, clasificador, db_historico=df_historico, extractos_map=extractos_map)
+    resultado = procesar_extracto_y_registros(extracto, None, clasificador, db_historico=df_historico, extractos_map=extractos_map) # El community_id se extrae dentro
     
     # 2. Refinar mes y año con la fecha del primer movimiento si no se detectó o para mayor precisión
     if resultado["movimientos_clasificados"]:
@@ -251,7 +251,7 @@ async def confirmar_controller(
 async def persistir_extracto_db_controller(data: dict):
     """
     Recibe los resultados de la IA y los guarda en la DB de forma segura.
-    Centraliza la encriptación para que el frontend no necesite conocer las llaves.
+    Centraliza la encriptación para que el frontend no necesite conocer las llaves
     """
     try:
         community_id = data.get("community_id")

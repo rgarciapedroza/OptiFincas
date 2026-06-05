@@ -1,8 +1,8 @@
 import { Injectable } from '@angular/core';
 import { createClient, SupabaseClient, AuthSession, AuthChangeEvent } from '@supabase/supabase-js';
 import { environment } from '../environments/environment';
-import { BehaviorSubject } from 'rxjs';
-import { Acta, Factura, Anuncio, Profile } from './models';
+import { BehaviorSubject } from 'rxjs'; // Importa BehaviorSubject
+import { Acta, Factura, Anuncio, Profile, RegexRule } from './models'; // Importa RegexRule
 
 @Injectable({
   providedIn: 'root',
@@ -63,16 +63,135 @@ export class SupabaseService {
     return { data, error };
   }
 
+  async getComunidadById(id: number | string) {
+    const numericId = typeof id === 'string' ? parseInt(id, 10) : id;
+    const { data, error } = await this.supabase
+      .from('comunidades')
+      .select('*')
+      .eq('id', numericId)
+      .single();
+
+    console.log(`[DEBUG] getComunidadById(${numericId}):`, { data, error });
+
+    if (data && data.patrones_piso) {
+      let val = data.patrones_piso;
+      // Robustez contra doble stringify: parsear mientras sea string
+      let parseAttempts = 0;
+      const MAX_PARSE_ATTEMPTS = 5; // Prevenir bucles infinitos
+      while (typeof val === 'string' && parseAttempts < MAX_PARSE_ATTEMPTS) {
+        try {
+          const next = JSON.parse(val);
+          if (next === val) break; // Si el parseo no cambia nada, no es una cadena JSON
+          val = next;
+        } catch (e) {
+          console.error('Error parsing patrones_piso JSON:', e);
+          break;
+        }
+        parseAttempts++;
+      }
+      data.patrones_piso = val;
+    }
+    return { data, error };
+  }
+
+  async getGlobalConfig(clave: string): Promise<{ data: RegexRule[] | null; error: any }> {
+    const { data, error } = await this.supabase
+      .from('sistema_config')
+      .select('valor') // Solo seleccionamos 'valor' ya que 'descripcion' no se usa en RegexRule
+      .eq('clave', clave)
+      .maybeSingle();
+
+    console.log(`[DEBUG] Supabase raw response for getGlobalConfig('${clave}'):`, { data, error });
+
+    if (error) {
+      console.error('SupabaseService: Error fetching global config for clave', clave, error);
+      return { data: null, error };
+    }
+
+    if (!data) {
+      console.warn(`SupabaseService: No se encontró la fila con clave '${clave}'. ¿Está creada en la DB? ¿Tiene RLS activado sin políticas?`);
+      return { data: null, error: null };
+    }
+
+    if (data.valor === undefined || data.valor === null) {
+      console.warn(`SupabaseService: El campo 'valor' está vacío para la clave '${clave}'`);
+      return { data: null, error: null };
+    }
+
+    let parsedValue: any = data.valor;
+    // Robustez contra doble stringify
+    let parseAttempts = 0;
+    const MAX_PARSE_ATTEMPTS = 5; // Prevenir bucles infinitos
+    while (typeof parsedValue === 'string' && parseAttempts < MAX_PARSE_ATTEMPTS) {
+      try {
+        parsedValue = JSON.parse(parsedValue);
+      } catch (e) {
+        console.error('SupabaseService: Error during JSON parsing loop:', e);
+        break; // Detener si el parseo falla
+      }
+      parseAttempts++;
+    }
+
+    if (!Array.isArray(parsedValue)) {
+      console.error('SupabaseService: Final parsed value is not an array:', parsedValue);
+      return { data: null, error: null };
+    }
+
+    const rules: RegexRule[] = parsedValue
+      .map((item: any, index: number): RegexRule | null => {
+        let ruleObject = item;
+        // Si un elemento del array sigue siendo una cadena, intentamos parsearlo
+        if (typeof item === 'string') {
+          try {
+            ruleObject = JSON.parse(item);
+          } catch (e) {
+            console.warn('SupabaseService: Could not parse string item in global config array:', item, e);
+            // Si es una cadena no parseable, la tratamos como un patrón legacy
+            return { description: `Patrón predeterminado (legacy) ${index + 1}`, pattern: item };
+          }
+        }
+
+        if (typeof ruleObject === 'object' && ruleObject !== null) {
+          const pattern = typeof ruleObject.pattern === 'string' ? ruleObject.pattern : '';
+          const description = typeof ruleObject.description === 'string' ? ruleObject.description : `Regla ${index + 1}`;
+          if (!pattern) {
+            console.warn('SupabaseService: Rule object found without a valid pattern:', ruleObject);
+            return null; // Una regla sin patrón no es válida
+          }
+          return { description, pattern };
+        }
+        console.warn('SupabaseService: Unexpected item type in global config array:', item);
+        return null; // Elemento inesperado
+      })
+      .filter((r): r is RegexRule => r !== null);
+
+    console.log('SupabaseService: Final processed rules:', rules);
+    return { data: rules, error: null };
+  }
+
   async insertComunidad(comunidad: any) {
     return await this.supabase.from('comunidades').insert([comunidad]).select();
   }
 
   async updateComunidad(id: number | string, updates: any) {
-    return await this.supabase
+    const numericId = typeof id === 'string' ? parseInt(id, 10) : id;
+    
+    const { data, error, status } = await this.supabase
       .from('comunidades')
       .update(updates)
-      .eq('id', id)
+      .eq('id', numericId)
       .select();
+
+    console.log(`[DEBUG] updateComunidad(${numericId}):`, { updates, data, error, status });
+
+    if (!error && (!data || data.length === 0)) {
+      console.warn(`SupabaseService: No se actualizó ninguna fila para ID ${numericId}. Verifique RLS.`);
+    }
+
+    if (error) {
+      console.error('SupabaseService: Error updating comunidad', id, updates, error);
+    }
+    return { data, error };
   }
 
   async deleteComunidad(id: number | string) {

@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from app.api.ia import router as ia_router
 from app.api.rutas import router as api_router
 from app.api.optimizacion import router as optimizacion_router
 from app.api.contacto import router as contacto_router
@@ -34,6 +35,7 @@ app.add_middleware(
 app.include_router(api_router, prefix="/api")
 app.include_router(contacto_router, prefix="/api/contacto")
 app.include_router(optimizacion_router, prefix="/api/optimizacion")
+app.include_router(ia_router, prefix="/api") # Incluye el router de IA
 
 # --- Manejador Global de Excepciones ---
 

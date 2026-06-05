@@ -21,6 +21,7 @@ import { LegalComponent } from './legal.component';
 import { GestionEquipoComponent } from './gestion-equipo.component';
 import { SuperAdminDashboardComponent } from './super-admin-dashboard.component';
 import { EsperandoAprobacionComponent } from './esperando-aprobacion.component';
+import { ComunidadConfigComponent } from './comunidad-config.component';
 import { SuperAdminGuard } from './super-admin.guard';
 
 const routes: Routes = [
@@ -41,6 +42,7 @@ const routes: Routes = [
       { path: 'finanzas', component: ComunidadFinanzasComponent },
       { path: 'limpieza', component: ComunidadLimpiezaComponent },
       { path: 'anuncios', component: ComunidadAnunciosComponent },
+      { path: 'configuracion', component: ComunidadConfigComponent }, // Ruta para la configuración de IA
       { path: '', redirectTo: 'overview', pathMatch: 'full' }
     ]
   },
