@@ -346,7 +346,21 @@ export class ComunidadConfigComponent implements OnInit {
     if (!confirm) return;
 
     this.patrones.splice(index, 1);
-    this.modalService.showAlert('Eliminada', 'La regla se ha eliminado correctamente.');
+
+    this.loading = true;
+    try {
+      const { error } = await this.supabase.updateComunidad(this.communityId!, { 
+        patrones_piso: this.patrones 
+      });
+      if (error) throw error;
+      
+      this.modalService.showAlert('Eliminada', 'La regla se ha eliminado correctamente.');
+    } catch (e: any) {
+      this.modalService.showAlert('Error', 'No se pudo eliminar la regla en el servidor: ' + (e?.message ?? 'desconocido'));
+      await this.cargarConfiguracion(); // Recargamos para recuperar la regla si hubo error
+    } finally {
+      this.loading = false;
+    }
   }
 
   async restaurarDefault() {
