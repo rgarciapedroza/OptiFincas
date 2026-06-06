@@ -1,33 +1,97 @@
 <div class="container" style="padding-top: 20px;">
-  <div class="calendar-header">
-    <div style="display: flex; align-items: center; gap: 20px;">
-      <button class="btn-action" (click)="changeMonth(-1)" style="background: #f1f5f9; border-radius: 50%; padding: 8px;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
-      </button>
-      <h2 class="month-title" style="margin: 0; min-width: 180px; text-align: center;">{{ getViewDateLabel() }}</h2>
-      <button class="btn-action" (click)="changeMonth(1)" style="background: #f1f5f9; border-radius: 50%; padding: 8px;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
-      </button>
-    </div>
-    <div style="display: flex; gap: 15px; align-items: center;">
-      <div *ngIf="optimizationResult" style="text-align: right; margin-right: 10px;">
-        <span style="font-size: 0.85rem; color: #10b981; font-weight: 600; display: block;">✓ Guardado en sistema</span>
+  <!-- TOOLBAR SUPERIOR: Configuración Global y Navegación -->
+  <div class="dashboard-toolbar">
+    <div class="toolbar-section">
+      <div class="nav-controls">
+        <button class="btn-icon" (click)="changeMonth(-1)" title="Mes anterior">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
+        <h2 class="month-title">{{ getViewDateLabel() }}</h2>
+        <button class="btn-icon" (click)="changeMonth(1)" title="Mes siguiente">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
       </div>
-      <button class="btn btn-secondary" (click)="mostrarConfiguracionOptimizacion = true">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-        Modificar rutas y horarios
+    </div>
+
+    <div class="toolbar-section">
+      <!-- BOTÓN DE APLICACIÓN DIRECTA: Solo visible si hay cambios pendientes -->
+      <button *ngIf="hasUnsavedHolidayChanges" class="btn btn-apply-changes pulsing" (click)="calcularOptimizacion()" title="Guardar ajustes de festivos y recalcular rutas">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+        Aplicar Festivos y Recalcular
+      </button>
+
+      <div class="v-divider" *ngIf="hasUnsavedHolidayChanges"></div>
+
+      <!-- Resumen de Horas -->
+      <div *ngIf="optimizationResult" class="stats-pills">
+        <div class="pill" *ngFor="let emp of getEmployeeList()" [ngClass]="emp.includes('1') ? 'pill-blue' : 'pill-amber'">
+          <span class="pill-label">{{ emp }}</span>
+          <span class="pill-value">{{ optimizationResult.total_horas_por_empleada[emp] | number:'1.1-1' }}h</span>
+        </div>
+      </div>
+
+      <button class="btn btn-setup" (click)="mostrarConfiguracionOptimizacion = true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+        Gestionar Fincas
+      </button>
+      <button class="btn btn-reset" (click)="resetManualHolidays()" title="Restablecer ajustes del mes">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><polyline points="3 3 3 8 8 8"></polyline></svg>
       </button>
     </div>
   </div>
 
+  <!-- Guía UX rápida -->
+  <div class="ux-tip" *ngIf="!optimizationResult || hasUnsavedHolidayChanges">
+    <div class="tip-icon">💡</div>
+    <div class="tip-content">
+      <b>Flujo de Trabajo Inteligente</b>
+      <p>Para una planificación exacta: 1. Selecciona la <b>región</b>. 2. Ajusta los <b>festivos locales</b> haciendo clic directamente en los números de los días. 3. Pulsa en <b>Gestionar Fincas</b> y luego en <b>Generar Planificación</b>. El sistema respetará tus ajustes al calcular las rutas.</p>
+      <p *ngIf="hasUnsavedHolidayChanges" style="color: #f59e0b; font-weight: 700; margin-top: 10px;">⚠️ Has modificado el calendario. Recuerda pulsar "Aplicar Festivos" o "Generar Planificación" para que el motor de rutas use los nuevos días laborables.</p>
+    </div>
+  </div>
+
+  <!-- Grid del Calendario -->
   <div class="calendar-grid">
     <div class="calendar-day-header" *ngFor="let dia of ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']">{{ dia }}</div>
-    <div class="calendar-day" *ngFor="let date of calendarDays" [class.empty]="!date" [class.past]="isPast(date)" [class.today]="isToday(date)" [class.holiday]="isHoliday(date)">
+    <div class="calendar-day" *ngFor="let date of calendarDays" [class.empty]="!date" [class.past]="isPast(date)" [class.today]="isToday(date)" 
+         [class.holiday]="isHoliday(date)" [class.manual-holiday]="isManualHoliday(date)" [class.manual-working-day]="isManualWorkingDay(date)"
+         (click)="toggleManualHoliday(date)" [title]="getHolidayTitle(date)">
       <span class="day-number" *ngIf="date">{{ date.getDate() }}</span>
+      
+      <div class="day-tags" *ngIf="date">
+        <span class="tag holiday-tag" *ngIf="isHoliday(date) && getHolidayName(date)">{{ getHolidayName(date) }}</span>
+        <span class="tag manual-tag" *ngIf="isManualHoliday(date) && !getHolidayName(date)">Manual</span>
+        <span class="tag working-tag" *ngIf="isManualWorkingDay(date)">Laborable</span>
+      </div>
+
       <div *ngFor="let task of getTasksForDate(date)" class="calendar-task" [ngClass]="task.cssClass">
         <small>{{ task.inicio }} - {{ task.emp }}</small>
-        <b>{{ task.comunidad }}</b>
+        <span class="task-comm">{{ task.comunidad }}</span>
       </div>
+    </div>
+  </div>
+
+  <!-- Leyenda del Calendario -->
+  <div class="calendar-legend" *ngIf="optimizationResult">
+    <div class="legend-item">
+      <div class="legend-box holiday-auto"></div>
+      <span>Festivo Nacional</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-box holiday-manual"></div>
+      <span>Festivo Manual</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-box manual-working-day-box"></div>
+      <span>Día Laborable Manual</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-box emp-1-box"></div>
+      <span>Empleada 1</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-box emp-2-box"></div>
+      <span>Empleada 2</span>
     </div>
   </div>
 
@@ -50,15 +114,24 @@
       <button class="btn-action" (click)="mostrarConfiguracionOptimizacion = false; editandoId = null;">×</button>
     </div>
     <div class="modal-body">
-      <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
-        <div class="form-group-opt">
-          <label>Nº Empleadas</label>
-          <input type="number" [(ngModel)]="numEmployees" min="1" max="10" class="input-concepto-edit" style="width: 80px;">
+      <div class="modal-settings-bar">
+        <div style="display: flex; align-items: center; gap: 25px; flex: 1;">
+          <div class="form-group-opt">
+            <label>Personal Disponible</label>
+            <input type="number" [(ngModel)]="numEmployees" min="1" max="10" class="input-mini">
+          </div>
+          <div class="form-group-opt" style="flex: 1; max-width: 300px;">
+            <label>Calendario Regional (Festivos)</label>
+            <select [(ngModel)]="selectedRegion" (change)="fetchRegionalHolidays()" class="select-clean" style="width: 100%;">
+              <option value="ES">Nacional (España)</option>
+              <option *ngFor="let reg of autonomousCommunities" [value]="reg.code">{{ reg.name }}</option>
+            </select>
+          </div>
         </div>
-        <div style="display: flex; gap: 10px;">
-          <button class="btn btn-danger" (click)="clearAllCommunities()" [disabled]="communities.length === 0">Borrar Lista</button>
+        <div class="modal-actions-group">
+          <button class="btn btn-outline-danger" (click)="clearAllCommunities()" [disabled]="communities.length === 0">Limpiar Todo</button>
           <input type="file" #fileInput style="display: none" (change)="importarExcelComunidades($event)">
-          <button class="btn btn-secondary" (click)="fileInput.click()">Importar Excel</button>
+          <button class="btn btn-outline" (click)="fileInput.click()">Subir Excel</button>
         </div>
       </div>
 
@@ -66,17 +139,21 @@
         <thead>
           <tr>
             <th>NOMBRE / DIRECCIÓN</th>
-            <th style="text-align: center;">HORAS</th>
-            <th style="text-align: center;">DÍAS/SEM</th>
+            <th style="text-align: center;">DURACIÓN</th>
+            <th style="text-align: center;">FRECUENCIA</th>
             <th style="text-align: center;">UBICACIÓN</th>
             <th style="text-align: center;">ACCIONES</th>
           </tr>
         </thead>
         <tbody>
+
+          <tr *ngIf="comunidadesLimpieza.length === 0 && !loading">
+            <td colspan="5" style="text-align: center; padding: 30px; color: #94a3b8;">No hay comunidades registradas en el sistema.</td>
+          </tr>
           <tr *ngFor="let c of comunidadesLimpieza">
-            <td><b>{{ c.nombre }}</b><br><small style="color: #64748b;">{{ c.direccion }}</small></td>
-            <td style="text-align: center;">{{ c.cleaning_hours }}h</td>
-            <td style="text-align: center;">{{ c.cleaning_days_per_week }}</td>
+            <td><div class="comm-name">{{ c.nombre || c.name || 'Sin nombre' }}</div><div class="comm-addr">{{ c.direccion || c.address || 'Sin dirección' }}</div></td>
+            <td style="text-align: center;">{{ (c.cleaning_hours || c.cleaningHours || 0) }}h</td>
+            <td style="text-align: center;">{{ (c.cleaning_days_per_week || c.cleaningDaysPerWeek || 0) }} visitas/sem</td>
             <td style="text-align: center;"><code style="font-size: 0.7rem;">{{ c.latitude | number:'1.2-2' }}, {{ c.longitude | number:'1.2-2' }}</code></td>
             <td style="text-align: center;">
               <button class="btn-action btn-edit" (click)="prepararEdicion(c)">✎</button>
@@ -94,8 +171,8 @@
       </table>
     </div>
     <div class="modal-footer" style="justify-content: flex-end;">
-      <button class="btn-primary" (click)="calcularOptimizacion()" style="padding: 12px 30px; font-size: 0.95rem;">
-        PLANIFICAR Y ACTUALIZAR CALENDARIO
+      <button class="btn-primary" (click)="calcularOptimizacion()">
+        GENERAR PLANIFICACIÓN
       </button>
     </div>
   </div>
@@ -108,30 +185,45 @@
     <div class="modal-body">
       <div class="form-grid-2">
         <div class="form-group" style="grid-column: span 2;">
-          <label>Nombre Comunidad *</label>
-          <input [(ngModel)]="nuevaComunidadForm.nombre" class="input-concepto-edit">
+          <label>Identificador de Finca *</label>
+          <input [(ngModel)]="nuevaComunidadForm.nombre" class="input-concepto-edit" placeholder="Ej: Edificio Álamo">
         </div>
         <div class="form-group" style="grid-column: span 2;">
-          <label>Dirección *</label>
+          <label>Dirección Exacta *</label>
           <div style="display: flex; gap: 8px;">
-            <input [(ngModel)]="nuevaComunidadForm.direccion" class="input-concepto-edit" style="flex: 1;">
-            <button class="btn btn-info" (click)="buscarCoordenadas()">📍</button>
+            <input [(ngModel)]="nuevaComunidadForm.direccion" class="input-concepto-edit" style="flex: 1;" placeholder="Calle, número...">
+            <button class="btn btn-info" (click)="buscarCoordenadas()" title="Obtener coordenadas desde dirección">📍</button>
           </div>
         </div>
-        <div class="form-group"><label>Horas</label><input type="number" [(ngModel)]="nuevaComunidadForm.cleaningHours" class="input-concepto-edit"></div>
-        <div class="form-group"><label>Días/Semana</label><input type="number" [(ngModel)]="nuevaComunidadForm.cleaningDaysPerWeek" class="input-concepto-edit"></div>
-        <div class="form-group"><label>Latitud</label><input type="number" [(ngModel)]="nuevaComunidadForm.latitude" class="input-norm"></div>
-        <div class="form-group"><label>Longitud</label><input type="number" [(ngModel)]="nuevaComunidadForm.longitude" class="input-norm"></div>
+        <div class="form-group">
+          <label>Horas por visita</label>
+          <input type="number" [(ngModel)]="nuevaComunidadForm.cleaningHours" class="input-concepto-edit" step="0.5">
+        </div>
+        <div class="form-group">
+          <label>Visitas por semana</label>
+          <input type="number" [(ngModel)]="nuevaComunidadForm.cleaningDaysPerWeek" class="input-concepto-edit" min="1" max="7">
+        </div>
+        <div class="form-group">
+          <label>Latitud GPS</label>
+          <input type="number" [(ngModel)]="nuevaComunidadForm.latitude" class="input-norm" readonly>
+        </div>
+        <div class="form-group">
+          <label>Longitud GPS</label>
+          <input type="number" [(ngModel)]="nuevaComunidadForm.longitude" class="input-norm" readonly>
+        </div>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" (click)="mostrarModalEdicionComunidad = false">Cancelar</button>
-      <button class="btn btn-success" (click)="guardarComunidad()">Guardar Finca</button>
+      <button class="btn btn-success" (click)="guardarComunidad()">Confirmar</button>
     </div>
   </div>
 </div>
 
 <div *ngIf="loading" class="loading-overlay" style="z-index: 9999;">
-  <div class="spinner"></div>
-  <p>{{ loadingMessage }}</p>
+  <div class="loading-card">
+    <div class="spinner"></div>
+    <p class="loading-text">{{ loadingMessage }}</p>
+    <div class="loading-subtext">Estamos calculando los trayectos más eficientes para tu equipo.</div>
+  </div>
 </div>
