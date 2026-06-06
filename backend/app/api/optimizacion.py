@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
-from typing import List
-import pandas as pd
+from typing import List, Optional, Dict
+import pandas as pd # type: ignore
 import io
 import os
 import base64
@@ -45,7 +45,6 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
     return R * c
-
 @lru_cache(maxsize=64)
 def get_matrix_osrm_cached(coords: tuple):
     """Versión cacheada para evitar llamadas repetidas a OSRM con las mismas coordenadas."""
@@ -96,14 +95,15 @@ class CommunityInput(BaseModel):
     cleaningDaysPerWeek: int = Field(..., gt=0, le=7)
     latitude: float
     longitude: float
-
-
+    region: Optional[str] = None # New: Autonomous community region code (e.g., "CN" for Canarias)
 class OptimizationRequest(BaseModel):
-    numEmployees: int = Field(2, ge=1, le=2)
+    numEmployees: int = Field(2, ge=1, le=10)
     communities: List[CommunityInput]
     month: int = Field(..., ge=1, le=12)
     year: int = Field(...)
-
+    region: Optional[str] = "ES"
+    manualHolidays: List[str] = []
+    manualWorkingDays: List[str] = []
 
 # =========================
 # UTILIDAD BALANCE
@@ -111,6 +111,7 @@ class OptimizationRequest(BaseModel):
 # =========================
 # ENDPOINT PRINCIPAL
 # =========================
+
 @router.post("/calcular")
 async def calcular_optimizacion(request: OptimizationRequest):
     if not request.communities:
@@ -129,11 +130,29 @@ async def calcular_optimizacion(request: OptimizationRequest):
         raise HTTPException(status_code=500, detail="No se pudo obtener la matriz de tiempos de OSRM.")
 
     # 3. Identificación de días laborables reales en el mes
-    # Cargamos festivos de Canarias para el año actual y adyacentes por seguridad en límites de mes
-    cal_festivos = holidays.Spain(subdiv='CN', years=[request.year - 1, request.year, request.year + 1])
+    region_code = request.region if request.region and request.region != "ES" else None
+    regional_holidays_obj = holidays.Spain(subdiv=region_code, years=[request.year])
+    
+    effective_holidays = set()
+    # Añadir festivos regionales que NO han sido marcados como laborables manualmente
+    for day, name in regional_holidays_obj.items():
+        if day.month == request.month and day.year == request.year:
+            date_str = day.strftime("%Y-%m-%d")
+            if date_str not in request.manualWorkingDays:
+                effective_holidays.add(day)
+                
+    # Añadir festivos marcados manualmente (si no están ya en manualWorkingDays)
+    for h_str in request.manualHolidays:
+        try:
+            d = datetime.strptime(h_str, "%Y-%m-%d").date()
+            if d.month == request.month and d.year == request.year and h_str not in request.manualWorkingDays:
+                effective_holidays.add(d)
+        except ValueError:
+            pass # Ignorar fechas mal formadas
     
     laborables_por_semana = {}
     
+    # ... (rest of the code for calculating laborables_por_semana remains the same, but uses effective_holidays)
     # Calculamos el inicio de la primera semana que toca el mes
     primer_dia = datetime(request.year, request.month, 1)
     fecha_aux = primer_dia - timedelta(days=primer_dia.weekday()) # Lunes de la semana inicial
@@ -149,7 +168,7 @@ async def calcular_optimizacion(request: OptimizationRequest):
             dia = fecha_aux + timedelta(days=i)
             if dia.month == request.month:
                 tiene_dia_en_mes = True
-            if dia not in cal_festivos:
+            if dia.date() not in effective_holidays: # Use effective_holidays here
                 dias_semana_completa.append(dia)
         
         # Si la semana ya no tiene días en el mes objetivo y hemos pasado el inicio, paramos
@@ -238,13 +257,13 @@ async def calcular_optimizacion(request: OptimizationRequest):
                     fecha_str = dia_asignado.strftime("%Y-%m-%d")
                     plan_por_dia_especifico.setdefault(fecha_str, []).append(comm)
 
-    # 5. Resolver VRP para cada día laborable del mes
+    # 5. Resolver VRP para cada día laborable del mes (SECUENCIAL PARA BALANCEO DE CARGA)
     horarios = {f"Empleada {i+1}": {} for i in range(request.numEmployees)}
     carga_horas_semanal = {f"Empleada {i+1}": 0.0 for i in range(request.numEmployees)}
     carga_horas_total_mes = {f"Empleada {i+1}": 0.0 for i in range(request.numEmployees)}
     last_week_key = None
     no_asignadas = {}
-    total_horas_semanales = 0.0
+    total_horas_planificacion_mes = 0.0 # Total de horas de limpieza asignadas en el mes
 
     for fecha_str in sorted(plan_por_dia_especifico.keys()):
         comunidades_hoy = plan_por_dia_especifico[fecha_str]
@@ -297,11 +316,10 @@ async def calcular_optimizacion(request: OptimizationRequest):
         routing.AddDimension(transit_callback_index, 480, 480, True, "Time")
         time_dimension = routing.GetDimensionOrDie("Time")
         
-        # Eliminamos el coeficiente de equilibrio diario (SpanCost).
-        # Al ponerlo a 0, permitimos que una empleada haga todo el trabajo de una zona
-        # en un mismo día sin forzar el reparto, ahorrando trayectos innecesarios.
-        # El equilibrio global se gestiona en la fase de distribución semanal (Paso 3).
-        time_dimension.SetGlobalSpanCostCoefficient(0)
+        # Restauramos el coeficiente de equilibrio diario para que las jornadas
+        # se repartan equitativamente entre las empleadas disponibles.
+        if request.numEmployees > 1:
+            time_dimension.SetGlobalSpanCostCoefficient(100)
 
         for loc_idx in range(1, num_locs_hoy):
             index = manager.NodeToIndex(loc_idx)
@@ -359,8 +377,9 @@ async def calcular_optimizacion(request: OptimizationRequest):
                 end_index = routing.End(vehicle_id)
                 total_mins = assignment.Min(time_dimension.CumulVar(end_index))
                 carga_horas_semanal[emp_name] += (total_mins / 60.0)
+                # Sumar a carga mensual (estimación simplificada por día)
                 carga_horas_total_mes[emp_name] += (total_mins / 60.0)
-                total_horas_semanales += (total_mins / 60.0)
+                total_horas_planificacion_mes += (total_mins / 60.0) # Accumulate total hours
         else:
             no_asignadas[fecha_str] = [c.address for c in comunidades_hoy]
 
@@ -394,8 +413,11 @@ async def calcular_optimizacion(request: OptimizationRequest):
         "horarios": horarios,
         "resumen": {emp: round(h / num_semanas, 2) for emp, h in carga_horas_total_mes.items()},
         "no_asignadas": no_asignadas,
-        "total_horas_planificacion": round(total_horas_semanales / num_semanas, 2),
-        "total_horas_por_empleada": {emp: round(h / num_semanas, 2) for emp, h in carga_horas_total_mes.items()}
+        "total_horas_planificacion": round(total_horas_planificacion_mes, 2), # Total hours for the month
+        "total_horas_por_empleada": {emp: round(h, 2) for emp, h in carga_horas_total_mes.items()}, # Total hours for the month per employee
+        "manual_holidays": request.manualHolidays,
+        "manual_working_days": request.manualWorkingDays,
+        "region": request.region
     }
 
 @router.post("/importar-comunidades")
@@ -443,3 +465,17 @@ async def importar_comunidades(file: UploadFile = File(...)):
         return {"status": "ok", "comunidades": comunidades}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error al leer el Excel: {str(e)}")
+
+@router.get("/holidays")
+async def get_regional_holidays(year: int, month: int, region_code: Optional[str] = None):
+    """Endpoint para previsualizar los festivos antes de planificar."""
+    subdiv_code = region_code if region_code and region_code != 'ES' else None
+    regional_holidays_obj = holidays.Spain(subdiv=subdiv_code, years=[year])
+    
+    res = {}
+    for day, name in regional_holidays_obj.items():
+        if day.month == month and day.year == year:
+            res[day.strftime("%Y-%m-%d")] = name
+    
+    # Sort by date for consistent output
+    return dict(sorted(res.items()))

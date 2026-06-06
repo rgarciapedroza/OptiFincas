@@ -85,6 +85,7 @@ export interface Community {
   cleaningDaysPerWeek: number;
   latitude: number;
   longitude: number;
+  region?: string; // New: Autonomous community region code (e.g., "CN" for Canarias)
 }
 
 export interface ComunidadDB {
@@ -97,6 +98,8 @@ export interface ComunidadDB {
   latitude?: number;
   longitude?: number;
   created_at?: string;
+  patrones_piso?: RegexRule[] | string; // Already exists, but ensure it's here
+  region?: string; // New: Autonomous community region code
 }
 
 export interface Anuncio {

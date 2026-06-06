@@ -1,7 +1,9 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, HostListener } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { lastValueFrom } from 'rxjs';
 import { Community, ComunidadDB } from './models';
 import { SupabaseService } from './supabase.service';
+import { ModalService } from './modal.service';
 
 @Component({
   selector: 'app-optimizacion',
@@ -16,12 +18,14 @@ export class OptimizacionComponent implements OnInit {
   // Estado de Configuración
   mostrarConfiguracionOptimizacion = false;
   mostrarModalEdicionComunidad = false;
-  editandoId: string | null = null;
+  editandoId: number | null = null;
   nuevaComunidadForm = { 
     nombre: '', direccion: '', servicios: 'Limpieza',
     cleaningHours: 1.0, cleaningDaysPerWeek: 1,
     latitude: 0, longitude: 0
   };
+  hasUnsavedHolidayChanges: boolean = false;
+  selectedRegion: string = 'ES';
 
   // Datos de Optimización
   numEmployees: number = 2;
@@ -33,24 +37,71 @@ export class OptimizacionComponent implements OnInit {
   // Estado del Calendario
   viewDate: Date = new Date();
   calendarDays: (Date | null)[] = [];
+  fetchedRegionalHolidays: Map<string, string> = new Map(); // New: To store holidays fetched from backend (date -> name)
+  manualHolidays: Set<string> = new Set(); // Stores only dates for manual overrides
+  manualWorkingDays: Set<string> = new Set(); // Stores dates forced to be laborable
 
-  constructor(private http: HttpClient, private supabase: SupabaseService) {}
+  // List of Spanish Autonomous Communities for dropdown
+  autonomousCommunities = [
+    { name: 'Andalucía', code: 'AN' },
+    { name: 'Aragón', code: 'AR' },
+    { name: 'Asturias', code: 'AS' },
+    { name: 'Baleares', code: 'IB' },
+    { name: 'Canarias', code: 'CN' },
+    { name: 'Cantabria', code: 'CB' },
+    { name: 'Castilla-La Mancha', code: 'CM' },
+    { name: 'Castilla y León', code: 'CL' },
+    { name: 'Cataluña', code: 'CT' },
+    { name: 'Ceuta', code: 'CE' },
+    { name: 'Comunidad Valenciana', code: 'VC' },
+    { name: 'Extremadura', code: 'EX' },
+    { name: 'Galicia', code: 'GA' },
+    { name: 'La Rioja', code: 'RI' },
+    { name: 'Madrid', code: 'MD' },
+    { name: 'Melilla', code: 'ML' },
+    { name: 'Murcia', code: 'MC' },
+    { name: 'Navarra', code: 'NC' },
+    { name: 'País Vasco', code: 'PV' }
+  ].sort((a, b) => a.name.localeCompare(b.name));
+
+  constructor(private http: HttpClient, private supabase: SupabaseService, private modalService: ModalService) {}
 
   async ngOnInit() {
+    // Recuperar región preferida de localStorage como valor inicial
+    const savedRegion = localStorage.getItem('optifincas_preferred_region');
+    if (savedRegion) {
+      this.selectedRegion = savedRegion;
+    }
+
     this.generateCalendar();
     await this.cargarComunidades();
-    await this.cargarPlanificacion();
+    await this.fetchRegionalHolidays(); // Primero cargamos festivos para visualización
+    await this.cargarPlanificacion();   // Luego la planificación que sobreescribe festivos manuales
   }
 
+  @HostListener('window:beforeunload', ['$event'])
+  unloadNotification($event: any) {
+    if (this.hasUnsavedHolidayChanges) {
+      $event.returnValue = true;
+    }
+  }
+
+
   async cargarComunidades() {
-    const { data } = await this.supabase.getComunidades();
-    this.comunidadesDB = data || [];
+    try {
+      const { data, error } = await this.supabase.getComunidades();
+      if (error) throw error;
+      this.comunidadesDB = data || [];
+      console.log('[DEBUG] Comunidades cargadas en optimización:', this.comunidadesDB.length);
+    } catch (err) {
+      console.error('[ERROR] Fallo al cargar comunidades:', err);
+      this.comunidadesDB = [];
+    }
   }
 
   get comunidadesLimpieza(): any[] {
-    return this.comunidadesDB.filter(c => 
-      c.servicios?.toLowerCase().includes('limpieza')
-    );
+    // Retornamos una copia para asegurar que Angular detecte cambios en el renderizado
+    return [...this.comunidadesDB];
   }
 
   generateCalendar() {
@@ -69,9 +120,20 @@ export class OptimizacionComponent implements OnInit {
   }
 
   async changeMonth(delta: number) {
+    if (this.hasUnsavedHolidayChanges) {
+      const confirmed = await this.modalService.showConfirm('Cambios no guardados', 'Tienes cambios manuales en los festivos de este mes. ¿Deseas descartarlos y cambiar de mes?');
+      if (!confirmed) {
+        return; // Cancelar el cambio de mes
+      }
+    }
     this.viewDate = new Date(this.viewDate.getFullYear(), this.viewDate.getMonth() + delta, 1);
     this.generateCalendar();
+    await this.fetchRegionalHolidays(); 
     await this.cargarPlanificacion();
+    
+    // Al cambiar de mes con éxito, el estado de "cambios pendientes" se limpia 
+    // porque cargamos lo que hay en la base de datos.
+    this.hasUnsavedHolidayChanges = false;
   }
 
   getViewDateLabel(): string {
@@ -86,6 +148,33 @@ export class OptimizacionComponent implements OnInit {
     const { data } = await this.supabase.getPlanificacion(mes, anio);
     if (data && data.datos) {
       this.optimizationResult = { ...data.datos };
+      const currentMonthKey = `${this.viewDate.getFullYear()}-${String(this.viewDate.getMonth() + 1).padStart(2, '0')}`;
+      
+      // Cargamos solo los ajustes que pertenecen al mes que estamos visualizando
+      this.manualHolidays = new Set((this.optimizationResult.manual_holidays || []).filter((h: string) => h.startsWith(currentMonthKey)));
+      this.manualWorkingDays = new Set((this.optimizationResult.manual_working_days || []).filter((h: string) => h.startsWith(currentMonthKey)));
+      
+      if (this.optimizationResult.region && this.optimizationResult.region !== this.selectedRegion) {
+        this.selectedRegion = this.optimizationResult.region;
+        await this.fetchRegionalHolidays();
+      }
+      this.hasUnsavedHolidayChanges = false;
+    }
+  }
+
+  async fetchRegionalHolidays() {
+    const year = this.viewDate.getFullYear();
+    const month = this.viewDate.getMonth() + 1;
+    const region = this.selectedRegion || 'ES';
+
+    try {
+      const url = `/api/optimizacion/holidays?year=${year}&month=${month}&region_code=${region}`;
+      const holidaysData: { [key: string]: string } = await lastValueFrom(this.http.get<{ [key: string]: string }>(url));
+      this.fetchedRegionalHolidays = new Map(Object.entries(holidaysData ?? {}));
+    } catch (error) {
+      console.error('Error fetching regional holidays:', error);
+      this.modalService.showAlert('Error', 'No se pudieron cargar los festivos regionales.');
+      this.fetchedRegionalHolidays = new Map();
     }
   }
 
@@ -133,56 +222,216 @@ export class OptimizacionComponent implements OnInit {
     return [];
   }
 
-  async calcularOptimizacion() {
-    const allCommunities = [
-      ...this.comunidadesLimpieza.map(c => ({
-        address: c.nombre,
-        cleaningHours: Math.max(0.5, c.cleaning_hours || 1),
-        cleaningDaysPerWeek: Math.max(1, c.cleaning_days_per_week || 1),
-        latitude: c.latitude, longitude: c.longitude
-      })),
-      ...this.communities.map(c => ({
-        address: c.address,
-        cleaningHours: c.cleaningHours,
-        cleaningDaysPerWeek: c.cleaningDaysPerWeek,
-        latitude: c.latitude, longitude: c.longitude
-      }))
-    ];
+  async resetManualHolidays() {
+    const currentMonthKey = `${this.viewDate.getFullYear()}-${String(this.viewDate.getMonth() + 1).padStart(2, '0')}`;
+    const holidaysToRemove: string[] = [];
+    this.manualHolidays.forEach(holidayKey => {
+      if (holidayKey.startsWith(currentMonthKey)) {
+        holidaysToRemove.push(holidayKey);
+      }
+    });
+    const workingDaysToRemove: string[] = [];
+    this.manualWorkingDays.forEach(workingDayKey => {
+      if (workingDayKey.startsWith(currentMonthKey)) {
+        workingDaysToRemove.push(workingDayKey);
+      }
+    });
 
-    if (allCommunities.length === 0) return alert('Debe añadir al menos una comunidad.');
+    if (holidaysToRemove.length > 0 || workingDaysToRemove.length > 0) {
+      const confirmed = await this.modalService.showConfirm('Restablecer Calendario', `¿Estás seguro de que quieres eliminar todos los ajustes manuales de ${this.getViewDateLabel()}?`);
+      if (confirmed) {
+        const newHolidays = new Set(this.manualHolidays);
+        const newWorking = new Set(this.manualWorkingDays);
+        holidaysToRemove.forEach(key => newHolidays.delete(key));
+        // También limpiar working days del mes actual
+        Array.from(this.manualWorkingDays).filter(k => k.startsWith(currentMonthKey)).forEach(k => newWorking.delete(k));
+        this.hasUnsavedHolidayChanges = false;
+        
+        this.manualHolidays = newHolidays;
+        this.manualWorkingDays = newWorking;
+        this.modalService.showAlert('Calendario Restablecido', 'Se han restaurado los festivos estándar del mes. Los cambios manuales han sido eliminados.');
+      }
+    } else {
+      this.modalService.showAlert('Sin Ajustes Manuales', 'No hay festivos o días laborables marcados manualmente para restablecer en este mes.');
+    }
+  }
+
+  async calcularOptimizacion() {
+    let validationError = false;
+    const validatedCommunities: Community[] = [];
+
+    // 1. Validar comunidades de la base de datos (comunidadesLimpieza)
+    for (const c of this.comunidadesLimpieza) {
+      if (!c.nombre || c.nombre.trim() === '') {
+        this.modalService.showAlert('Error de Validación', `Una comunidad de la base de datos no tiene un nombre válido.`);
+        validationError = true;
+        break;
+      }
+      if (!c.direccion || c.direccion.trim() === '') {
+        this.modalService.showAlert('Error de Validación', `La comunidad "${c.nombre}" no tiene una dirección válida.`);
+        validationError = true;
+        break;
+      }
+      if (!c.cleaning_hours || c.cleaning_hours <= 0) {
+        this.modalService.showAlert('Error de Validación', `La comunidad "${c.nombre}" debe tener horas de limpieza mayores que 0.`);
+        validationError = true;
+        break;
+      }
+      if (!c.cleaning_days_per_week || c.cleaning_days_per_week <= 0) {
+        this.modalService.showAlert('Error de Validación', `La comunidad "${c.nombre}" debe tener días de limpieza por semana mayores que 0.`);
+        validationError = true;
+        break;
+      }
+      if (!c.latitude || !c.longitude || (Number(c.latitude) === 0 && Number(c.longitude) === 0)) {
+        this.modalService.showAlert('Error de Validación', `La comunidad "${c.nombre}" no tiene una ubicación válida (latitud y longitud no pueden ser 0,0).`);
+        validationError = true;
+        break;
+      }
+      validatedCommunities.push({
+        id: c.id,
+        address: c.nombre, // Usamos nombre como address para consistencia con CommunityInput para el backend
+        cleaningHours: c.cleaning_hours,
+        cleaningDaysPerWeek: c.cleaning_days_per_week,
+        latitude: c.latitude,
+        longitude: c.longitude,
+        region: c.region || this.selectedRegion // Heredar región global si no tiene una específica
+      });
+    }
+
+    if (validationError) return;
+
+    // 2. Validar comunidades importadas de Excel (this.communities)
+    for (const c of this.communities) {
+      if (!c.address || c.address.trim() === '') {
+        this.modalService.showAlert('Error de Validación', `Una comunidad importada de Excel no tiene una dirección válida.`);
+        validationError = true;
+        break;
+      }
+      if (c.cleaningHours <= 0) {
+        this.modalService.showAlert('Error de Validación', `La comunidad "${c.address}" debe tener horas de limpieza mayores que 0.`);
+        validationError = true;
+        break;
+      }
+      if (c.cleaningDaysPerWeek <= 0) {
+        this.modalService.showAlert('Error de Validación', `La comunidad "${c.address}" debe tener días de limpieza por semana mayores que 0.`);
+        validationError = true;
+        break;
+      }
+      if (!c.latitude || !c.longitude || (Number(c.latitude) === 0 && Number(c.longitude) === 0)) {
+        this.modalService.showAlert('Error de Validación', `La comunidad "${c.address}" no tiene una ubicación válida (latitud y longitud no pueden ser 0,0).`);
+        validationError = true;
+        break;
+      }
+      validatedCommunities.push(c);
+    }
+
+    if (validationError) return;
+
+    if (validatedCommunities.length === 0) {
+      this.modalService.showAlert('Error de Validación', 'Debe añadir al menos una comunidad para la planificación.');
+      return;
+    }
+
+    const allCommunities = validatedCommunities; // Usamos la lista validada y fusionada
 
     this.loading = true;
     this.error = '';
-    const startMonth = this.viewDate.getMonth();
-    const startYear = this.viewDate.getFullYear();
-    let completedMonths = 0;
-
-    const monthTasks = Array.from({ length: 12 }, async (_, i) => {
-      const d = new Date(startYear, startMonth + i, 1);
-      const m = d.getMonth() + 1;
-      const y = d.getFullYear();
-      const payload = { numEmployees: this.numEmployees, communities: allCommunities, month: m, year: y };
-      
-      const data = await this.http.post<any>('/api/optimizacion/calcular', payload).toPromise();
-      await this.supabase.guardarPlanificacion(m, y, data);
-      completedMonths++;
-      this.loadingMessage = `Cargando: ${completedMonths} de 12 meses listos`;
-      if (i === 0) this.optimizationResult = { ...data };
-    });
 
     try {
-      await Promise.all(monthTasks);
+      const m = this.viewDate.getMonth() + 1;
+      const y = this.viewDate.getFullYear();
+      
+      const datePrefix = `${y}-${String(m).padStart(2, '0')}`;
+      const currentManualHolidays = Array.from(this.manualHolidays).filter(h => h.startsWith(datePrefix));
+      const currentManualWorking = Array.from(this.manualWorkingDays).filter(h => h.startsWith(datePrefix));
+      
+      const payload = { 
+        numEmployees: this.numEmployees, 
+        communities: allCommunities, 
+        month: m, 
+        year: y, 
+        manualHolidays: currentManualHolidays, 
+        manualWorkingDays: currentManualWorking, 
+        region: this.selectedRegion 
+      };
+      
+      this.loadingMessage = `Calculando rutas para ${this.getViewDateLabel()}...`;
+      const data = await lastValueFrom(this.http.post<any>('/api/optimizacion/calcular', payload));
+      await this.supabase.guardarPlanificacion(m, y, data);
+      
+      this.optimizationResult = { ...data };
+      this.hasUnsavedHolidayChanges = false;
       this.mostrarConfiguracionOptimizacion = false;
-      alert('Planificación anual completada.');
-    } catch (err) { this.error = 'Error en el cálculo'; }
+      
+      // Guardar región para persistencia de usuario
+      localStorage.setItem('optifincas_preferred_region', this.selectedRegion);
+
+      this.modalService.showAlert('Éxito', `Planificación de ${this.getViewDateLabel()} actualizada correctamente.`);
+    } catch (err: any) {
+      this.modalService.showAlert('Error en la Planificación', 'Hubo un error al generar la planificación: ' + (err.error?.detail || err.message || 'Error desconocido'));
+      this.hasUnsavedHolidayChanges = true; // Si falla, los cambios manuales siguen sin guardar
+      this.error = 'Error en el cálculo';
+    }
     finally { this.loading = false; }
   }
 
   // --- Métodos de apoyo ---
   isHoliday(date: Date | null): boolean {
     if (!date) return false;
-    const h = ['1-1', '6-1', '1-5', '30-5', '15-8', '12-10', '1-11', '6-12', '8-12', '25-12'];
-    return h.includes(`${date.getDate()}-${date.getMonth() + 1}`);
+    const dateKey = this.getDateKey(date);
+    // 1. Prioridad: Anulación manual (Día laborable forzado)
+    if (this.manualWorkingDays.has(dateKey)) return false;
+    // 2. Prioridad: Festivo marcado manualmente
+    if (this.manualHolidays.has(dateKey)) return true;
+    // 3. Prioridad: Festivo regional oficial
+    return this.fetchedRegionalHolidays.has(dateKey);
+  }
+
+  isManualWorkingDay(date: Date | null): boolean {
+    if (!date) return false;
+    return this.manualWorkingDays.has(this.getDateKey(date));
+  }
+
+  getHolidayTitle(date: Date | null): string {
+    if (!date) return '';
+    const dateKey = this.getDateKey(date);
+    if (this.manualWorkingDays.has(dateKey)) return 'Ajuste Manual: Este día se ha forzado como LABORABLE.';
+    if (this.manualHolidays.has(dateKey)) return 'Ajuste Manual: Este día se ha marcado como FESTIVO.';
+    const regionalName = this.getHolidayName(date);
+    return regionalName ? `Festivo Oficial: ${regionalName}` : 'Día Laborable Estándar';
+  }
+
+  getHolidayName(date: Date | null): string | null {
+    if (!date) return null;
+    return this.fetchedRegionalHolidays.get(this.getDateKey(date)) || null;
+  }
+  
+  isManualHoliday(date: Date | null): boolean {
+    if (!date) return false;
+    return this.manualHolidays.has(this.getDateKey(date));
+  }
+
+  toggleManualHoliday(date: Date | null) {
+    if (!date) return;
+    this.hasUnsavedHolidayChanges = true;
+    const key = this.getDateKey(date);
+    const isCurrentlyHoliday = this.isHoliday(date);
+    
+    const newManualHolidays = new Set(this.manualHolidays);
+    const newManualWorking = new Set(this.manualWorkingDays);
+
+    if (isCurrentlyHoliday) {
+      // Queremos que sea laborable
+      newManualHolidays.delete(key);
+      if (this.fetchedRegionalHolidays.has(key)) newManualWorking.add(key);
+    } else {
+      // Queremos que sea festivo
+      newManualWorking.delete(key);
+      if (!this.fetchedRegionalHolidays.has(key)) newManualHolidays.add(key);
+    }
+    
+    this.manualHolidays = newManualHolidays;
+    this.manualWorkingDays = newManualWorking;
   }
 
   isToday(date: Date | null): boolean {
@@ -194,6 +443,10 @@ export class OptimizacionComponent implements OnInit {
     const today = new Date();
     today.setHours(0,0,0,0);
     return date < today;
+  }
+
+  private getDateKey(date: Date): string {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   }
 
   prepararNuevaFinca() {
@@ -209,6 +462,28 @@ export class OptimizacionComponent implements OnInit {
   }
 
   async guardarComunidad() {
+    // Validación de campos antes de guardar
+    if (!this.nuevaComunidadForm.nombre || this.nuevaComunidadForm.nombre.trim() === '') {
+      this.modalService.showAlert('Error de Validación', 'El nombre de la comunidad es obligatorio.');
+      return;
+    }
+    if (!this.nuevaComunidadForm.direccion || this.nuevaComunidadForm.direccion.trim() === '') {
+      this.modalService.showAlert('Error de Validación', 'La dirección de la comunidad es obligatoria.');
+      return;
+    }
+    if (this.nuevaComunidadForm.cleaningHours <= 0) {
+      this.modalService.showAlert('Error de Validación', 'Las horas de limpieza deben ser mayores que 0.');
+      return;
+    }
+    if (this.nuevaComunidadForm.cleaningDaysPerWeek <= 0) {
+      this.modalService.showAlert('Error de Validación', 'Los días de limpieza por semana deben ser mayores que 0.');
+      return;
+    }
+    if (!this.nuevaComunidadForm.latitude || !this.nuevaComunidadForm.longitude || (Number(this.nuevaComunidadForm.latitude) === 0 && Number(this.nuevaComunidadForm.longitude) === 0)) {
+      this.modalService.showAlert('Error de Validación', 'La latitud y longitud no pueden ser 0,0. Por favor, use el botón de ubicación o introduzca coordenadas válidas.');
+      return;
+    }
+
     const payload = {
       nombre: this.nuevaComunidadForm.nombre,
       direccion: this.nuevaComunidadForm.direccion,
@@ -216,17 +491,28 @@ export class OptimizacionComponent implements OnInit {
       cleaning_hours: this.nuevaComunidadForm.cleaningHours,
       cleaning_days_per_week: this.nuevaComunidadForm.cleaningDaysPerWeek,
       latitude: this.nuevaComunidadForm.latitude,
-      longitude: this.nuevaComunidadForm.longitude
+      longitude: this.nuevaComunidadForm.longitude,
     };
-    if (this.editandoId) await this.supabase.updateComunidad(this.editandoId, payload);
-    else await this.supabase.insertComunidad(payload);
+    
+    let res;
+    if (this.editandoId !== null) {
+      res = await this.supabase.updateComunidad(this.editandoId, payload);
+    } else {
+      res = await this.supabase.insertComunidad(payload);
+    }
+
+    if (res.error) {
+      this.modalService.showAlert('Error de Guardado', 'No se pudieron salvar los cambios: ' + res.error.message);
+    }
+    
     this.mostrarModalEdicionComunidad = false;
     await this.cargarComunidades();
   }
 
   async eliminarComunidad(id: any) {
-    if (confirm('¿Eliminar comunidad?')) {
-      await this.supabase.deleteComunidad(id.toString());
+    const confirmed = await this.modalService.showConfirm('Eliminar Comunidad', '¿Estás seguro de que quieres eliminar esta comunidad de la base de datos?');
+    if (confirmed) {
+      await this.supabase.deleteComunidad(id);
       await this.cargarComunidades();
     }
   }
@@ -244,7 +530,7 @@ export class OptimizacionComponent implements OnInit {
           const filtradas = data.comunidades.filter((c: any) => !existingAddresses.has(c.address.toLowerCase()));
 
           if (filtradas.length === 0) {
-            alert('Todas las comunidades del archivo ya existen en la lista.');
+            this.modalService.showAlert('Importación de Excel', 'Todas las comunidades del archivo ya existen en la lista.');
             this.loading = false;
             return;
           }
@@ -253,11 +539,11 @@ export class OptimizacionComponent implements OnInit {
           const nuevas = filtradas.map((c: any, index: number) => ({ ...c, id: startingId + index }));
           
           this.communities = [...this.communities, ...nuevas];
-          alert(`Se han importado ${filtradas.length} comunidades correctamente.`);
+          this.modalService.showAlert('Importación de Excel', `Se han importado ${filtradas.length} comunidades correctamente.`);
         }
         this.loading = false;
       },
-      error: () => { this.loading = false; alert('Error al importar Excel'); }
+      error: () => { this.loading = false; this.modalService.showAlert('Error de Importación', 'Error al importar el archivo Excel. Asegúrese de que el formato es correcto.'); }
     });
   }
 
@@ -266,17 +552,28 @@ export class OptimizacionComponent implements OnInit {
   }
 
   clearAllCommunities() {
-    if (confirm('¿Estás seguro de que quieres borrar todas las comunidades de la lista temporal?')) {
+    this.modalService.showConfirm('Borrar Comunidades', '¿Estás seguro de que quieres borrar todas las comunidades de la lista temporal?').then(confirmed => {
+      if (confirmed) {
       this.communities = [];
-    }
+      }
+    });
   }
 
   async buscarCoordenadas() {
     const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(this.nuevaComunidadForm.direccion)}`;
-    this.http.get<any[]>(url).subscribe(data => {
-      if (data?.length) {
-        this.nuevaComunidadForm.latitude = parseFloat(data[0].lat);
-        this.nuevaComunidadForm.longitude = parseFloat(data[0].lon);
+    this.http.get<any[]>(url).subscribe({
+      next: data => {
+        if (data?.length) {
+          this.nuevaComunidadForm.latitude = parseFloat(data[0].lat);
+          this.nuevaComunidadForm.longitude = parseFloat(data[0].lon);
+          this.modalService.showAlert('Ubicación Encontrada', 'Coordenadas obtenidas correctamente.');
+        } else {
+          this.modalService.showAlert('Ubicación No Encontrada', 'No se pudieron encontrar coordenadas para la dirección proporcionada. Por favor, inténtelo de nuevo o introduzca las coordenadas manualmente.');
+        }
+      },
+      error: err => {
+        console.error('Error al buscar coordenadas:', err);
+        this.modalService.showAlert('Error de Conexión', 'No se pudo contactar con el servicio de geocodificación. Verifique su conexión a internet o inténtelo de nuevo más tarde.');
       }
     });
   }
