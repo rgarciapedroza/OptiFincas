@@ -98,7 +98,7 @@ export class ComunidadesComponent implements OnInit {
         const { data, error } = await this.supabase.updateComunidad(this.editandoId, payload);
         if (error) throw error;
         if (data) {
-          const index = this.comunidadesDB.findIndex(c => c.id === this.editandoId);
+          const index = this.comunidadesDB.findIndex(c => c.id === this.editandoId); // No es necesario buscar, el payload ya tiene la cuota base
           this.comunidadesDB[index] = data[0];
           this.modalService.showAlert('Éxito', 'La información de la finca ha sido actualizada.');
         }

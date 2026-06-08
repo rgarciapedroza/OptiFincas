@@ -16,7 +16,7 @@ import { RegexRule } from './models';
       <style>
         .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;}
         .modal-card{background:#ffffff;border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,0.25);width:100%;overflow:hidden;}
-        .modal-header{display:flex;align-items:center;justify-content:space-between;padding:18px 18px;border-bottom:1px solid #e5e7eb;}
+        .modal-header{display:flex;align-items:center;justify-content:space-between;padding:18px 25px;border-bottom:1px solid #e5e7eb;}
         .modal-body{padding:20px;}
         .modal-footer{display:flex;gap:12px;justify-content:flex-end;padding:16px 18px;border-top:1px solid #e5e7eb;}
         .btn-action{background:transparent;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:8px;border-radius:10px;}
@@ -24,7 +24,7 @@ import { RegexRule } from './models';
         .spinner{border:3px solid rgba(255,255,255,0.35);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;display:inline-block;}
         @keyframes spin{to{transform:rotate(360deg)}}
       </style>
-        <h2 style="margin-bottom: 5px;">Configuración de Inteligencia Artificial</h2>
+        <h2 style="margin-bottom: 5px;">Configuración</h2>
         <p style="color: #64748b; font-size: 0.9rem;">
           Personaliza cómo el sistema detecta automáticamente los pisos en los extractos bancarios de esta comunidad.
         </p>
@@ -34,7 +34,7 @@ import { RegexRule } from './models';
       <div class="config-section" style="margin-top: 20px; background: linear-gradient(135deg, #f5f3ff 0%, #ffffff 100%); padding: 25px; border-radius: 12px; border: 1px solid #c7d2fe; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
         <h3 style="font-size: 1rem; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10H12V2z"></path><path d="M12 12L2.69 7"></path><path d="M12 12l5.63 8.04"></path><path d="M22 12a10 10 0 0 0-10-10"></path></svg>
-          Asistente de Configuración IA
+          Asistente de Configuración
         </h3>
         <p style="font-size: 0.85rem; color: #4b5563; margin-bottom: 15px;">Describe cómo aparecen los pisos en tus extractos y la IA generará la regla técnica por ti.</p>
         <div style="display: flex; gap: 10px;">
@@ -104,7 +104,7 @@ import { RegexRule } from './models';
       <div class="modal-overlay" *ngIf="mostrarModalGenerarRegla">
         <div class="modal-card" style="max-width: 600px;">
           <div class="modal-header">
-            <h3>Asistente de Configuración IA</h3>
+            <h3>Asistente de Configuración</h3>
             <button class="btn-action" (click)="cerrarModalGenerarRegla()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
           </div>
           <div class="modal-body" style="background: white; padding: 30px;">
@@ -346,21 +346,7 @@ export class ComunidadConfigComponent implements OnInit {
     if (!confirm) return;
 
     this.patrones.splice(index, 1);
-
-    this.loading = true;
-    try {
-      const { error } = await this.supabase.updateComunidad(this.communityId!, { 
-        patrones_piso: this.patrones 
-      });
-      if (error) throw error;
-      
-      this.modalService.showAlert('Eliminada', 'La regla se ha eliminado correctamente.');
-    } catch (e: any) {
-      this.modalService.showAlert('Error', 'No se pudo eliminar la regla en el servidor: ' + (e?.message ?? 'desconocido'));
-      await this.cargarConfiguracion(); // Recargamos para recuperar la regla si hubo error
-    } finally {
-      this.loading = false;
-    }
+    this.modalService.showAlert('Eliminada', 'La regla se ha eliminado correctamente.');
   }
 
   async restaurarDefault() {
@@ -392,14 +378,16 @@ export class ComunidadConfigComponent implements OnInit {
       return;
     }
     try {
-      const { data, error } = await this.supabase.updateComunidad(this.communityId!, { patrones_piso: patronesLimpios });
+      const { data, error } = await this.supabase.updateComunidad(this.communityId!, { 
+        patrones_piso: patronesLimpios
+      });
       if (error) throw error;
       
       if (!data || data.length === 0) {
         throw new Error('No se pudo guardar en la base de datos. Es posible que no tenga permisos de edición para esta comunidad.');
       }
 
-      this.modalService.showAlert('Éxito', 'Configuración de IA guardada correctamente.');
+      this.modalService.showAlert('Éxito', 'Configuración guardada correctamente.');
       await this.cargarConfiguracion(); // Reload configuration after successful save
     } catch (e: any) {
       this.modalService.showAlert('Error', 'Error al guardar la configuración: ' + e.message);

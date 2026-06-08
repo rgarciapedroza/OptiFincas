@@ -42,7 +42,7 @@ const routes: Routes = [
       { path: 'finanzas', component: ComunidadFinanzasComponent },
       { path: 'limpieza', component: ComunidadLimpiezaComponent },
       { path: 'anuncios', component: ComunidadAnunciosComponent },
-      { path: 'configuracion', component: ComunidadConfigComponent }, // Ruta para la configuración de IA
+      { path: 'configuracion', component: ComunidadConfigComponent, title: 'OptiFincas - SoloConfiguración' }, // Ruta para la configuración de IA
       { path: '', redirectTo: 'overview', pathMatch: 'full' }
     ]
   },
