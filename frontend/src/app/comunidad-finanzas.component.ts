@@ -1,7 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { SupabaseService } from './supabase.service';
-import { FinanzasData, ExtractoProcesado, Factura } from './models';
+import { FinanzasData, ExtractoProcesado, Factura, IngresoPorPisoReport, GastoReport, IngresoSinIdentificarReport, ResumenCuentasReport } from './models';
 import { HttpClient } from '@angular/common/http';
 import { lastValueFrom } from 'rxjs';
 import { UtilsService } from './utils.service';
@@ -234,7 +234,7 @@ export class ComunidadFinanzasComponent implements OnInit {
   loading = false;
   error = '';
   comunidad: any = null;
-  data: FinanzasData = {
+  data: FinanzasData = { // Initialize with specific types
     ingresosPorPiso: [],
     gastos: [],
     ingresosSinIdentificar: [],
@@ -446,6 +446,24 @@ export class ComunidadFinanzasComponent implements OnInit {
     }
   }
 
+  // Helper para convertir claves de camelCase a snake_case
+  private convertToSnakeCase(obj: any): any {
+    if (typeof obj !== 'object' || obj === null) {
+      return obj;
+    }
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.convertToSnakeCase(item));
+    }
+    const newObj: any = {};
+    for (const key in obj) {
+      if (obj.hasOwnProperty(key)) {
+        const snakeKey = key.replace(/([A-Z])/g, "_$1").toLowerCase();
+        newObj[snakeKey] = this.convertToSnakeCase(obj[key]);
+      }
+    }
+    return newObj;
+  }
+
   /**
    * Envía los datos al generador de informes del backend y descarga el Excel.
    */
@@ -463,10 +481,40 @@ export class ComunidadFinanzasComponent implements OnInit {
     };
 
     try {
-      const url = `/api/confirmar?modo=finanzas&community_name=${encodeURIComponent(comName)}&mes=${mes}&anio=${anio}`;
+      const url = `/api/confirmar?modo=finanzas&community_name=${encodeURIComponent(comName)}&mes=${mes}&anio=${anio}`;      
+      // Convertir el objeto data a snake_case para el backend
+      // Construir el payload para que coincida estrictamente con el esquema del backend
+      const backendPayload: FinanzasData = {
+        ingresosPorPiso: this.data.ingresosPorPiso.map((item: IngresoPorPisoReport) => ({
+          codigo: item.codigo,
+          pagado: item.pagado,
+          importe: item.importe,
+          fecha: item.fecha || '',
+        })),
+        gastos: this.data.gastos.map((item: GastoReport) => ({
+          id: item.id,
+          categoria: item.categoria,
+          concepto: item.concepto,
+          importe: item.importe
+        })),
+        ingresosSinIdentificar: (this.data.ingresosSinIdentificar || []).map((item: IngresoSinIdentificarReport) => ({
+          observaciones: item.observaciones,
+          fecha: item.fecha || '',
+          importe: item.importe
+        })),
+        resumenCuentas: {
+          saldoAnterior: this.data.resumenCuentas.saldoAnterior,
+          ingresosMes: this.data.resumenCuentas.ingresosMes,
+          gastosMes: this.data.resumenCuentas.gastosMes,
+          saldoTotal: this.data.resumenCuentas.saldoTotal // Incluir saldoTotal
+        }
+      };
+      
+      // Aplicar la conversión a snake_case para el backend
+      const payload = backendPayload; // El backend espera camelCase para FinanzasReportRequest
       
       // Cambiado fetch por HttpClient para consistencia arquitectónica
-      const resData: any = await lastValueFrom(this.http.post(url, this.data, { headers }));
+      const resData: any = await lastValueFrom(this.http.post(url, payload, { headers }));
       
       const byteCharacters = atob(resData.excel_contenido);
       const byteNumbers = new Array(byteCharacters.length);
