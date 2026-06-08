@@ -315,10 +315,11 @@ def crear_excel_informe_finanzas(
     
     current_row += 2 # Espacio entre tablas
 
-    # --- Nueva Tabla: Gastos sin Identificar (Ingresos no asignados) ---
+    # --- Nueva Tabla: Ingresos sin Identificar ---
+    # (Mostramos los "ingresosSinIdentificar" en el informe para que también aparezcan en la descarga)
     sin_id = finanzas_data.get("ingresosSinIdentificar", [])
     if sin_id:
-        hoja.cell(row=current_row, column=1, value="GASTOS SIN IDENTIFICAR").font = Font(bold=True, size=12, color="F59E0B")
+        hoja.cell(row=current_row, column=1, value="INGRESOS SIN IDENTIFICAR").font = Font(bold=True, size=12, color="F59E0B")
         current_row += 1
         headers_sin_id = ["Observaciones", "Fecha", "Importe"]
         for col_idx, text in enumerate(headers_sin_id, 1):
@@ -338,6 +339,7 @@ def crear_excel_informe_finanzas(
                 hoja.cell(row=current_row, column=col_idx).border = BORDE_GRUESO
             current_row += 1
         current_row += 2 # Espacio entre tablas
+
 
     # --- Tabla 3: Resumen de Cuentas (Tabla final de cálculo) ---
     hoja.cell(row=current_row, column=1, value="RESUMEN DE CUENTAS").font = Font(bold=True, size=12, color="6366F1")

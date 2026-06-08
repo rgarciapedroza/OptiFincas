@@ -394,13 +394,22 @@ export class ComunidadExtractosComponent implements OnInit {
     const mes = this.extractoSeleccionado.mes_contable;
     const anio = this.extractoSeleccionado.anio_contable;
 
-    const datosAEnviar = this.movimientos.map(m => ({
-      FECHA: new Date(m.fecha).toLocaleDateString('es-ES'),
-      ORDENANTE: m.ordenante || '',
+    const datosAEnviar = this.movimientos.map((m: any) => ({
+      // Payload con nombres exactos del schema MovimientoClasificado (backend/app/schemas/extracto.py)
+      id: m.id,
+      FECHA: m.fecha,
       OBSERVACIONES: m.concepto_original || '',
-      IMPORTE: m.importe,
-      SALDO: m.saldo_resultante,
-      CONCEPTO: m.tipo === 'ingreso' ? this.utils.formatearPiso(m.piso_detectado) : m.categoria
+      IMPORTE: Number(m.importe),
+      SALDO: Number(m.saldo_resultante ?? 0),
+      CONCEPTO: m.tipo === 'ingreso'
+        ? (this.utils.unformatPiso(m.CONCEPTO || '') || '')
+        : (m.CONCEPTO || ''),
+      ORDENANTE: m.ordenante || '',
+      tipo: m.tipo,
+      categoria: m.tipo === 'gasto' ? (m.CONCEPTO || 'Sin Categoría') : (m.categoria || ''),
+      confianza: Number(m.confianza_clasificacion ?? 0),
+      metodo_piso: m.metodo_piso || '',
+      piso: m.tipo === 'ingreso' ? (this.utils.unformatPiso(m.CONCEPTO || '') || '') : '',
     }));
 
     const session = await this.supabase.getSession();

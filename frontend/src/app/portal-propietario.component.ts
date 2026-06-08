@@ -1,10 +1,11 @@
 import { Component, OnInit } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, NavigationEnd } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
+import { filter } from 'rxjs/operators';
 import { lastValueFrom } from 'rxjs';
 import { SupabaseService } from './supabase.service';
 import { ModalService } from './modal.service';
-import { FinanzasData, MovimientoBancario, Piso, Factura, Anuncio } from './models';
+import { FinanzasData, MovimientoBancario, Piso, Factura, Anuncio, IngresoPorPisoReport, GastoReport, IngresoSinIdentificarReport, ResumenCuentasReport } from './models';
 import { UtilsService } from './utils.service';
 
 @Component({
@@ -70,7 +71,14 @@ export class PortalPropietarioComponent implements OnInit {
     private http: HttpClient,
     public utils: UtilsService,
     public modalService: ModalService // Inyectamos el ModalService
-  ) {}
+  ) {
+    // Escuchar cambios de ruta para actualizar la sección activa dinámicamente
+    this.router.events.pipe(
+      filter(event => event instanceof NavigationEnd)
+    ).subscribe(() => {
+      this.detectarSeccionDesdeUrl();
+    });
+  }
 
   async ngOnInit() {
     // Detectar sección inicial basándose en la URL actual
@@ -125,16 +133,24 @@ export class PortalPropietarioComponent implements OnInit {
 
   private detectarSeccionDesdeUrl() {
     const url = this.router.url;
-    if (url.endsWith('portal-propietario') || url.includes('mis-propiedades')) this.seccionPrincipalActiva = 'mis-propiedades';
-    else if (url.includes('mis-recibos')) this.seccionPrincipalActiva = 'mis-recibos';
-    else if (url.includes('finanzas')) this.seccionPrincipalActiva = 'finanzas';
-    else if (url.includes('limpieza')) this.seccionPrincipalActiva = 'limpieza';
-    else if (url.includes('actas')) this.seccionPrincipalActiva = 'actas';
-    else if (url.includes('facturas')) this.seccionPrincipalActiva = 'facturas';
-    else if (url.includes('anuncios')) this.seccionPrincipalActiva = 'anuncios';
-    else if (url.includes('contactar')) this.seccionPrincipalActiva = 'contactar';
+    if (url.includes('/portal-propietario/mis-propiedades')) {
+      this.seccionPrincipalActiva = 'mis-propiedades';
+    } else if (url.includes('/portal-propietario/mis-recibos')) {
+      this.seccionPrincipalActiva = 'mis-recibos';
+    } else if (url.includes('/portal-propietario/finanzas')) {
+      this.seccionPrincipalActiva = 'finanzas';
+    } else if (url.includes('/portal-propietario/limpieza')) {
+      this.seccionPrincipalActiva = 'limpieza';
+    } else if (url.includes('/portal-propietario/anuncios')) {
+      this.seccionPrincipalActiva = 'anuncios';
+    } else if (url.includes('/portal-propietario/contactar')) {
+      this.seccionPrincipalActiva = 'contactar';
+    } else {
+      this.seccionPrincipalActiva = 'mis-propiedades'; // Default fallback
+    }
   }
 
+  // Aseguramos que la junta de gobierno se carga al inicializar o cambiar de piso
   async loadJuntaGobierno() {
     if (!this.selectedPiso?.comunidades?.id) return;
     const session = await this.supabase.getSession();
@@ -351,6 +367,24 @@ export class PortalPropietarioComponent implements OnInit {
     }
   }
 
+  // Helper para convertir claves de camelCase a snake_case
+  private convertToSnakeCase(obj: any): any {
+    if (typeof obj !== 'object' || obj === null) {
+      return obj;
+    }
+    if (Array.isArray(obj)) {
+      return obj.map(item => this.convertToSnakeCase(item));
+    }
+    const newObj: any = {};
+    for (const key in obj) {
+      if (obj.hasOwnProperty(key)) {
+        const snakeKey = key.replace(/([A-Z])/g, "_$1").toLowerCase();
+        newObj[snakeKey] = this.convertToSnakeCase(obj[key]);
+      }
+    }
+    return newObj;
+  }
+
   async generarReportePDF() {
     if (!this.extractoActualFinanzas || !this.selectedPiso) return;
     this.loading = true;
@@ -366,10 +400,41 @@ export class PortalPropietarioComponent implements OnInit {
     };
 
     try {
-      const url = `/api/confirmar?modo=finanzas&community_name=${encodeURIComponent(comName)}&mes=${mes}&anio=${anio}`;
+      const url = `/api/confirmar?modo=finanzas&community_name=${encodeURIComponent(comName)}&mes=${mes}&anio=${anio}`;      
+      // Convertir el objeto finanzasData a snake_case para el backend
+      const backendPayload = {
+        ingresosPorPiso: (this.finanzasData.ingresosPorPiso || []).map((item: IngresoPorPisoReport) => ({
+          codigo: item.codigo,
+          fecha: item.fecha || '',
+          importe: item.importe,
+        })),
+        gastos: (this.finanzasData.gastos || []).map((item: GastoReport) => ({
+          categoria: item.categoria, // Incluir categoría
+          concepto: item.concepto,
+          importe: item.importe,
+        })),
+        ingresosSinIdentificar: (this.finanzasData.ingresosSinIdentificar || []).map((item: IngresoSinIdentificarReport) => ({
+          observaciones: item.observaciones,
+          fecha: item.fecha || '',
+          importe: item.importe
+        })),
+        resumenCuentas: {
+          saldoAnterior: this.finanzasData.resumenCuentas.saldoAnterior,
+          ingresosMes: this.finanzasData.resumenCuentas.ingresosMes,
+          gastosMes: this.finanzasData.resumenCuentas.gastosMes,
+          saldoTotal: this.finanzasData.resumenCuentas.saldoTotal // Incluir saldoTotal
+        },
+      };
       
-      // Cambiado fetch por HttpClient para consistencia arquitectónica
-      const resData: any = await lastValueFrom(this.http.post(url, this.finanzasData, { headers }));
+      // Aplicar la conversión a snake_case para el backend
+      const payload = this.convertToSnakeCase(backendPayload);
+
+      // Debug: imprimir payload real que se envía
+      // (Esto ayuda a comprobar si llega camelCase o snake_case al backend)
+      console.log('[PORTAL] backendPayload (finanzas)=', JSON.stringify(backendPayload));
+      console.log('[PORTAL] payload enviado (finanzas)=', JSON.stringify(payload));
+
+      const resData: any = await lastValueFrom(this.http.post(url, payload, { headers }));
       
       const byteCharacters = atob(resData.excel_contenido);
       const byteNumbers = new Array(byteCharacters.length);

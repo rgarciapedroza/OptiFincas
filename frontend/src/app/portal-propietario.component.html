@@ -6,8 +6,8 @@
     </div>
   </header>
 
-  <!-- BARRA DE NAVEGACIÓN SUPERIOR -->
-  <div class="summary-cards-finanzas" style="margin-bottom: 35px; gap: 15px; grid-template-columns: repeat(4, 1fr); display: grid;">
+  <!-- BARRA DE NAVEGACIÓN SUPERIOR (Oculta en la sección de Contacto) -->
+  <div *ngIf="seccionPrincipalActiva !== 'contactar'" class="summary-cards-finanzas" style="margin-bottom: 35px; gap: 15px; grid-template-columns: repeat(4, 1fr); display: grid;">
     <div class="card tab-button" [class.active-tab]="seccionPrincipalActiva === 'mis-propiedades'" (click)="setSeccionPrincipal('mis-propiedades')" style="cursor: pointer; padding: 15px;">
       <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
       <span class="tab-label">Mis Propiedades</span>
@@ -39,6 +39,10 @@
       </svg>
       <span class="tab-label">Tablón de anuncios</span>
       <span *ngIf="nuevosAnunciosCount > 0" class="notification-badge">{{ nuevosAnunciosCount }}</span>
+    </div>
+    <div class="card tab-button" [class.active-tab]="seccionPrincipalActiva === 'contactar'" (click)="setSeccionPrincipal('contactar')" style="cursor: pointer; padding: 15px;">
+      <svg class="dashboard-tab-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+      <span class="tab-label">Contactar</span>
     </div>
   </div>
 
@@ -505,6 +509,51 @@
       <p style="color: #475569; white-space: pre-wrap; margin-bottom: 15px;">{{ a.contenido }}</p>
       <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">
         Publicado el {{ a.fecha_publicacion | date:'dd/MM/yyyy HH:mm' }}
+      </div>
+    </div>
+  </div>
+
+  <!-- SECCIÓN: CONTACTO -->
+<div *ngIf="seccionPrincipalActiva === 'contactar'" class="tab-content" style="animation: fadeIn 0.4s ease;">
+    <div class="contactar-layout">
+      <div class="section-title-wrapper">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+        <h2>Contactar con la Administración</h2>
+      </div>
+
+      <p class="contactar-intro">
+        Utiliza este formulario para enviar consultas, incidencias o sugerencias directamente a la administración de tu comunidad.
+      </p>
+
+      <div class="form-group">
+        <label for="contactReason">Motivo de la consulta</label>
+        <select id="contactReason" [(ngModel)]="contactForm.reason">
+          <option value="" disabled>Selecciona un motivo</option>
+          <option *ngFor="let reason of contactReasons" [value]="reason">{{ reason }}</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="contactMessage">Tu mensaje</label>
+        <textarea id="contactMessage" [(ngModel)]="contactForm.message" rows="5" placeholder="Describe tu consulta o incidencia aquí..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label for="contactPhoto">Adjuntar foto (opcional)</label>
+        <div class="file-input-wrapper">
+          <input type="file" id="contactPhoto" (change)="onContactPhotoSelected($event)" accept="image/*" hidden>
+          <label for="contactPhoto" class="btn-file-upload-pretty" [class.file-selected]="contactForm.photo">
+            <svg class="file-upload-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+            <span class="file-upload-text">{{ contactForm.photo ? contactForm.photo.name : 'Subir imagen de la incidencia' }}</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="contactar-actions">
+        <button class="btn btn-primary" (click)="sendContactMessage()" [disabled]="sendingContact || !contactForm.reason || !contactForm.message" style="margin-top: 20px;">
+          <span *ngIf="!sendingContact">Enviar Mensaje</span>
+          <span *ngIf="sendingContact">Enviando...</span>
+        </button>
       </div>
     </div>
   </div>

@@ -25,13 +25,15 @@ async def enviar_contacto(
         destinatario_final = settings.ADMIN_EMAIL # Fallback por si no hay comunidad
         nombre_comunidad = "General"
 
+        logger.info(f"[CONTACTO] Destinatario inicial (fallback): {destinatario_final}")
+
         if communityId:
             # Consultamos usando service_role para evitar problemas de RLS y quitamos .single() para evitar el error PGRST116
             res_com = supabase_service_role_client.table("comunidades").select("nombre, email_admin").eq("id", communityId).execute()
             
             if res_com.data and len(res_com.data) > 0:
                 com_data = res_com.data[0]
-                nombre_comunidad = com_data.get("nombre", "Comunidad")
+                nombre_comunidad = com_data.get("nombre", "Comunidad Desconocida")
                 email_db = com_data.get("email_admin")
                 if email_db:
                     destinatario_final = email_db
@@ -40,6 +42,7 @@ async def enviar_contacto(
         if not destinatario_final:
             logger.error("No hay destinatario configurado ni en DB ni en .env")
             raise HTTPException(status_code=500, detail="No se ha podido determinar el email del administrador.")
+        logger.info(f"[CONTACTO] Destinatario final del correo: {destinatario_final}")
 
         # Manejar la foto si se proporciona
         if photo and photo.filename:
@@ -63,9 +66,11 @@ async def enviar_contacto(
         supabase_service_role_client.table("incidencias").insert(incidencia_data).execute()
 
         SMTP_SERVER = settings.SMTP_SERVER
-        SMTP_PORT = settings.SMTP_PORT
-        EMAIL_SENDER = settings.SMTP_USER # Este es el "De:" (el sistema)
-        EMAIL_PASSWORD = settings.SMTP_PASSWORD # Contraseña de aplicación
+        # Compatibilidad: en Settings no existe SMTP_PORT, así que usamos 587 como default TLS
+        SMTP_PORT = getattr(settings, 'SMTP_PORT', 587) or 587
+        EMAIL_SENDER = settings.SMTP_USER  # Este es el "De:" (el sistema)
+        EMAIL_PASSWORD = settings.SMTP_PASSWORD  # Contraseña de aplicación
+
 
         if not EMAIL_SENDER:
             logger.error("[ERROR SMTP] Falta la variable SMTP_USER configurada.")

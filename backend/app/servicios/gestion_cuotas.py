@@ -96,12 +96,10 @@ class LogicaCuotasFincas:
             f"(Mes de referencia del pago recibido: {mes_inicio}) | Reglas: cubrir desde el mes más cercano al pago (mes_inicio) hacia adelante"
         )
 
-
         # Short-circuit: si TODAS las cuotas del horizonte son 0€ para este piso,
-
         # no iteramos 96+ meses en vano — va directo a CREDITO_ACUMULADO.
         cuotas_no_cero = sum(
-            1 for mes in self.horizon_meses
+            1 for mes in self.horizon_meses # type: ignore
             if self.cuotas_config.get((piso_id, mes), 0.0) > 0
         )
         if cuotas_no_cero == 0:
@@ -115,49 +113,88 @@ class LogicaCuotasFincas:
             })
             logger.info(f"[CUOTAS] <<< Fin de reparto para {piso_id}\n")
             return
+        
+        # Encontrar el índice del mes_inicio en el horizonte
+        # Normalizamos mes_inicio por si viene con día (YYYY-MM-DD) para encontrar el mes correcto
+        mes_inicio_norm = mes_inicio[:7] if len(mes_inicio) >= 7 else mes_inicio
+        try:
+            idx_mes_inicio = self.horizon_meses.index(mes_inicio_norm)
+        except ValueError:
+            logger.warning(f"[CUOTAS] Mes de inicio {mes_inicio} no encontrado en el horizonte para {piso_id}. "
+                           f"Iniciando cascada desde el principio del horizonte.")
+            idx_mes_inicio = 0 # Fallback al inicio del horizonte si mes_inicio no está
 
-        # Para cumplir con el requisito de cubrir siempre las cuotas más antiguas primero,
-        # recorremos el horizonte completo desde el principio (idx 0). Esto asegura que 
-        # cualquier deuda pendiente (como enero o febrero) sea saldada antes de generar crédito.
-        logger.info(f"[CUOTAS] Aplicando cascada total desde el inicio del horizonte para {piso_id}")
+        # --- Prioridad 1: Cubrir el mes de inicio (mes_referencia del pago) ---
+        logger.info(f"[CUOTAS]   - Prioridad 1: Intentando cubrir el mes de referencia {mes_inicio} para {piso_id}")
+        mes_actual_p1 = self.horizon_meses[idx_mes_inicio]
+        cuota_total_p1 = self.cuotas_config.get((piso_id, mes_actual_p1), 0.0)
+        ya_abonado_p1 = self.estado_pisos[piso_id][mes_actual_p1]
+        deuda_mes_p1 = round(max(cuota_total_p1 - ya_abonado_p1, 0), 2)
 
-        for i in range(len(self.horizon_meses)):
-            if restante <= 0:
-                break
+        if deuda_mes_p1 > 0 and restante > 0 and cuota_total_p1 > 0:
+            pago_a_mes_p1 = min(restante, deuda_mes_p1)
+            logger.info(f"[CUOTAS]     - Asignando {pago_a_mes_p1}€ al mes de inicio {mes_actual_p1} (Deuda: {deuda_mes_p1}€)")
+            self.estado_pisos[piso_id][mes_actual_p1] += pago_a_mes_p1
+            self.mapa_asignacion[piso_id].append({
+                "pago_id": pago_id,
+                "mes_destino": mes_actual_p1,
+                "importe_aplicado": round(pago_a_mes_p1, 2)
+            })
+            restante = round(restante - pago_a_mes_p1, 2)
+            logger.info(f"[CUOTAS]       Sobrante tras mes de inicio: {restante}€")
 
-            mes_actual = self.horizon_meses[i]
-            cuota_total = self.cuotas_config.get((piso_id, mes_actual), 0.0)
-
-            ya_abonado = self.estado_pisos[piso_id][mes_actual]
-            # Si este mes ya está pagado en el estado inicial (desde DB),
-            # no le asignamos parte del pago nuevo.
-            # Esto evita que el censo recién cargado termine asignando al mes más antiguo
-            # aunque esté marcado como PAGADO.
-            if ya_abonado >= cuota_total and cuota_total > 0:
-                continue
-
-            deuda_mes = round(cuota_total - ya_abonado, 2)
-
-            # Si no hay cuota configurada para este mes, saltamos pero logueamos por seguridad
-            # Esto ocurre si el mes no tiene un registro contable oficial asociado
-            if cuota_total <= 0:
-                logger.debug(f"[CUOTAS] Mes {mes_actual} saltado: cuota configurada es 0€.")
-                continue
-
-            if deuda_mes > 0:
-                pago_a_mes = min(restante, deuda_mes)
-                logger.info(f"[CUOTAS]   - Asignando {pago_a_mes}€ al mes {mes_actual} (Deuda pendiente: {deuda_mes}€)")
+        # --- Prioridad 2: Cubrir meses anteriores pendientes (hacia atrás desde mes_inicio-1) ---
+        if restante > 0:
+            logger.info(f"[CUOTAS]   - Prioridad 2: Cubriendo meses anteriores pendientes para {piso_id}")
+            for i in range(idx_mes_inicio - 1, -1, -1): # Iterar hacia atrás
+                if restante <= 0: break
                 
-                self.estado_pisos[piso_id][mes_actual] += pago_a_mes
-                self.mapa_asignacion[piso_id].append({
-                    "pago_id": pago_id,
-                    "mes_destino": mes_actual,
-                    "importe_aplicado": round(pago_a_mes, 2)
-                })
-                restante = round(restante - pago_a_mes, 2)
-                logger.info(f"[CUOTAS]     Sobrante tras este mes: {restante}€")
+                mes_actual = self.horizon_meses[i]
+                cuota_total = self.cuotas_config.get((piso_id, mes_actual), 0.0)
+                ya_abonado = self.estado_pisos[piso_id][mes_actual]
+                deuda_mes = round(max(cuota_total - ya_abonado, 0), 2)
 
-        # Si sobra dinero tras recorrer el horizonte, se guarda como crédito acumulado
+                # Solo asignamos si hay deuda real y cuota configurada
+                if deuda_mes > 0 and cuota_total > 0:
+                    pago_a_mes = min(restante, deuda_mes)
+                    logger.info(f"[CUOTAS]     - Asignando {pago_a_mes}€ al mes anterior {mes_actual} (Deuda: {deuda_mes}€)")
+                    self.estado_pisos[piso_id][mes_actual] += pago_a_mes
+                    self.mapa_asignacion[piso_id].append({
+                        "pago_id": pago_id,
+                        "mes_destino": mes_actual,
+                        "importe_aplicado": round(pago_a_mes, 2)
+                    })
+                    restante = round(restante - pago_a_mes, 2)
+                    logger.info(f"[CUOTAS]       Sobrante: {restante}€")
+
+        # --- Prioridad 3: Cubrir meses posteriores pendientes (hacia adelante desde mes_inicio+1) ---
+        if restante > 0:
+            logger.info(f"[CUOTAS]   - Prioridad 3: Cubriendo meses posteriores pendientes para {piso_id}")
+            for i in range(idx_mes_inicio + 1, len(self.horizon_meses)): # Iterar hacia adelante
+                if restante <= 0: break
+                
+                mes_actual = self.horizon_meses[i]
+                cuota_total = self.cuotas_config.get((piso_id, mes_actual), 0.0)
+                ya_abonado = self.estado_pisos[piso_id][mes_actual]
+                deuda_mes = round(max(cuota_total - ya_abonado, 0), 2)
+
+                # Solo asignamos si hay deuda real y cuota configurada (> 0)
+                if deuda_mes > 0 and cuota_total > 0:
+                    pago_a_mes = min(restante, deuda_mes)
+                    logger.info(f"[CUOTAS]     - Asignando {pago_a_mes}€ al mes posterior {mes_actual} (Deuda: {deuda_mes}€)")
+                    
+                    self.estado_pisos[piso_id][mes_actual] += pago_a_mes
+                    self.mapa_asignacion[piso_id].append({
+                        "pago_id": pago_id,
+                        "mes_destino": mes_actual,
+                        "importe_aplicado": round(pago_a_mes, 2)
+                    })
+                    restante = round(restante - pago_a_mes, 2)
+                    logger.info(f"[CUOTAS]       Sobrante: {restante}€")
+                elif cuota_total <= 0:
+                    logger.debug(f"[CUOTAS] Mes {mes_actual} saltado: cuota configurada es 0€.")
+
+        # --- Crédito acumulado si aún sobra dinero ---
         if restante > 0:
             logger.info(f"[CUOTAS] !!! Sobrante final de {restante}€ asignado como CREDITO_ACUMULADO para el futuro.")
             self.credito_pisos[piso_id] += restante

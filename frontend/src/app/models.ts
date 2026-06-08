@@ -124,17 +124,41 @@ export interface ExtractoProcesado {
   movimientos_count?: number;
 }
 
-export interface FinanzasData {
-  ingresosPorPiso: any[];
-  gastos: any[];
-  ingresosSinIdentificar?: any[];
-  resumenCuentas: {
-    saldoAnterior: number;
-    ingresosMes: number;
-    gastosMes: number;
-    saldoTotal: number;
-  };
+export interface IngresoPorPisoReport {
+  codigo: string;
+  pagado?: boolean;
+  importe: number;
+  fecha?: string;
+  id?: number;
 }
+
+export interface GastoReport {
+  id: number;
+  categoria: string;
+  concepto: string;
+  importe: number;
+}
+
+export interface IngresoSinIdentificarReport {
+  observaciones: string;
+  fecha: string;
+  importe: number;
+}
+
+export interface ResumenCuentasReport {
+  saldoAnterior: number;
+  ingresosMes: number;
+  gastosMes: number;
+  saldoTotal: number;
+}
+
+export interface FinanzasData {
+  ingresosPorPiso: IngresoPorPisoReport[];
+  gastos: GastoReport[];
+  ingresosSinIdentificar?: IngresoSinIdentificarReport[];
+  resumenCuentas: ResumenCuentasReport;
+}
+
 
 export interface ImportProgress {
   processed: { name: string, count: number }[];
