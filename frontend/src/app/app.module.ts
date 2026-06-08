@@ -28,6 +28,7 @@ import { ComunidadConfigComponent } from './comunidad-config.component';
 import { ModalService } from './modal.service';
 import { LegalComponent } from './legal.component';
 import { AppRoutingModule } from './app-routing.module';
+import { RestablecerPasswordComponent } from './restablecer-password.component';
 
 
 @NgModule({
@@ -54,6 +55,7 @@ import { AppRoutingModule } from './app-routing.module';
     ComunidadOverviewComponent,
     EsperandoAprobacionComponent,
     LandingComponent,
+    RestablecerPasswordComponent,
     LegalComponent
   ],
   imports: [

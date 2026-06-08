@@ -54,6 +54,16 @@ export class SupabaseService {
     return await this.supabase.auth.signOut();
   }
 
+  async resetPasswordForEmail(email: string) {
+    return await this.supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/restablecer-password`,
+    });
+  }
+
+  async updateUserPassword(newPassword: string) {
+    return await this.supabase.auth.updateUser({ password: newPassword });
+  }
+
   // --- Métodos de Base de Datos ---
   async getComunidades() {
     const { data, error } = await this.supabase
