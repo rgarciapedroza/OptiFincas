@@ -259,117 +259,155 @@
 
   <!-- SECCIÓN: RECIBOS -->
   <div *ngIf="seccionPrincipalActiva === 'mis-recibos'" class="tab-content" style="animation: fadeIn 0.4s ease;">
-    <div class="section-title-wrapper" style="justify-content: space-between;">
+    <div class="section-title-wrapper" style="justify-content: space-between; align-items: flex-start; margin-bottom: 25px;">
       <div style="display: flex; align-items: center; gap: 12px;">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
         <h2 style="margin: 0;">{{ extractoActualRecibos ? 'Detalle del Mes' : 'Historial de Recibos' }}</h2>
       </div>
-      <button *ngIf="extractoActualRecibos && !mostrarPendientes" class="btn-action-minimalist" (click)="extractoActualRecibos = null" style="background: #f1f5f9; padding: 8px; border-radius: 50%; color: #64748b;" title="Volver">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
-      </button>
-      <button class="btn" [ngClass]="mostrarPendientes ? 'btn-secondary' : 'btn-danger'" (click)="togglePendientes()" style="padding: 8px 25px; border-radius: 25px; font-weight: 700; font-size: 0.85rem; margin-left: auto;">
-        {{ mostrarPendientes ? '← Volver al Historial' : '⚠️ Ver Pendientes' }}
-      </button>
-    </div>
-
-    <div *ngIf="!mostrarPendientes" style="max-width: 900px; margin: 0 auto;">
-      <!-- LISTADO DE MESES RECIBOS -->
-      <div *ngIf="!extractoActualRecibos">
-        <div class="month-navigation-recibos">
-          <button class="btn-nav" (click)="changeMonthRecibos(-12)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
-          <span class="month-label">{{ currentMonthLabelRecibos }}</span>
-          <button class="btn-nav" (click)="changeMonthRecibos(12)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+      
+      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 15px;">
+        <!-- Entrega a cuenta (Acumulado) -->
+        <div class="card" style="background: linear-gradient(135deg, #f5f3ff 0%, #ffffff 100%); border: 1px solid #c7d2fe; padding: 10px 20px; border-radius: 12px; display: flex; gap: 20px; align-items: center; box-shadow: 0 2px 8px rgba(99, 102, 241, 0.05); width: fit-content;">
+          <div>
+            <span style="display: block; font-size: 0.55rem; color: #6366f1; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Entrega a cuenta (Acumulado)</span>
+            <span style="font-size: 1.2rem; font-weight: 900; color: #1e293b;">{{ totalCredito | number:'1.2-2' }}€</span>
+          </div>
+          <div style="background: #e0e7ff; color: #6366f1; padding: 8px; border-radius: 10px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+          </div>
         </div>
 
-        <table class="movimientos-table">
-          <thead>
-            <tr>
-              <th>MES</th>
-              <th style="text-align: center;">Estado</th>
-              <th style="text-align: center;">DETALLE</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let group of allRecibosGrouped" (click)="seleccionarMesRecibo(group)" style="cursor: pointer;">
-              <td style="font-weight: 700; color: #1e293b;">{{ group.mesNombre }}</td>
-              <td style="text-align: center;">
-                <span class="badge" [class.badge-success]="isMonthPaid(group)" [class.badge-danger]="!isMonthPaid(group)" style="font-size: 0.65rem;">
-                  {{ isMonthPaid(group) ? 'AL DÍA' : 'PENDIENTE' }}
-                </span>
-              </td>
-              <td style="text-align: center; vertical-align: middle;">
-                <div class="btn-action-minimalist" style="margin: 0 auto;">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div style="display: flex; gap: 10px;">
+          <button *ngIf="extractoActualRecibos && !mostrarPendientes" class="btn btn-secondary" (click)="extractoActualRecibos = null" style="font-size: 0.8rem; border-radius: 20px; padding: 8px 15px;">
+            ← Volver al listado
+          </button>
+          <button class="btn" 
+                  [style.border]="mostrarPendientes ? '2px solid #64748b' : '2px solid #ef4444'" 
+                  [style.color]="mostrarPendientes ? '#64748b' : '#ef4444'"
+                  style="background: transparent; padding: 8px 25px; border-radius: 25px; font-weight: 700; font-size: 0.85rem; display: flex; align-items: center; gap: 8px; transition: all 0.2s;"
+                  (click)="togglePendientes()">
+            <svg *ngIf="!mostrarPendientes" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <svg *ngIf="mostrarPendientes" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            {{ mostrarPendientes ? 'Volver al Historial' : 'Ver Recibos Pendientes' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="!mostrarPendientes" style="max-width: 850px; margin: 0 auto;">
+      <!-- Listado de meses al estilo Admin -->
+      <div *ngIf="!extractoActualRecibos">
+        <div style="display: flex; justify-content: center; align-items: center; gap: 20px; margin-bottom: 30px; background: #f8fafc; padding: 12px; border-radius: 50px; border: 1px solid #e2e8f0; width: fit-content; margin-left: auto; margin-right: auto;">
+          <button class="btn-nav" (click)="changeMonthRecibos(-12)" style="background: white; border-radius: 50%; padding: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+          <span style="font-weight: 800; color: #1e293b; font-size: 1.1rem; min-width: 60px; text-align: center;">{{ currentMonthLabelRecibos }}</span>
+          <button class="btn-nav" (click)="changeMonthRecibos(12)" style="background: white; border-radius: 50%; padding: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+        </div>
+
+        <div *ngFor="let group of allRecibosGrouped" style="margin-bottom: 15px;">
+          <div class="card" 
+               (click)="seleccionarMesRecibo(group)"
+               style="padding: 15px 25px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: all 0.2s;">
+            <div style="display: flex; align-items: center; gap: 15px;">
+              <span style="font-weight: 700; color: #1e293b; font-size: 1rem; min-width: 100px;">{{ group.mesNombre }}</span>
+              <span class="badge" 
+                    [style.background]="isMonthPaid(group) ? '#dcfce7' : '#fee2e2'" 
+                    [style.color]="isMonthPaid(group) ? '#166534' : '#991b1b'">
+                {{ isMonthPaid(group) ? 'AL DÍA' : 'PENDIENTE' }}
+              </span>
+              <span *ngIf="group.isFromCredit" style="font-size: 0.6rem; color: #6366f1; font-weight: 800; background: #eef2ff; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.02em;">
+                Entrega a cuenta
+              </span>
+            </div>
+            
+            <div style="display: flex; align-items: center; gap: 20px;">
+              <span style="font-weight: 800; color: #1e293b;">{{ group.total | number:'1.2-2' }}€</span>
+              <svg style="color: #94a3b8;" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- DETALLE DE UN MES ESPECÍFICO RECIBOS -->
       <div *ngIf="extractoActualRecibos">
-        <div class="month-navigation-recibos">
-          <button class="btn-nav" (click)="changeMonthRecibos(-1)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
-          <span class="month-label" style="min-width: 180px;">{{ extractoActualRecibos.mesNombre }} {{ viewDateRecibos.getFullYear() }}</span>
-          <button class="btn-nav" (click)="changeMonthRecibos(1)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+        <div style="display: flex; justify-content: center; align-items: center; gap: 20px; margin-bottom: 30px; background: #f8fafc; padding: 12px; border-radius: 50px; border: 1px solid #e2e8f0; width: fit-content; margin-left: auto; margin-right: auto;">
+          <button class="btn-nav" (click)="changeMonthRecibos(-1)" style="background: white; border-radius: 50%; padding: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+          <span style="font-weight: 800; color: #1e293b; font-size: 1.1rem; min-width: 180px; text-align: center;">{{ extractoActualRecibos.mesNombre }} {{ viewDateRecibos.getFullYear() }}</span>
+          <button class="btn-nav" (click)="changeMonthRecibos(1)" style="background: white; border-radius: 50%; padding: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
         </div>
 
-        <h4 style="margin-bottom: 12px; color: #6366f1; font-weight: 800; font-size: 1rem; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px;">{{ extractoActualRecibos.mesNombre }} {{ viewDateRecibos.getFullYear() }}</h4>
-        <table class="movimientos-table" style="font-size: 0.8rem; max-width: 650px; margin: 0 auto 25px;">
-          <thead>
-            <tr>
-              <th>Piso</th>
-              <th style="text-align: center;">Estado</th>
-              <th style="text-align: center;">Fecha Pago</th>
-              <th style="text-align: right;">Importe</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let item of extractoActualRecibos.detalles">
-              <td style="font-weight: 600;">{{ utils.formatearPiso(item.piso) }}</td>
-              <td style="text-align: center;">
-                <span class="badge" [class.badge-success]="item.pagado" [class.badge-danger]="!item.pagado && item.vencido" style="font-size: 0.65rem;">
-                  {{ item.pagado ? 'Pagado' : (item.vencido ? 'Vencido' : 'Pendiente') }}
-                </span>
-              </td>
-              <td style="text-align: center; color: #64748b;">{{ item.fecha ? (item.fecha | date:'dd/MM/yyyy') : '-' }}</td>
-              <td style="text-align: right; font-weight: 700;">{{ (item.pagado ? item.importe : 0) | number:'1.2-2' }}€</td>
-            </tr>
-          </tbody>
-        </table>
+        <div *ngFor="let det of extractoActualRecibos.detalles" class="card" style="margin-bottom: 20px; padding: 0; overflow: hidden; border-radius: 12px; border: 1px solid #e2e8f0;">
+          <div style="background: #f8fafc; padding: 12px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-weight: 800; color: #1e293b;">{{ utils.formatearPiso(det.piso) }}</span>
+            <span class="badge" 
+                  [style.background]="det.pagado ? '#dcfce7' : (det.status === 'PARCIAL' ? '#fef3c7' : '#fee2e2')" 
+                  [style.color]="det.pagado ? '#166534' : (det.status === 'PARCIAL' ? '#92400e' : '#991b1b')">
+              {{ det.status }}
+            </span>
+          </div>
+          
+          <div style="padding: 20px;">
+            <div *ngIf="det.movs.length === 0" style="text-align: center; color: #94a3b8; font-style: italic; font-size: 0.9rem; padding: 10px;">
+              No hay abonos registrados para esta propiedad este mes.
+              <div style="margin-top: 5px; font-weight: 600; color: #64748b;">Cuota esperada: {{ det.cuota | number:'1.2-2' }}€</div>
+            </div>
+            
+            <table *ngIf="det.movs.length > 0" class="movimientos-table" style="margin-top: 0; font-size: 0.8rem; background: transparent;">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Concepto</th>
+                  <th style="text-align: right;">Importe</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let mov of det.movs">
+                  <td>{{ mov.fecha | date:'dd/MM/yyyy' }}</td> 
+                  <td>{{ mov.concepto || '-' }}</td>
+                  <td style="text-align: right;">
+                    <div style="font-weight: 700; color: #10b981;">{{ mov.importe | number:'1.2-2' }}€</div>
+                    <div *ngIf="mov.isFromCredit" style="font-size: 0.65rem; color: #6366f1; font-weight: 700; text-transform: uppercase;">Entrega a cuenta</div>
+                  </td>
+                </tr>
+              </tbody>
+              <tfoot *ngIf="!det.pagado">
+                <tr>
+                  <td colspan="2" style="text-align: right; color: #64748b; font-weight: 600; padding-top: 10px;">Restante por pagar:</td>
+                  <td style="text-align: right; font-weight: 800; color: #ef4444; padding-top: 10px;">{{ (det.cuota - det.totalAbonado) | number:'1.2-2' }}€</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- LISTADO DE PENDIENTES AGRUPADO POR AÑOS -->
+    <!-- Listado de Pendientes al estilo Admin -->
     <div *ngIf="mostrarPendientes" style="max-width: 750px; margin: 0 auto; animation: fadeIn 0.3s ease;">
-      <div *ngFor="let group of pendingReceiptsByYear" style="margin-bottom: 40px;">
-        <h3 class="section-subtitle" style="color: #ef4444; border-bottom: 2px solid #fee2e2; margin-bottom: 20px; font-size: 1.1rem;">
-          AÑO {{ group.year }}
-        </h3>
-        <table class="movimientos-table" style="font-size: 0.8rem; max-width: 600px; margin: 0 auto;">
-          <thead>
-            <tr>
-              <th>Piso</th>
-              <th>Mes Pendiente</th>
-              <th style="text-align: center;">Acción</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr *ngFor="let item of group.items">
-              <td style="font-weight: 700;">{{ utils.formatearPiso(item.piso) }}</td>
-              <td style="color: #64748b; font-weight: 600;">{{ item.mesNombre }}</td>
-              <td style="text-align: center; vertical-align: middle;">
-                <div class="btn-action-minimalist" style="margin: 0 auto;">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <h4 style="margin-bottom: 15px; color: #dc2626; font-size: 1rem; border-bottom: 2px solid #fee2e2; padding-bottom: 8px; font-weight: 800;">
+        Listado de Deuda Pendiente
+      </h4>
+      <div *ngIf="pendingReceiptsList.length === 0" class="empty-state-tab">
+        ¡Excelente! Estás al corriente de todos tus pagos.
       </div>
-      <div *ngIf="pendingReceiptsByYear.length === 0" class="empty-state-tab">
-        <p>¡Felicidades! No tienes ningún recibo pendiente de pago.</p>
+      
+      <div *ngFor="let item of pendingReceiptsList" class="card" style="margin-bottom: 10px; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; background: white;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <span style="font-weight: 700; color: #1e293b; font-size: 0.95rem;">
+              {{ item.mesNombre }} {{ item.anio }} - {{ utils.formatearPiso(item.piso) }}
+            </span>
+            <span class="badge" 
+                  [style.background]="item.status === 'PARCIAL' ? '#fef3c7' : '#fee2e2'" 
+                  [style.color]="item.status === 'PARCIAL' ? '#92400e' : '#991b1b'"
+                  style="margin-left: 10px;">
+              {{ item.status }}
+            </span>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-weight: 800; color: #ef4444; font-size: 1.1rem;">{{ (item.cuota - item.totalAbonado) | number:'1.2-2' }}€</div>
+            <div style="font-size: 0.7rem; color: #94a3b8; font-weight: 600;">Deuda sobre cuota de {{ item.cuota | number:'1.2-2' }}€</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>

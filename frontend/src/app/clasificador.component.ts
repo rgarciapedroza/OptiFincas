@@ -110,7 +110,8 @@ export class ClasificadorComponent implements OnInit {
           ordenante: m.ORDENANTE || '',
           piso_detectado: m.IMPORTE > 0 ? this.utils.unformatPiso(m.CONCEPTO) : 'piso sin identificar',
           tipo: m.IMPORTE > 0 ? 'ingreso' : 'gasto',
-          categoria: m.IMPORTE < 0 ? m.CONCEPTO : 'Ingreso Cuota'
+          categoria: m.IMPORTE < 0 ? m.CONCEPTO : 'Ingreso Cuota',
+          detalle_asignacion_cuotas: m.detalle_asignacion_cuotas
         }))
       };
 

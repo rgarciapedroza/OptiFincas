@@ -141,7 +141,7 @@ def importar_censo_pisos_controller(community_id: int, file: UploadFile, user_id
 def get_piso_controller(piso_id: int, user_id: str):
     """Obtiene un piso por su ID y desencripta los datos sensibles."""
     client = supabase_service_role_client if supabase_service_role_client else supabase_client
-    response = client.table("pisos").select("*, comunidades(id, nombre)").eq("id", piso_id).single().execute()
+    response = client.table("pisos").select("*, comunidades(id, nombre, cuota_base)").eq("id", piso_id).single().execute()
     if not response.data:
         raise HTTPException(status_code=404, detail="Piso no encontrado")
 
