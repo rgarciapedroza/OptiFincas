@@ -23,10 +23,12 @@ import { SuperAdminDashboardComponent } from './super-admin-dashboard.component'
 import { EsperandoAprobacionComponent } from './esperando-aprobacion.component';
 import { ComunidadConfigComponent } from './comunidad-config.component';
 import { SuperAdminGuard } from './super-admin.guard';
+import { RestablecerPasswordComponent } from './restablecer-password.component';
 
 const routes: Routes = [
   { path: '', component: LandingComponent, title: 'OptiFincas - Bienvenidos' },
   { path: 'login', component: AuthComponent, title: 'OptiFincas - Login' },
+  { path: 'restablecer-password', component: RestablecerPasswordComponent, title: 'OptiFincas - Nueva Contraseña' },
   { path: 'comunidades', component: ComunidadesComponent },
   { path: 'perfil', component: PerfilComponent },
   { 

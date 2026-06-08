@@ -150,6 +150,14 @@ export class AppComponent implements OnInit {
     this.loading = true;
     this.loadingMessage = 'Verificando permisos...';
 
+    // EXCEPCIÓN DE SEGURIDAD: Si el usuario está en la página de restablecer contraseña,
+    // detenemos cualquier redirección automática. Supabase crea una sesión temporal
+    // que no debe dar acceso al resto de la aplicación hasta que la contraseña se cambie.
+    if (this.router.url.includes('restablecer-password')) {
+      this.loading = false;
+      return;
+    }
+
     try {
       // Consultamos el perfil real y capturamos el error para diagnóstico
       const { data: profile, error: profileError } = await this.supabase.getProfile(this.session.user.id);
