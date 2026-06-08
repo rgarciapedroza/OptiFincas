@@ -21,7 +21,7 @@ export class ComunidadesComponent implements OnInit {
   // Gestión de Comunidades (DB)
   comunidadesDB: ComunidadDB[] = [];
   nuevaComunidadForm = {
-    nombre: '', direccion: '', servicios: ''
+    nombre: '', direccion: '', servicios: '', cuota_base: 0
   };
   editandoId: number | null = null;
   mostrarModalEdicionComunidad = false;
@@ -65,7 +65,8 @@ export class ComunidadesComponent implements OnInit {
     this.nuevaComunidadForm = {
       nombre: com.nombre,
       direccion: com.direccion,
-      servicios: com.servicios || ''
+      servicios: com.servicios || '',
+      cuota_base: (com as any).cuota_base || 0
     };
     this.mostrarModalEdicionComunidad = true;
   }
@@ -73,7 +74,7 @@ export class ComunidadesComponent implements OnInit {
   cancelarEdicion() {
     this.editandoId = null;
     this.nuevaComunidadForm = {
-      nombre: '', direccion: '', servicios: ''
+      nombre: '', direccion: '', servicios: '', cuota_base: 0
     };
     this.mostrarModalEdicionComunidad = false;
   }
@@ -89,7 +90,8 @@ export class ComunidadesComponent implements OnInit {
       const payload = {
         nombre: this.nuevaComunidadForm.nombre,
         direccion: this.nuevaComunidadForm.direccion,
-        servicios: this.nuevaComunidadForm.servicios
+        servicios: this.nuevaComunidadForm.servicios,
+        cuota_base: this.nuevaComunidadForm.cuota_base
       };
 
       if (this.editandoId) {

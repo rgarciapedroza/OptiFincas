@@ -13,6 +13,11 @@ from app.servicios.procesar_extracto import (
 from app.procesamiento.buscar_pisos import buscar_pisos_en_historico, find_col_by_keywords
 from app.servicios.resumen import calcular_resumen_categorias_con_tipo # Importar correctamente
 
+def normalizar_piso_tecnico(piso_raw: str) -> str:
+    """Normalización estricta para claves del motor y búsqueda (ej: '2º J' -> '2J')"""
+    if not piso_raw: return ""
+    return re.sub(r'[^A-Z0-9]', '', str(piso_raw).upper())
+
 def formatear_piso(piso: str) -> str:
     if not piso:
         return ""
@@ -190,7 +195,10 @@ def procesar_extracto_y_registros(extracto: UploadFile, registros: Optional[Uplo
     else:
         excel_registros = {}
 
-    community_id = int(db_historico['community_id'].iloc[0]) if db_historico is not None and not db_historico.empty else None
+    community_id = None
+    if db_historico is not None and not db_historico.empty:
+        if 'community_id' in db_historico.columns:
+            community_id = int(db_historico['community_id'].iloc[0])
 
     columnas = detectar_columnas(df_extracto)
 

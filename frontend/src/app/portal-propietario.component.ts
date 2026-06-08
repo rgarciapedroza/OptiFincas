@@ -18,6 +18,9 @@ export class PortalPropietarioComponent implements OnInit {
   userName: string = '';
   juntaGobierno: Piso[] = [];
   loading = true;
+  private movementsCache = new Map<number, any[]>();
+  loadingMessage: string = 'Cargando...';
+  totalCredito: number = 0;
   allRecibosGrouped: any[] = [];
   seccionActiva: 'finanzas' | 'limpieza' | 'recibos' = 'finanzas'; // This is not used anymore as main sections are handled by router
   seccionPrincipalActiva: 'mis-propiedades' | 'mis-recibos' | 'finanzas' | 'limpieza' | 'contactar' | 'actas' | 'facturas' | 'anuncios' = 'mis-propiedades'; // Top-level sections
@@ -73,31 +76,51 @@ export class PortalPropietarioComponent implements OnInit {
     // Detectar sección inicial basándose en la URL actual
     this.detectarSeccionDesdeUrl();
 
-    const session = await this.supabase.getSession();
-    if (session?.user?.email) {
-      const { data } = await this.supabase.buscarPisoPorEmail(session.user.email);
-      if (data) {
-        // Los datos ya vienen desencriptados desde el backend
-        this.userPisos = data;
-        
-        if (this.userPisos.length > 0) {
-          // Ahora mostramos el nombre del propietario en lugar del código de la finca
-          this.userName = this.userPisos[0].propietario || 'Propietario';
+    try {
+      const session = await this.supabase.getSession();
+      if (session?.user?.email) {
+        const { data } = await this.supabase.buscarPisoPorEmail(session.user.email);
+        if (data) {
+          // Los datos ya vienen desencriptados desde el backend
+          this.userPisos = data;
           
-          // Pre-seleccionar la primera propiedad y cargar sus datos de comunidad (incluida la Junta)
-          this.selectedPiso = this.userPisos[0];
-          this.updateMonthLabels();
-          await Promise.all([
-            this.loadFinanzas(),
-            this.loadCleaningSchedule(),
-            this.loadRecibos(),
-            this.loadJuntaGobierno(),
-            this.loadAnuncios()
-          ]);
+          if (this.userPisos.length > 0) {
+            // Ahora mostramos el nombre del propietario en lugar del código de la finca
+            this.userName = this.userPisos[0].propietario || 'Propietario';
+            
+            // Cargar primero los extractos (indispensable para la lógica de meses emitidos)
+            this.selectedPiso = this.userPisos[0];
+            this.updateMonthLabels();
+            await this.loadFinanzas();
+            await Promise.all([
+              this.loadCleaningSchedule(),
+              this.loadRecibos(),
+              this.loadJuntaGobierno(),
+              this.loadAnuncios()
+            ]);
+          }
         }
       }
+    } catch (error) {
+      console.error('[PORTAL] Error de inicialización:', error);
+    } finally {
+      this.loading = false;
+      // Refuerzo agresivo para quitar cualquier bloqueo visual
+      setTimeout(() => { this.loading = false; }, 1000);
     }
-    this.loading = false;
+  }
+
+  async refreshData() {
+    this.loading = true;
+    this.loadingMessage = 'Sincronizando datos con la administración...';
+    try {
+      await this.ngOnInit(); // Re-ejecuta toda la lógica de carga
+      this.modalService.showAlert('Actualizado', 'La información se ha refrescado correctamente.');
+    } catch (e) {
+      this.modalService.showAlert('Error', 'No se ha podido sincronizar la información.');
+    } finally {
+      this.loading = false;
+    }
   }
 
   private detectarSeccionDesdeUrl() {
@@ -124,18 +147,21 @@ export class PortalPropietarioComponent implements OnInit {
 
   async loadPisoData(piso: any) {
     this.loading = true;
-    this.selectedPiso = piso;
-    this.updateMonthLabels();
-    this.extractoActualRecibos = null; // Resetear vista al cambiar de propiedad
-    this.extractoActualFinanzas = null; // Resetear vista al cambiar de propiedad
-    await Promise.all([
-      this.loadFinanzas(),
-      this.loadCleaningSchedule(),
-      this.loadRecibos(),
-      this.loadJuntaGobierno(),
-      this.loadAnuncios()
-    ]);
-    this.loading = false;
+    try {
+      this.selectedPiso = piso;
+      this.updateMonthLabels();
+      this.extractoActualRecibos = null;
+      this.extractoActualFinanzas = null;
+      await Promise.all([
+        this.loadFinanzas(),
+        this.loadCleaningSchedule(),
+        this.loadRecibos(),
+        this.loadJuntaGobierno(),
+        this.loadAnuncios()
+      ]);
+    } finally {
+      this.loading = false;
+    }
   }
 
   async loadAnuncios() {
@@ -401,6 +427,7 @@ export class PortalPropietarioComponent implements OnInit {
     this.loading = true;
     const targetAnio = this.viewDateRecibos.getFullYear();
     const hoy = new Date();
+    this.totalCredito = 0;
     this.allRecibosGrouped = [];
     
     const currentMonth = hoy.getMonth() + 1; // 1-indexed month
@@ -413,101 +440,121 @@ export class PortalPropietarioComponent implements OnInit {
       return;
     }
 
-    // 2. Determinar hasta qué mes mostrar
-    const maxMonth = (targetAnio === currentAnio) ? currentMonth : 12;
-
-    // Agrupar comunidades únicas para evitar peticiones repetidas
-    const communityIds = [...new Set(this.userPisos.map(p => p.comunidades?.id))].filter(id => !!id);
-    const movementsCache = new Map();
+    this.movementsCache.clear();
 
     try {
-      for (const cid of communityIds) {
-        // Fallback: Si el propietario no puede leer toda la tabla de movimientos, 
-        // probamos a leer vía extractos (método usado en Finanzas que sabemos que funciona)
-        const { data: extractos } = await this.supabase.getExtractosByCommunity(cid);
-        const extractosDelAnio = extractos?.filter((e: any) => e.anio_contable === targetAnio) || [];
-        
-        let movimientosAcumulados: any[] = [];
-        const session = await this.supabase.getSession();
-        const headers = { 'Authorization': `Bearer ${session?.access_token}` };
+      const session = await this.supabase.getSession();
+      const headers = { 'Authorization': `Bearer ${session?.access_token}` };
 
-        for (const ext of extractosDelAnio) {
-          // CRITICAL: Fetch movements via API to get decrypted data, otherwise matching and display will fail.
-          try {
-            const movs = await lastValueFrom(this.http.get<any[]>(`/api/comunidades/${cid}/movimientos?extracto_id=${ext.id}`, { headers }));
-            
-            console.log(`[OK] Extracto ${ext.id} (${this.getMesNombre(ext.mes_contable)}): ${movs.length} movimientos encontrados.`);
-            movimientosAcumulados = [...movimientosAcumulados, ...movs];
-          } catch (e) {
-            console.error(`[ERROR API] No se pudieron cargar movimientos del extracto ${ext.id}:`, e);
+      // Cargamos el historial completo de movimientos para cada propiedad del usuario.
+      // Esto es CRÍTICO: permite que pagos de años anteriores que generaron crédito 
+      // para el año actual sean visibles en este panel, eliminando los huecos "fantasma".
+      const floorRequests = this.userPisos.map(p => {
+        const pisoNorm = this.utils.unformatPiso(p.codigo);
+        const cid = p.comunidades?.id || p.community_id;
+        return lastValueFrom(this.http.get<any[]>(`/api/comunidades/${cid}/movimientos?piso_codigo=${encodeURIComponent(pisoNorm)}`, { headers }))
+          .then(movs => ({ id: p.id, movs }))
+          .catch(() => ({ id: p.id, movs: [] }));
+      });
+
+      const results = await Promise.all(floorRequests);
+      results.forEach(res => this.movementsCache.set(res.id, res.movs));
+
+      // Calcular crédito acumulado global del usuario (sobrante no consumido)
+      let globalCredit = 0;
+      this.movementsCache.forEach((movs) => {
+        let pisoCredit = 0;
+        movs.forEach((mov: any) => {
+          const asigs = mov.detalle_asignacion_cuotas;
+          if (Array.isArray(asigs)) {
+            asigs.forEach((a: any) => {
+              if (a.mes_destino === 'CREDITO_ACUMULADO') pisoCredit += this.utils.asNumber(a.importe_aplicado);
+              if (a.pago_id === 'CREDITO_PREVIO') pisoCredit -= this.utils.asNumber(a.importe_aplicado);
+            });
           }
-        }
-        
-        movementsCache.set(cid, movimientosAcumulados);
-      }
+        });
+        globalCredit += pisoCredit;
+      });
+      this.totalCredito = Math.max(0, globalCredit);
 
       // Iterar de mes actual hacia atrás para que aparezca lo más reciente primero
-      for (let m = maxMonth; m >= 1; m--) {
+      for (let m = 12; m >= 1; m--) {
+        // Solo incluir el mes si hay un registro contable (extracto) en la base de datos
+        const hasExtract = this.availableExtractosFinanzas.some(e => e.anio_contable === targetAnio && e.mes_contable === m);
+        if (!hasExtract) continue;
+
         const detallesPisosDelMes = [];
-        
+        let totalMes = 0;
+        let mesIsFromCredit = false;
+
         for (const p of this.userPisos) {
-          const movimientosComunidad = movementsCache.get(p.comunidades?.id) || [];
+          const historialMovimientos = this.movementsCache.get(p.id) || [];
             const pisoNorm = this.utils.unformatPiso(p.codigo);
+            const targetMonthStr = `${targetAnio}-${String(m).padStart(2, '0')}`;
+          
+          let totalAbonado = 0;
+          const desgloseDePagos: any[] = [];
 
-          const pagosEncontrados = movimientosComunidad.filter((mov: any) => {
-            const d = new Date(mov.fecha);
-            const movAnio = d.getFullYear();
-            const movMes = d.getMonth() + 1;
-              const importe = this.utils.asNumber(mov.importe);
+          historialMovimientos.forEach((mov: any) => {
+            const importe = this.utils.asNumber(mov.importe);
 
-            // Solo ingresos del mes y año correcto
-            if (movAnio !== targetAnio || movMes !== m) return false;
-            if (importe <= 0) return false; // Solo ingresos
+            const asigs = mov.detalle_asignacion_cuotas;
+            const hasMotorData = Array.isArray(asigs) && asigs.length > 0;
+            if (hasMotorData) {
+              const asig = asigs.find((a: any) => a.mes_destino === targetMonthStr);
+              if (asig) {
+                const monto = this.utils.asNumber(asig.importe_aplicado);
+                totalAbonado += monto;
 
-            // 2. Comprobación por piso_detectado (ML/Clasificador)
-              const pisoDetectadoNorm = this.utils.unformatPiso(mov.piso_detectado);
-            if (pisoDetectadoNorm && pisoDetectadoNorm === pisoNorm) {
-              console.log(`  [MATCH!] Mes ${m} - Piso ${pisoNorm}: Encontrado vía piso_detectado`);
-              return true;
+                const dateParts = mov.fecha.split('-');
+                const movY = parseInt(dateParts[0], 10);
+                const movM = parseInt(dateParts[1], 10);
+                
+                const isFromCredit = (asig.pago_id === 'CREDITO_PREVIO' || 
+                                     movY !== targetAnio || 
+                                     movM !== m);
+                
+                if (isFromCredit) mesIsFromCredit = true;
+
+                desgloseDePagos.push({ 
+                  fecha: mov.fecha, 
+                  importe: monto, 
+                  concepto: mov.concepto_original,
+                  isFromCredit 
+                });
+              }
+            } else {
+              const dateParts = mov.fecha.split('-');
+              if (dateParts.length >= 2 && parseInt(dateParts[0], 10) === targetAnio && parseInt(dateParts[1], 10) === m) {
+                totalAbonado += importe;
+                desgloseDePagos.push({ fecha: mov.fecha, importe: importe, concepto: mov.concepto_original, isFromCredit: false });
+              }
             }
-
-            // 3. Comprobación por Concepto Original (Desencriptado)
-            const descPlana = mov.concepto_original;
-              const descNorm = this.utils.unformatPiso(descPlana);
-            if (descNorm.includes(pisoNorm)) {
-              console.log(`  [MATCH!] Mes ${m} - Piso ${pisoNorm}: Encontrado en descripción: "${descPlana}"`);
-              return true;
-            }
-
-            // 4. Comprobación por Ordenante (Desencriptado)
-            const ordPlano = mov.ordenante;
-              const ordNorm = this.utils.unformatPiso(ordPlano);
-            if (ordNorm.includes(pisoNorm)) {
-              console.log(`  [MATCH!] Mes ${m} - Piso ${pisoNorm}: Encontrado en ordenante: "${ordPlano}"`);
-              return true;
-            }
-
-            return false;
           });
 
-          const pagado = pagosEncontrados.length > 0;
-          const importeTotal = pagosEncontrados.reduce((acc: number, mov: MovimientoBancario) => acc + this.utils.asNumber(mov.importe), 0);
-          const fechaUltimoPago = pagado ? [...pagosEncontrados].sort((a: MovimientoBancario, b: MovimientoBancario) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())[0].fecha : null;
-          const esVencido = !pagado && (targetAnio < currentAnio || (targetAnio === currentAnio && m < currentMonth));
+          const cuotaEsperada = p.cuota_base || p.comunidades?.cuota_base || 0;
+          const isPaid = totalAbonado >= cuotaEsperada && cuotaEsperada > 0;
+          const esVencido = !isPaid && (targetAnio < currentAnio || (targetAnio === currentAnio && m < currentMonth));
+          
+          totalMes += totalAbonado;
 
           detallesPisosDelMes.push({
             piso: p.codigo,
             comunidad: p.comunidades?.nombre,
-            fecha: fechaUltimoPago,
-            importe: importeTotal,
-            pagado: pagado,
-            vencido: esVencido
+            totalAbonado: totalAbonado,
+            cuota: cuotaEsperada,
+            pagado: isPaid,
+            vencido: esVencido,
+            status: totalAbonado >= cuotaEsperada ? 'PAGADO' : (totalAbonado > 0 ? 'PARCIAL' : 'PENDIENTE'),
+            movs: desgloseDePagos.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
           });
         }
 
         this.allRecibosGrouped.push({
           mes: m,
           mesNombre: this.getMesNombre(m),
+          total: totalMes,
+          isFromCredit: mesIsFromCredit,
           detalles: detallesPisosDelMes
         });
       }
@@ -598,21 +645,55 @@ export class PortalPropietarioComponent implements OnInit {
 
   get pendingReceiptsList() {
     const list: any[] = [];
-    if (!this.allRecibosGrouped) return list;
-    this.allRecibosGrouped.forEach(group => {
-      if (!group.detalles) return;
-      group.detalles.forEach((det: any) => {
-        if (!det.pagado && det.vencido) {
-          list.push({ ...det, mesNombre: group.mesNombre, anio: this.viewDateRecibos.getFullYear() });
+    if (this.userPisos.length === 0 || this.availableExtractosFinanzas.length === 0) return list;
+
+    // Para que coincida con el admin, revisamos todos los extractos históricos de la comunidad
+    this.availableExtractosFinanzas.forEach(ext => {
+      const y = ext.anio_contable;
+      const m = ext.mes_contable;
+      const targetMonthStr = `${y}-${String(m).padStart(2, '0')}`;
+
+      this.userPisos.forEach(p => {
+        const movs = this.movementsCache.get(p.id) || [];
+        let totalAbonado = 0;
+        const cuotaEsperada = p.cuota_base || p.comunidades?.cuota_base || 0;
+
+        movs.forEach((mov: any) => {
+          const asigs = mov.detalle_asignacion_cuotas;
+          if (Array.isArray(asigs) && asigs.length > 0) {
+            const match = asigs.find((a: any) => a.mes_destino === targetMonthStr);
+            if (match) totalAbonado += this.utils.asNumber(match.importe_aplicado);
+          } else {
+            const dateParts = mov.fecha.split('-');
+            if (dateParts.length >= 2 && parseInt(dateParts[0], 10) === y && parseInt(dateParts[1], 10) === m) {
+              totalAbonado += this.utils.asNumber(mov.importe);
+            }
+          }
+        });
+
+        if (totalAbonado < cuotaEsperada && cuotaEsperada > 0) {
+          list.push({
+            piso: p.codigo,
+            comunidad: p.comunidades?.nombre,
+            totalAbonado: totalAbonado,
+            cuota: cuotaEsperada,
+            pagado: false,
+            anio: y,
+            mes: m,
+            mesNombre: this.getMesNombre(m),
+            status: totalAbonado > 0 ? 'PARCIAL' : 'PENDIENTE'
+          });
         }
       });
     });
-    return list;
+
+    // Ordenar de más reciente a más antiguo (cascada histórica completa)
+    return list.sort((a, b) => (b.anio * 100 + b.mes) - (a.anio * 100 + a.mes));
   }
 
   togglePendientes() {
     this.mostrarPendientes = !this.mostrarPendientes;
-    console.log('[DEBUG] Mostrar solo pendientes:', this.mostrarPendientes);
+    this.extractoActualRecibos = null;
   }
 
   getMesNombre(mes: number | null): string {
