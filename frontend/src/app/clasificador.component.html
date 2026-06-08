@@ -1,66 +1,80 @@
-<div class="container">
-  <div *ngIf="error" class="error show">{{ error }}</div>
+<div class="card-container" style="max-width: 100%;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 1px solid #f1f5f9; padding-bottom: 20px;">
+    <h3 style="margin: 0; font-size: 1.3rem; font-weight: 900; color: #1e293b;">Clasificador Inteligente</h3>
+  </div>
 
-  <!-- PANTALLA 1: UPLOAD -->
-  <div *ngIf="pantallaActual === 1" class="pantalla show card-container">
-    <h2 class="section-title">Carga de Extractos Bancarios</h2>
-    
-    <!-- Selector de Comunidad de Referencia -->
-    <div class="info-section-professional">
-      <div class="form-group-opt">
-        <label class="form-label-professional">1. Seleccione una comunidad *</label>
-        <select [(ngModel)]="clasificadorCommunityId" class="select-professional" style="max-width: 500px;">
-          <option [ngValue]="null">--- Seleccione una comunidad ---</option>
-          <option *ngFor="let com of comunidadesDB" [ngValue]="com.id">{{ com.nombre }}</option>
+  <!-- Pantalla 1: Selección de Archivo y Comunidad -->
+  <div *ngIf="pantallaActual === 1" style="animation: fadeIn 0.5s ease;">
+    <div style="text-align: center; margin-bottom: 45px;">
+      <div style="width: 70px; height: 70px; background: #f5f3ff; color: #6366f1; border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 25px; box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.1);">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+      </div>
+      <h2 style="font-size: 1.6rem; font-weight: 900; color: #1e293b; margin-bottom: 12px; letter-spacing: -0.01em;">Nuevo Análisis de Extracto</h2>
+      <p style="color: #64748b; max-width: 520px; margin: 0 auto; font-size: 1rem; line-height: 1.6;">
+        Sube el extracto bancario y nuestra IA identificará automáticamente los ingresos de cada piso mediante el histórico y reglas personalizadas.
+      </p>
+    </div>
+
+    <div style="max-width: 550px; margin: 0 auto; background: white; padding: 40px; border-radius: 24px; border: 1px solid #e2e8f0; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05);">
+      <div class="form-group" style="margin-bottom: 30px;">
+        <label style="display: flex; align-items: center; gap: 10px; font-weight: 800; color: #475569; margin-bottom: 15px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>
+          Comunidad de Vecinos
+        </label>
+        <select id="comunidad" [(ngModel)]="clasificadorCommunityId" class="input-standard" style="padding: 14px 18px; border-radius: 14px; border: 2px solid #f1f5f9; font-weight: 700; width: 100%; color: #1e293b; font-size: 1rem; background-color: #f8fafc;">
+          <option [value]="null" disabled>-- Selecciona una comunidad --</option>
+          <option *ngFor="let com of comunidadesDB" [value]="com.id">{{ com.nombre }}</option>
         </select>
       </div>
-    </div>
 
-    <div class="upload-grid">
-      <!-- Zona Extracto -->
-      <div class="upload-zone" [class.has-file]="selectedFileExtracto" (click)="extInput.click()" style="max-width: 600px; margin: 0 auto; min-height: 220px;">
-        <div class="upload-icon-pulse" *ngIf="!selectedFileExtracto">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-        </div>
-        <div class="upload-text" *ngIf="!selectedFileExtracto" style="margin-top: 15px;">
-          <b style="font-size: 1.1rem; color: #1e293b;">Sube el extracto bancario</b>
-          <span style="display: block; margin-top: 5px; color: #94a3b8;">Haz clic para buscar o arrastra el PDF/Excel aquí</span>
-        </div>
-        
-        <div class="file-upload-badge success" *ngIf="selectedFileExtracto" (click)="$event.stopPropagation()">
-          <div class="file-icon-bg">📄</div>
-          <div class="file-details" style="padding-left: 10px;">
-            <span class="file-name">{{ selectedFileExtracto.name }}</span>
-            <span class="file-status">Listo para procesar</span>
+      <div class="form-group" style="margin-bottom: 40px;">
+        <label style="display: flex; align-items: center; gap: 10px; font-weight: 800; color: #475569; margin-bottom: 15px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          Archivo del Extracto
+        </label>
+        <div class="file-upload-wrapper" style="position: relative;">
+          <input type="file" id="extracto" (change)="onFileSelected($event)" accept=".xlsx,.xls,.csv" class="input-standard" style="opacity: 0; position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: pointer; z-index: 2;">
+          <div style="padding: 30px 20px; border: 2px dashed #cbd5e1; border-radius: 16px; text-align: center; background: #f8fafc; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);" 
+               [style.border-color]="selectedFileExtracto ? '#6366f1' : '#cbd5e1'" 
+               [style.background]="selectedFileExtracto ? '#f5f3ff' : '#f8fafc'">
+            <div *ngIf="!selectedFileExtracto">
+              <span style="color: #64748b; font-weight: 700; display: block; margin-bottom: 5px; font-size: 1rem;">Haz clic para elegir archivo</span>
+              <span style="color: #94a3b8; font-size: 0.85rem;">Soporta Excel (.xlsx) y CSV</span>
+            </div>
+            <div *ngIf="selectedFileExtracto" style="color: #6366f1; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 1rem;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 11"></polyline></svg>
+              {{ selectedFileExtracto.name }}
+            </div>
           </div>
-          <button class="remove-file-btn" (click)="selectedFileExtracto = null">×</button>
         </div>
-        <input #extInput type="file" style="display:none" (change)="onFileSelected($event)">
       </div>
-    </div>
 
-    <div class="btn-container" style="justify-content: center; margin-top: 20px;">
-      <button class="btn-primary-action" [disabled]="!selectedFileExtracto || !clasificadorCommunityId || loading" (click)="procesar()">
-        <span *ngIf="!loading">Comenzar</span>
-        <span *ngIf="loading">Analizando...</span>
+      <button class="btn btn-primary" (click)="procesar()" [disabled]="!selectedFileExtracto || !clasificadorCommunityId || loading" 
+              style="width: 100%; height: 56px; border-radius: 16px; font-size: 1.1rem; font-weight: 900; background: #6366f1; border: none; box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.4); transition: all 0.3s ease; color: white; cursor: pointer;">
+        <span *ngIf="!loading" style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+          Comenzar
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+        </span>
+        <span *ngIf="loading" class="spinner" style="width: 24px; height: 22px; border-width: 3px;"></span>
       </button>
+      <div *ngIf="error" style="margin-top: 25px; padding: 15px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 14px; color: #b91c1c; font-size: 0.9rem; text-align: center; font-weight: 700;">{{ error }}</div>
     </div>
   </div>
 
-  <!-- PANTALLA 2: REVISIÓN -->
-  <div *ngIf="pantallaActual === 2" class="pantalla show">
-    <div class="summary-cards">
-      <div class="card card-ingreso">
-        <small>INGRESOS</small>
-        <span class="val">{{ resumen.total_ingresos | number:'1.2-2' }}€</span>
+  <!-- Pantalla 2: Revisión y Edición de Movimientos -->
+  <div *ngIf="pantallaActual === 2">
+    <div class="summary-cards" style="margin-bottom: 35px; grid-template-columns: repeat(3, 1fr); display: grid; gap: 20px;">
+      <div class="card card-ingreso" style="padding: 20px; border-radius: 16px; text-align: center;">
+        <small style="display: block; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; margin-bottom: 5px; color: #166534;">Ingresos Detectados</small>
+        <span class="val" style="font-size: 1.5rem; font-weight: 900;">{{ resumen.total_ingresos | number:'1.2-2' }}€</span>
       </div>
-      <div class="card card-gasto">
-        <small>GASTOS</small>
-        <span class="val">{{ resumen.total_gastos | number:'1.2-2' }}€</span>
+      <div class="card card-gasto" style="padding: 20px; border-radius: 16px; text-align: center;">
+        <small style="display: block; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; margin-bottom: 5px; color: #991b1b;">Gastos del Periodo</small>
+        <span class="val" style="font-size: 1.5rem; font-weight: 900;">{{ resumen.total_gastos | number:'1.2-2' }}€</span>
       </div>
-      <div class="card card-neto">
-        <small>NETO</small>
-        <span class="val">{{ resumen.saldo_neto | number:'1.2-2' }}€</span>
+      <div class="card card-neto" style="padding: 20px; border-radius: 16px; text-align: center;">
+        <small style="display: block; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; margin-bottom: 5px; color: #4338ca;">Balance de Caja</small>
+        <span class="val" style="font-size: 1.5rem; font-weight: 900;">{{ resumen.saldo_neto | number:'1.2-2' }}€</span>
       </div>
     </div>
 
@@ -69,50 +83,260 @@
         <tr>
           <th>FECHA</th>
           <th *ngIf="!isCsv">ORDENANTE</th>
-          <th>OBSERVACIONES</th>
+          <th>CONCEPTO ORIGINAL</th>
           <th style="text-align: right;">IMPORTE</th>
-          <th style="text-align: right;">SALDO</th>
+          <th style="text-align: center;">ACCIONES</th>
           <th style="text-align: center;">CONCEPTO</th>
         </tr>
       </thead>
       <tbody>
         <tr *ngFor="let mov of movimientos">
           <td>{{ mov.FECHA }}</td>
-          <td *ngIf="!isCsv">{{ mov.ORDENANTE }}</td>
-          <td style="font-size: 0.9em; max-width: 300px;">{{ mov.OBSERVACIONES }}</td>
-          <td [style.color]="mov.IMPORTE > 0 ? '#27ae60' : '#e74c3c'" style="text-align: right; font-weight: bold;">
+          <td *ngIf="!isCsv">{{ mov.ORDENANTE || '-' }}</td>
+          <td style="position: relative;">
+            <span style="padding-right: 25px; display: inline-block;">{{ mov.OBSERVACIONES || '-' }}</span>
+            <div *ngIf="mov.es_historico" 
+                 class="historical-indicator" 
+                 title="Ver coincidencia histórica" 
+                 (click)="showHistoricalDetails($event, mov)" 
+                 style="cursor: pointer; transition: all 0.2s ease;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10H12V2z"></path><path d="M12 12L2.69 7"></path><path d="M12 12l5.63 8.04"></path><path d="M22 12a10 10 0 0 0-10-10"></path></svg>
+            </div>
+          </td>
+          <td [style.color]="mov.IMPORTE > 0 ? '#2ecc71' : '#e74c3c'" style="text-align: right; font-weight: bold;">
             {{ mov.IMPORTE | number:'1.2-2' }}€
           </td>
-          <td style="text-align: right; color: #7f8c8d;">{{ mov.SALDO | number:'1.2-2' }}€</td>
-          <td style="text-align: center; min-width: 160px;">
-            <div style="display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;">
-              <svg *ngIf="mov.es_historico" width="14" height="14" viewBox="0 0 24 24" fill="#6366f1" style="flex-shrink: 0; cursor: pointer; transition: transform 0.2s;">
-                <circle cx="12" cy="12" r="10"/>
-              </svg>
-              <input [(ngModel)]="mov.CONCEPTO" class="input-concepto-edit" style="text-align: center;">
+          <td style="text-align: center;">
+            <button class="btn-action-minimalist" (click)="abrirEdicion(mov)" title="Editar Concepto">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            </button>
+          </td>
+          <td style="text-align: center;">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+              <span class="badge" style="background: #f1f5f9; color: #475569; padding: 6px 14px; font-weight: 700;">{{ mov.CONCEPTO }}</span>
             </div>
           </td>
         </tr>
       </tbody>
     </table>
 
-    <div class="actions">
-      <button class="btn btn-info" (click)="guardarEnBaseDeDatos()">Guardar</button>
-      <button class="btn btn-secondary" (click)="pantallaActual = 1">Volver</button>
+    <div class="actions" style="margin-top: 25px; display: flex; justify-content: center;">
+      <button class="btn btn-primary" (click)="guardarEnBaseDeDatos()" [disabled]="loading">
+        {{ loading ? loadingMessage : 'Guardar en Base de Datos' }}
+      </button>
     </div>
   </div>
 
-  <!-- PANTALLA 3: ÉXITO -->
-  <div *ngIf="pantallaActual === 3" class="success-card">
-    <div class="success-icon">
-      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-        <path d="M5 13l4 4L19 7"/>
-      </svg>
+  <!-- Pantalla 3: Proceso Completado -->
+  <div *ngIf="pantallaActual === 3" style="text-align: center; padding: 60px; background: white; border-radius: 24px; border: 1px solid #e2e8f0; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.05); animation: fadeIn 0.4s ease;">
+    <div style="width: 80px; height: 80px; border-radius: 50%; background: #dcfce7; color: #10b981; display: flex; align-items: center; justify-content: center; margin: 0 auto 30px; box-shadow: 0 5px 15px rgba(16, 185, 129, 0.2);">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 11"></polyline></svg>
     </div>
-    <h2>¡Procesado con éxito!</h2>
-    <p>Los movimientos han sido clasificados y guardados correctamente en la base de datos.</p>
-    <div class="actions">
-      <button class="btn btn-primary" (click)="pantallaActual = 1">Nuevo proceso</button>
+    <h3 style="font-size: 1.8rem; font-weight: 800; color: #1e293b; margin-bottom: 15px;">¡Proceso Completado!</h3>
+    <p style="font-size: 1.1rem; color: #475569; margin-bottom: 40px;">El registro bancario ha sido añadido correctamente.</p>
+    <div style="display: flex; justify-content: center; gap: 15px;">
+      <button class="btn btn-primary" (click)="goToClassifiedExtracto()" style="font-size: 1rem; padding: 12px 25px; border-radius: 12px; font-weight: 700; background: #6366f1; border: none; box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.3);">
+        Ver Registro Añadido
+      </button>
+      <button class="btn btn-secondary" (click)="reiniciar()" style="font-size: 1rem; padding: 12px 25px; border-radius: 12px; font-weight: 600; background: #f1f5f9; border: 1px solid #e2e8f0; color: #64748b;">
+        Nuevo Proceso
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal de Edición Emergente -->
+  <div class="modal-overlay" *ngIf="mostrarModalEdicion" style="z-index: 10001; position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: rgba(15, 23, 42, 0.5); backdrop-filter: blur(4px);">
+    <div class="modal-card" style="max-width: 460px; width: 92%; animation: slideUp 0.3s ease; border-radius: 20px; background: white; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); border: 1px solid #e2e8f0; position: relative;">
+      <!-- Cruz de cierre posicionada arriba a la derecha -->
+      <button class="close-modal-x" (click)="cerrarEdicion()" style="position: absolute; top: 15px; right: 20px; z-index: 10;">×</button>
+      
+      <div class="modal-header" style="padding: 30px 30px 15px; border: none; background: white;">
+        <h3 style="margin: 0; font-size: 1.25rem; font-weight: 800; color: #1e293b;">Configuración</h3>
+      </div>
+      <div class="modal-body" style="padding: 0 30px 25px; background: white;">
+        <!-- Bloque de Referencia -->
+        <div style="margin-bottom: 20px;">
+          <div style="background: #f8fafc; padding: 15px; border-radius: 14px; border: 1px solid #f1f5f9;">
+            <span style="font-size: 0.6rem; color: #94a3b8; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 4px;">Concepto Original del Banco</span>
+            <span style="color: #475569; font-weight: 600; line-height: 1.4; font-size: 0.85rem; display: block;">{{ movimientoEnEdicion?.OBSERVACIONES }}</span>
+          </div>
+        </div>
+
+        <!-- Bloque de Acción: Piso e Importe -->
+        <div style="display: grid; grid-template-columns: 1fr 120px; gap: 15px;">
+          <div class="form-group">
+            <label style="font-weight: 800; color: #6366f1; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 8px; display: block; letter-spacing: 0.05em;">Piso o Categoría</label>
+            <div style="position: relative;">
+              <input [(ngModel)]="tempConcepto" class="input-standard" style="width: 100%; padding: 12px 12px 12px 40px; font-weight: 800; font-size: 1rem;" placeholder="Ej: 2º B" (keyup.enter)="confirmarEdicion()">
+              <svg style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8;" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            </div>
+          </div>
+          <div class="form-group">
+            <label style="font-weight: 800; color: #6366f1; font-size: 0.7rem; text-transform: uppercase; margin-bottom: 8px; display: block; letter-spacing: 0.05em;">Cuota (€)</label>
+            <div style="position: relative;">
+              <input [(ngModel)]="movimientoEnEdicion.IMPORTE" type="number" class="input-standard" style="width: 100%; padding: 12px 10px 12px 30px; font-weight: 800; font-size: 1rem; text-align: right;" (keyup.enter)="confirmarEdicion()">
+              <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-weight: 800; font-size: 0.9rem;">€</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="padding: 0 30px 30px; background: white; border: none; display: flex; gap: 12px;">
+        <button class="btn btn-modal btn-modal-secondary" (click)="cerrarEdicion()">Cancelar</button>
+        <button class="btn btn-modal btn-modal-primary" (click)="confirmarEdicion()" style="flex: 1.5;">Confirmar Cambio</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tooltip de Histórico -->
+  <div *ngIf="showHistoricalTooltip" class="modal-overlay" style="z-index: 10999;">
+    <div class="historical-tooltip" style="max-width: 440px;">
+      <div class="historical-header" style="padding: 20px 25px; background: white; border-bottom: 1px solid #f1f5f9;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="width: 32px; height: 32px; background: #f5f3ff; color: #6366f1; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2a10 10 0 1 0 10 10H12V2z"></path><path d="M12 12L2.69 7"></path><path d="M12 12l5.63 8.04"></path><path d="M22 12a10 10 0 0 0-10-10"></path></svg>
+          </div>
+          <h4 style="margin: 0; font-weight: 800; font-size: 0.95rem; color: #1e293b;">Configuración</h4>
+        </div>
+        <button class="close-popup" (click)="hideHistoricalDetails()" style="color: #ef4444; font-weight: 400;">×</button>
+      </div>
+      <div class="historical-body" [innerHTML]="historicalTooltipContent"></div>
+    </div>
+  </div>
+
+  <!-- Pantalla de Carga Centrada -->
+  <div *ngIf="loading" class="loading-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.7); backdrop-filter: blur(8px); z-index: 10002;">
+    <div style="text-align: center; background: white; padding: 40px; border-radius: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); border: 1px solid #f1f5f9;">
+      <div class="spinner" style="width: 40px; height: 40px; border-width: 4px; margin: 0 auto 20px; border-top-color: #6366f1;"></div>
+      <span style="display: block; font-size: 1.1rem; font-weight: 800; color: #1e293b; letter-spacing: -0.01em;">{{ loadingMessage }}</span>
     </div>
   </div>
 </div>
+
+<style>
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+
+  .historical-indicator {
+    position: absolute;
+    top: 50%;
+    right: 5px;
+    transform: translateY(-50%);
+    color: #6366f1;
+    cursor: help;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #eef2ff;
+    border: 1.5px solid #6366f1;
+  }
+  .historical-indicator:hover {
+    background: #6366f1;
+    color: white;
+    transform: translateY(-50%) scale(1.2);
+    box-shadow: 0 4px 10px rgba(99, 102, 241, 0.3);
+  }
+
+  .historical-tooltip {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border-radius: 24px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    max-width: 480px;
+    width: 92%;
+    z-index: 11000;
+    overflow: hidden;
+    animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    border: 1px solid #e2e8f0;
+  }
+
+  .historical-header {
+    padding: 20px 25px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #6366f1;
+  }
+
+  .historical-body {
+    padding: 15px 25px 25px;
+    color: #1e293b;
+    line-height: 1.2;
+    font-size: 0.8rem;
+    white-space: pre-line;
+  }
+  .historical-body b, .historical-body strong {
+    color: #6366f1;
+    font-weight: 900;
+    display: inline-block;
+    margin-top: 6px;
+    margin-bottom: 1px;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    border-bottom: 1px solid #eef2ff;
+    width: 100%;
+  }
+  .historical-body b:first-child, .historical-body strong:first-child {
+    margin-top: 0;
+  }
+
+  .close-popup {
+    background: none;
+    border: none;
+    font-size: 28px;
+    color: #94a3b8;
+    cursor: pointer;
+    line-height: 1;
+    transition: color 0.2s;
+  }
+  .close-popup:hover {
+    color: #ef4444;
+  }
+
+  .close-modal-x {
+    background: transparent;
+    border: none;
+    color: #ef4444;
+    font-size: 32px;
+    font-weight: 300;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+    transition: transform 0.2s ease;
+  }
+  .close-modal-x:hover {
+    transform: scale(1.1);
+  }
+
+  .btn-action-minimalist {
+    background: transparent;
+    border: none;
+    color: #94a3b8; /* Gris suave profesional */
+    cursor: pointer;
+    padding: 8px;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+  }
+  .btn-action-minimalist:hover {
+    color: #6366f1; /* Indigo corporativo */
+    background-color: #f5f3ff; /* Fondo muy suave */
+    transform: scale(1.1);
+  }
+</style>

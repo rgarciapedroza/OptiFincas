@@ -100,6 +100,7 @@ export interface ComunidadDB {
   created_at?: string;
   patrones_piso?: RegexRule[] | string; // Already exists, but ensure it's here
   region?: string; // New: Autonomous community region code
+  cuota_base?: number; // Nuevo campo para la cuota base
 }
 
 export interface Anuncio {

@@ -10,7 +10,7 @@ import { UtilsService } from './utils.service';
 @Component({
   selector: 'app-comunidad-extractos',
   template: `
-    <div class="card-container" style="max-width: 100%;">
+    <div class="card-container" style="max-width: 100%; padding: 30px;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
         <h3 style="margin: 0; font-size: 1.1rem;">
           {{ extractoSeleccionado ? 'Movimientos del Registro' : 'Registros Mensuales' }}
@@ -49,10 +49,10 @@ import { UtilsService } from './utils.service';
       <!-- Listado de Meses -->
       <table class="movimientos-table" *ngIf="!extractoSeleccionado">
         <thead>
-          <tr>
+          <tr style="background: #f8fafc;">
             <th (click)="toggleOrdenMes()" style="cursor: pointer; user-select: none;">
               MES {{ ordenMes === 'desc' ? '▼' : '▲' }}
-            </th>
+            </th> 
             <th style="text-align: center;">Nº MOVIMIENTOS</th>
             <th style="text-align: center;">ACCIONES</th>
           </tr>
@@ -87,14 +87,14 @@ import { UtilsService } from './utils.service';
 
         <table class="movimientos-table">
           <thead>
-            <tr>
+            <tr style="background: #f8fafc;">
               <th (click)="toggleOrdenFecha()" style="cursor: pointer; user-select: none;">
                 FECHA {{ ordenFecha === 'desc' ? '▼' : '▲' }}
-              </th>
+              </th> 
               <th>ORDENANTE</th>
               <th>CONCEPTO ORIGINAL</th>
+              <th style="text-align: center;">ACCIONES</th>
               <th style="text-align: right;">IMPORTE</th>
-              <th style="text-align: center;">CONCEPTO / ASIGNACIÓN</th>
               <th style="text-align: center;">ACCIONES</th>
             </tr>
           </thead>
@@ -104,17 +104,17 @@ import { UtilsService } from './utils.service';
               <td style="font-size: 0.9rem;">{{ mov.ordenante || '-' }}</td>
               <td style="font-size: 0.9rem;">{{ mov.concepto_original || '-' }}</td>
               <td [style.color]="mov.importe > 0 ? '#2ecc71' : '#e74c3c'" style="text-align: right; font-weight: bold;">
+                <button class="btn-action" (click)="abrirEdicion(mov)" title="Editar Concepto" style="color: #6366f1;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                </button>
+              </td>
+              <td style="text-align: right; font-weight: bold;">
                 {{ mov.importe | number:'1.2-2' }}€
               </td>
               <td style="text-align: center;">
                 <span class="badge">
                   {{ mov.CONCEPTO || 'Sin asignar' }}
                 </span>
-              </td>
-              <td style="text-align: center;">
-                <button class="btn-action" (click)="abrirEdicion(mov)" title="Editar Concepto" style="color: #6366f1;">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                </button>
               </td>
             </tr>
           </tbody>
@@ -132,11 +132,11 @@ import { UtilsService } from './utils.service';
       <!-- Modal de Edición de Movimiento -->
       <div class="modal-overlay" *ngIf="mostrarModalEdicion" style="z-index: 1100;">
         <div class="modal-card" style="max-width: 500px;">
-          <div class="modal-header">
+          <div class="modal-header" style="padding: 25px 30px;">
             <h3>Editar Asignación</h3>
             <button class="btn-action" (click)="cerrarEdicion()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
           </div>
-          <div class="modal-body" *ngIf="movimientoEnEdicion">
+          <div class="modal-body" *ngIf="movimientoEnEdicion" style="padding: 35px;">
             <div style="background: #f8fafc; padding: 15px; border-radius: 10px; margin-bottom: 20px; font-size: 0.9rem;">
               <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
                 <span style="color: #64748b;">Fecha:</span>
@@ -159,8 +159,8 @@ import { UtilsService } from './utils.service';
                      class="input-concepto-edit" 
                      (keyup.enter)="confirmarEdicion()">
             </div>
-          </div>
-          <div class="modal-footer">
+          </div> 
+          <div class="modal-footer" style="padding: 20px 30px;">
             <button class="btn btn-secondary" (click)="cerrarEdicion()">Cancelar</button>
             <button class="btn btn-primary" (click)="confirmarEdicion()">Aplicar Cambio</button>
           </div>
@@ -206,6 +206,20 @@ export class ComunidadExtractosComponent implements OnInit {
     this.communityId = this.route.parent?.snapshot.paramMap.get('id') || null;
     if (this.communityId) {
       await this.cargarExtractos();
+
+      // Check for query params to auto-select an extracto
+      this.route.queryParams.subscribe(params => {
+        const mesParam = params['mes'];
+        const anioParam = params['anio'];
+        if (mesParam && anioParam) {
+          const targetExtracto = this.extractos.find(
+            e => e.mes_contable === parseInt(mesParam, 10) && e.anio_contable === parseInt(anioParam, 10)
+          );
+          if (targetExtracto) {
+            this.seleccionarExtracto(targetExtracto);
+          }
+        }
+      });
     }
     // Cargar info de comunidad para el reporte
     const { data: coms } = await this.supabase.getComunidades();

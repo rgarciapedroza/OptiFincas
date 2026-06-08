@@ -10,24 +10,30 @@ import { UtilsService } from './utils.service';
   selector: 'app-comunidad-piso-movimientos',
   template: `
     <div class="card-container" style="max-width: 100%;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
-        <h3 style="margin: 0; font-size: 1.1rem;">
-          Movimientos Bancarios de {{ piso?.propietario }} ({{ utils.formatearPiso(piso?.codigo) }})
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 1px solid #f1f5f9; padding-bottom: 20px;">
+        <h3 style="margin: 0; font-size: 1.3rem; font-weight: 900; color: #1e293b;">
+          Historial de {{ piso?.propietario }} <span style="color: #94a3b8; font-weight: 500; font-size: 0.9rem; margin-left: 10px;">· {{ utils.formatearPiso(piso?.codigo) }}</span>
         </h3>
-        <button class="btn btn-secondary" (click)="goBack()" style="font-size: 0.85rem; border-radius: 20px; padding: 8px 20px;">
-          ← Volver al Censo
-        </button>
+        <div style="display: flex; gap: 12px;">
+          <button class="btn btn-primary" (click)="goToRegistros()" style="font-size: 0.85rem; border-radius: 25px; padding: 10px 22px; display: flex; align-items: center; gap: 10px; background: #6366f1; border: none; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25); color: white; font-weight: 700;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            Registros Contables
+          </button>
+          <button class="btn btn-secondary" (click)="goBack()" style="font-size: 0.85rem; border-radius: 25px; padding: 10px 22px; border: 1px solid #e2e8f0; background: white; color: #64748b; font-weight: 600;">
+            ← Volver al Censo
+          </button>
+        </div>
       </div>
 
       <!-- Saldo Virtual (Crédito Acumulado) -->
-      <div style="display: flex; justify-content: flex-end; margin-bottom: 25px;">
-        <div class="card" style="background: linear-gradient(135deg, #f5f3ff 0%, #ffffff 100%); border: 1px solid #c7d2fe; padding: 12px 25px; border-radius: 12px; display: flex; gap: 30px; align-items: center; box-shadow: 0 2px 8px rgba(99, 102, 241, 0.05); width: fit-content;">
+      <div style="display: flex; justify-content: flex-end; margin-bottom: 40px;">
+        <div class="card" style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); border: none; padding: 25px 40px; border-radius: 24px; display: flex; gap: 40px; align-items: center; box-shadow: 0 20px 25px -5px rgba(99, 102, 241, 0.3); color: white;">
           <div>
-            <span style="display: block; font-size: 0.6rem; color: #6366f1; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px;">Entrega a cuenta (Acumulado)</span>
-            <span style="font-size: 1.4rem; font-weight: 900; color: #1e293b;">{{ totalCredito | number:'1.2-2' }}€</span>
+            <span style="display: block; font-size: 0.75rem; color: rgba(255,255,255,0.7); font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px;">Saldo Virtual Disponible</span>
+            <span style="font-size: 2.5rem; font-weight: 900; letter-spacing: -0.02em;">{{ totalCredito | number:'1.2-2' }}€</span>
           </div>
-          <div style="background: #e0e7ff; color: #6366f1; padding: 10px; border-radius: 10px;">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+          <div style="background: rgba(255,255,255,0.15); color: white; padding: 15px; border-radius: 20px; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
           </div>
         </div>
       </div>
@@ -105,17 +111,18 @@ import { UtilsService } from './utils.service';
         <div *ngFor="let mData of getMonthsData()" style="margin-bottom: 15px;">
           <div class="card" 
                (click)="toggleMonth(mData.num)"
-               [style.cursor]="mData.movs.length > 0 ? 'pointer' : 'default'"
-               [style.background]="selectedMonth === mData.num ? '#f8fafc' : 'white'"
-               style="padding: 15px 25px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; transition: all 0.2s;">
+               style="padding: 20px 30px; border-radius: 18px; border: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); cursor: pointer; background: white;"
+               [style.transform]="selectedMonth === mData.num ? 'scale(1.01)' : 'scale(1)'"
+               [style.box-shadow]="selectedMonth === mData.num ? '0 12px 20px -5px rgba(0,0,0,0.08)' : 'none'"
+               [style.border-color]="selectedMonth === mData.num ? '#6366f1' : '#e2e8f0'">
             <div style="display: flex; align-items: center; gap: 15px;">
-              <span style="font-weight: 700; color: #1e293b; font-size: 1rem; min-width: 100px;">{{ mData.nombre }}</span>
+              <span style="font-weight: 800; color: #1e293b; font-size: 1.15rem; min-width: 130px;">{{ mData.nombre }}</span>
               <span class="badge" 
                     [style.background]="mData.status === 'PAGADO' ? '#dcfce7' : (mData.status === 'PARCIAL' ? '#fef3c7' : '#fee2e2')" 
                     [style.color]="mData.status === 'PAGADO' ? '#166534' : (mData.status === 'PARCIAL' ? '#92400e' : '#991b1b')">
                 {{ mData.status }}
               </span>
-              <span *ngIf="mData.isFromCredit && mData.paid" style="font-size: 0.6rem; color: #6366f1; font-weight: 800; background: #eef2ff; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.02em;">
+              <span *ngIf="mData.isFromCredit && mData.paid" style="font-size: 0.65rem; color: #6366f1; font-weight: 900; background: #f5f3ff; padding: 5px 14px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid #e0e7ff;">
                 Entrega a cuenta
               </span>
             </div>
@@ -506,6 +513,11 @@ export class ComunidadPisoMovimientosComponent implements OnInit {
   changeYear(delta: number) {
     this.selectedYear += delta;
     this.selectedMonth = null;
+  }
+
+  goToRegistros() {
+    // Navegación hacia el dashboard de la comunidad donde residen los extractos/registros
+    this.router.navigate(['../../dashboard'], { relativeTo: this.route });
   }
 
   goBack() {

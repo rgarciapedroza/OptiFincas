@@ -1,5 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { Router } from '@angular/router';
 import { SupabaseService } from './supabase.service';
 import { ComunidadDB, ExtractoProcesado } from './models';
 import { UtilsService } from './utils.service';
@@ -27,10 +28,16 @@ export class ClasificadorComponent implements OnInit {
   historicalTooltipContent = '';
   loadingMessage = 'Procesando...';
 
+  // Estado del Modal de Edición
+  mostrarModalEdicion = false;
+  movimientoEnEdicion: any = null;
+  tempConcepto: string = '';
+
   constructor(
     private http: HttpClient, 
     private supabase: SupabaseService, 
     public utils: UtilsService,
+    private router: Router,
     private modalService: ModalService
   ) {}
 
@@ -110,8 +117,7 @@ export class ClasificadorComponent implements OnInit {
           ordenante: m.ORDENANTE || '',
           piso_detectado: m.IMPORTE > 0 ? this.utils.unformatPiso(m.CONCEPTO) : 'piso sin identificar',
           tipo: m.IMPORTE > 0 ? 'ingreso' : 'gasto',
-          categoria: m.IMPORTE < 0 ? m.CONCEPTO : 'Ingreso Cuota',
-          detalle_asignacion_cuotas: m.detalle_asignacion_cuotas
+          categoria: m.IMPORTE < 0 ? m.CONCEPTO : 'Ingreso Cuota'
         }))
       };
 
@@ -124,32 +130,70 @@ export class ClasificadorComponent implements OnInit {
     }
   }
 
-  // --- Métodos de Apoyo Visual ---
+  goToClassifiedExtracto() {
+    if (this.clasificadorCommunityId && this.currentExtractoMes && this.currentExtractoAnio) {
+      this.router.navigate(
+        [`/comunidades/${this.clasificadorCommunityId}/extractos`],
+        { queryParams: { mes: this.currentExtractoMes, anio: this.currentExtractoAnio } }
+      );
+    } else {
+      this.modalService.showAlert('Error', 'No se pudo determinar el registro para navegar.');
+    }
+  }
 
+  // --- Métodos de Edición ---
+  abrirEdicion(mov: any) {
+    this.movimientoEnEdicion = mov;
+    this.tempConcepto = mov.CONCEPTO;
+    this.mostrarModalEdicion = true;
+  }
+
+  cerrarEdicion() {
+    this.mostrarModalEdicion = false;
+    this.movimientoEnEdicion = null;
+  }
+
+  confirmarEdicion() {
+    if (this.movimientoEnEdicion) {
+      this.movimientoEnEdicion.CONCEPTO = this.tempConcepto;
+    }
+    this.cerrarEdicion();
+  }
+
+  // --- Métodos de Apoyo Visual ---
   showHistoricalDetails(event: MouseEvent, mov: any) {
+    if (!mov.es_historico || !mov.detalle_historico) {
+      this.hideHistoricalDetails();
+      return;
+    }
+
+    // Asegurarse de que el evento no se propague para evitar conflictos con otros clics
+    event.stopPropagation();
+
     if (mov.es_historico && mov.detalle_historico) {
       event.stopPropagation();
       const detalle = mov.detalle_historico;
+      const mesNombre = this.utils.getMesNombre(detalle.mes_historico);
+      
       this.historicalTooltipContent = `
-      <div class="modal-header" style="padding: 25px 35px; border-bottom: 1px solid #e5e7eb; background: #f9fafb;">
-        <h3 style="margin: 0; font-size: 1.2rem; font-weight: 700; color: #111827;">Coincidencia Detectada en Historial</h3>
-      </div>
-      <div class="modal-body" style="padding: 45px; line-height: 1.6;">
-        <div style="margin-bottom: 40px; text-align: center;">
-          <label style="display: block; font-size: 0.8rem; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 15px; letter-spacing: 0.05em;">Piso Identificado</label>
-          <div style="color: #6366f1; font-size: 2.2rem; font-weight: 800; background: #f5f3ff; padding: 15px 40px; border-radius: 16px; border: 2px solid #e0e7ff; display: inline-block; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);">
-            ${mov.CONCEPTO}
-          </div>
+      <div style="background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 20px rgba(0,0,0,0.1);">
+        <div style="padding: 25px 30px; border-bottom: 1px solid #e2e8f0; background: #f8fafc;">
+          <h3 style="margin: 0; font-size: 1.1rem; font-weight: 800; color: #1e293b; display: flex; align-items: center; gap: 10px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5"><path d="M12 2a10 10 0 1 0 10 10H12V2z"></path><path d="M12 12L2.69 7"></path></svg>
+          Vínculo Histórico Detectado
+          </h3>
         </div>
-
-        <div style="background: #f8fafc; padding: 35px; border-radius: 18px; border: 1px solid #edf2f7; margin-bottom: 35px;">
-          <label style="display: block; font-size: 0.75rem; font-weight: 700; color: #4a5568; text-transform: uppercase; margin-bottom: 12px; letter-spacing: 0.025em;">Contenido original que provocó la coincidencia:</label>
-          <div style="padding: 25px; background: white; border: 1px solid #e2e8f0; border-radius: 12px; font-family: 'Inter', sans-serif; color: #111827; font-size: 1.4rem; font-weight: 600; border-left: 8px solid #6366f1; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);">
-            "${detalle.valor_coincidencia_historico}"
+        <div style="padding: 35px; background: white;">
+          <div style="margin-bottom: 25px;">
+            <p style="color: #64748b; font-size: 0.95rem; margin-bottom: 15px; line-height: 1.5;">Este ingreso coincide con patrones registrados anteriormente en <strong>${mesNombre} ${detalle.anio_historico}</strong>:</p>
+            <div style="padding: 20px 25px; background: #f5f3ff; border-radius: 14px; border: 1px solid #e0e7ff; border-left: 5px solid #6366f1;">
+              <span style="font-weight: 800; color: #1e293b; font-size: 1.1rem;">${mov.CONCEPTO}</span>
+              <div style="font-size: 0.7rem; color: #6366f1; text-transform: uppercase; margin-top: 8px; font-weight: 800; letter-spacing: 0.05em;">Referencia anterior: "${detalle.valor_coincidencia_historico}"</div>
+            </div>
           </div>
-          <p style="margin-top: 20px; font-size: 0.95rem; color: #4b5563; font-style: italic;">
-            Este movimiento actual ha sido vinculado al piso <b>${mov.CONCEPTO}</b> tras encontrar una coincidencia con la información guardada en registros anteriores.
-          </p>
+          <div style="font-size: 0.85rem; color: #94a3b8; font-style: italic; border-top: 1px solid #f1f5f9; padding-top: 20px; line-height: 1.4;">
+            Asignación basada en la consistencia de pagos anteriores registrados en la comunidad.
+          </div>
         </div>
       </div>`;
       this.showHistoricalTooltip = true;

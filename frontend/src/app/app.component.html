@@ -74,8 +74,8 @@
 </div>
 
 <!-- Modal Profesional de Sistema -->
-<div class="custom-modal-backdrop" *ngIf="(modalService.modal$ | async)?.show">
-  <div class="custom-modal" *ngIf="modalService.modal$ | async as modalState">
+<div class="custom-modal-backdrop" *ngIf="(modalService.modal$ | async)?.show" aria-modal="true" role="dialog">
+<div class="custom-modal" *ngIf="modalService.modal$ | async as modalState" role="document">
       <div class="modal-icon">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
       </div>
@@ -93,12 +93,12 @@
 <!-- Estilos del Modal Profesional (movidos aquí para que sean globales) -->
 <style>
   @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
-  .custom-modal { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); max-width: 400px; width: 90%; text-align: center; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+  .custom-modal { background: rgba(255,255,255,0.92); padding: 30px; border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); max-width: 430px; width: 92%; text-align: center; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); backdrop-filter: blur(10px); border: 1px solid rgba(226,232,240,0.9); }
   .modal-icon { width: 60px; height: 60px; background: #f1f5f9; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; color: #6366f1; }
   .modal-title { font-size: 1.25rem; font-weight: 800; color: #1e293b; margin-bottom: 10px; }
   .modal-message { color: #64748b; font-size: 0.95rem; line-height: 1.5; margin-bottom: 25px; }
   .modal-actions { display: flex; gap: 12px; justify-content: center; }
   .btn-modal { padding: 12px 24px; border-radius: 12px; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; flex: 1; }
-  .btn-modal-primary { background: #6366f1; color: white; }
+  .btn-modal-primary { background: #6366f1; color: white; box-shadow: 0 10px 20px rgba(99,102,241,0.25); }
   .btn-modal-secondary { background: #f1f5f9; color: #64748b; }
 </style>
