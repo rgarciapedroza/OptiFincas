@@ -147,6 +147,21 @@ export class AppComponent implements OnInit {
   }
 
   async procesarAccesoUsuario(email: string) {
+    if (this.isValidating) {
+      console.log('[AUTH] Validación en curso, ignorando llamada duplicada.');
+      return;
+    }
+    
+    if (!this.session?.access_token || this.session.access_token.split('.').length !== 3) {
+      console.warn('[AUTH] Token de sesión no válido aún. Esperando...');
+      return;
+    }
+
+    // Pista de metadatos para evitar falsos positivos de "vecino"
+    const isProfessionalMetadata = this.session?.user?.user_metadata?.is_professional === true;
+    console.log(`[AUTH] Procesando acceso para: ${email}. Perfil profesional esperado: ${isProfessionalMetadata}`);
+
+    this.isValidating = true;
     this.loading = true;
     this.loadingMessage = 'Verificando permisos...';
 
@@ -155,12 +170,22 @@ export class AppComponent implements OnInit {
     // que no debe dar acceso al resto de la aplicación hasta que la contraseña se cambie.
     if (this.router.url.includes('restablecer-password')) {
       this.loading = false;
+      this.isValidating = false;
       return;
     }
 
     try {
-      // Consultamos el perfil real y capturamos el error para diagnóstico
-      const { data: profile, error: profileError } = await this.supabase.getProfile(this.session.user.id);
+      // REINTENTO DINÁMICO: Esperamos a que la base de datos se sincronice
+      let { data: profile, error: profileError } = await this.supabase.getProfile(this.session.user.id);
+      
+      if (!profile && (isProfessionalMetadata || !profileError)) {
+        console.log('[AUTH] Perfil profesional no detectado en primer intento, esperando...');
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Esperamos 1 segundo completo
+        const retry = await this.supabase.getProfile(this.session.user.id);
+        profile = retry.data;
+        profileError = retry.error;
+      }
+
       this.userProfile = profile;
 
       if (profileError) {
@@ -172,16 +197,7 @@ export class AppComponent implements OnInit {
           this.loading = false;
           return;
         }
-        
-        // Solo cerramos sesión si es un error de permisos (403) o el usuario no existe (406)
-        if ((profileError as any).status === 403 || (profileError as any).status === 406) {
-          console.warn('[AUTH] Sesión huérfana detectada. Limpiando...');
-          await this.supabase.signOut();
-          this.limpiarEstadoSesion();
-          return;
-        }
-
-        // Si el error es 406 o similar (no encontrado), procedemos a buscar en el censo
+        // Si después del reintento sigue habiendo error, buscamos en el censo
         await this.determinarPropietario(email);
         return;
       }
@@ -195,6 +211,8 @@ export class AppComponent implements OnInit {
       if (profile && (profile.role === 'admin' || profile.role === 'owner' || profile.role === 'superadmin')) {
         
         // 1. Manejo de SuperAdmin (Acceso Global)
+        const isAtLoginOrLanding = this.router.url === '/' || this.router.url.includes('login');
+
         if (profile.role === 'superadmin') {
           this.userRole = null; 
           this.specificRole = 'superadmin';
@@ -202,10 +220,11 @@ export class AppComponent implements OnInit {
 
           const rutasRestringidas = ['comunidades', 'optimizacion', 'clasificador', 'equipo'];
           const urlActual = this.router.url;
-          if (urlActual === '/' || urlActual.includes('login') || rutasRestringidas.some(r => urlActual.includes(r)) || this.isValidating) {
+          if (isAtLoginOrLanding || rutasRestringidas.some(r => urlActual.includes(r))) {
             await this.router.navigate(['/admin-global']);
           }
           this.loading = false;
+          this.isValidating = false;
           return;
         }
 
@@ -220,11 +239,14 @@ export class AppComponent implements OnInit {
             } 
           });
           this.loading = false;
+          this.isValidating = false;
           return;
         }
 
+        // Usuario identificado como Admin/Owner
         this.userRole = 'admin'; 
         this.specificRole = profile.role;
+        this.error = ''; // Limpiamos errores previos si la sesión es válida
         if (profile.role === 'owner') await this.verificarSolicitudesPendientes(profile.organizacion_id);
         
         // Si el usuario es un admin/owner aprobado, y está en la página de espera, redirigirlo a comunidades.
@@ -232,37 +254,59 @@ export class AppComponent implements OnInit {
           await this.router.navigate(['/comunidades']);
         }
         
-        if (this.router.url.includes('login') || this.isValidating) {
+        if (isAtLoginOrLanding) {
           await this.router.navigate(['/comunidades']);
         }
       } else {
-        await this.determinarPropietario(email);
+        // Bloqueamos la búsqueda en el censo SOLO si la cuenta fue creada como profesional.
+        // Los propietarios (isProfessionalMetadata = false) deben pasar siempre al censo.
+        if (isProfessionalMetadata) {
+          console.warn('[AUTH] El usuario está registrado como profesional pero no tiene rol de gestión o está pendiente.');
+          this.userRole = null;
+          this.loading = false;
+          this.isValidating = false;
+          return;
+        }
+        await this.determinarPropietario(email.toLowerCase().trim());
       }
     } catch (err) {
       console.error('[AUTH] Error en procesarAccesoUsuario:', err);
+      this.error = 'Error de validación de identidad.';
     } finally {
       this.loading = false;
+      this.isValidating = false;
     }
   }
 
   async determinarPropietario(email: string) {
+    // Si el usuario es un Owner/Admin aprobado, NO debemos entrar aquí
+    if (this.userRole === 'admin') return;
+
+    const token = this.session?.access_token;
+    if (!token || token.split('.').length !== 3) return;
+
+    this.loading = true;
+    this.loadingMessage = 'Buscando vinculación en censo...';
+
     try {
       const { data, error } = await this.supabase.buscarPisoPorEmail(email);
       
       if (error) {
-        console.error('[AUTH] Error buscando piso para propietario:', error);
-        this.error = 'Error de conexión con la base de datos.';
-        await this.supabase.signOut();
+        // No es un error crítico, simplemente el usuario no está en el censo
+        console.warn('[AUTH] El usuario no es admin ni propietario registrado.');
+        this.error = ''; // No es un error, es un usuario sin asignar
+        this.loading = false;
         return;
       }
 
       if (data && data.length > 0) {
         this.userRole = 'propietario';
+        this.loading = false;
         await this.router.navigate(['/portal-propietario']);
       } else {
-        console.warn('[AUTH] Usuario no encontrado en perfiles ni en censo.');
-        this.modalService.showAlert('Acceso Denegado', 'Su cuenta no tiene permisos de administrador ni está registrada en el censo de propietarios.');
-        await this.supabase.signOut();
+        console.warn('[AUTH] Acceso denegado: Usuario no encontrado.');
+        this.userRole = null;
+        this.loading = false;
       }
     } catch (err) {
       console.error('[AUTH] Error en determinarPropietario:', err);

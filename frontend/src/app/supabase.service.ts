@@ -319,10 +319,16 @@ export class SupabaseService {
   async buscarPisoPorEmail(email: string) {
     try {
       const { data: { session } } = await this.supabase.auth.getSession();
+      // REFUERZO DE SEGURIDAD: Nunca enviar "undefined" o tokens incompletos al backend
+      const token = session?.access_token;
+      if (!token || typeof token !== 'string' || token === 'undefined' || token.split('.').length !== 3) {
+        console.warn('[SUPABASE] Intento de llamada al API sin token válido. Abortando.');
+        return { data: null, error: 'No hay sesión activa para consultar el censo' };
+      }
       const response = await fetch(`/api/portal/mi-piso?email=${encodeURIComponent(email.trim())}`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${session?.access_token}`,
+          'Authorization': `Bearer ${token.trim()}`,
         },
       });
       
@@ -560,6 +566,10 @@ export class SupabaseService {
 
   async updateProfile(id: string, updates: any) {
     return await this.supabase.from('profiles').update(updates).eq('id', id);
+  }
+  
+  async getProfilesByOrgId(orgId: string) {
+    return await this.supabase.from('profiles').select('*, organizations:organizacion_id(nombre)').eq('organizacion_id', orgId);
   }
 
   async getProfile(userId: string) {

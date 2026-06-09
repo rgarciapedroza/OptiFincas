@@ -149,3 +149,46 @@
   margin-bottom: 4px;
   display: block;
 }
+
+/* Estilos para el botón de edición profesional - Opción 1 */
+.btn-action {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 10px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #6366f1;
+}
+
+.edit-btn {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.edit-btn:hover {
+  background: #6366f1;
+  border-color: #6366f1;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+}
+
+.edit-btn:hover svg {
+  stroke: white;
+}
+
+.edit-btn svg {
+  transition: all 0.2s ease;
+}
+
+.btn-action:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+
+.btn-action:active {
+  transform: translateY(1px);
+}

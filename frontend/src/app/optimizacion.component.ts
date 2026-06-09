@@ -1,9 +1,22 @@
 import { Component, OnInit, HostListener } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { lastValueFrom } from 'rxjs';
-import { Community, ComunidadDB } from './models';
-import { SupabaseService } from './supabase.service';
+import { Community, ComunidadDB, Profile } from './models';
+import { SupabaseService } from './supabase.service'; 
 import { ModalService } from './modal.service';
+
+// Interfaz para el payload de la solicitud de optimización
+interface OptimizationPayload {
+  numEmployees: number;
+  communities: Community[];
+  month: number;
+  year: number;
+  region: string;
+  manualHolidays: string[];
+  manualWorkingDays: string[];
+  employeeStartLocations: { latitude: number; longitude: number; }[];
+}
+
 
 @Component({
   selector: 'app-optimizacion',
@@ -40,6 +53,13 @@ export class OptimizacionComponent implements OnInit {
   fetchedRegionalHolidays: Map<string, string> = new Map(); // New: To store holidays fetched from backend (date -> name)
   manualHolidays: Set<string> = new Set(); // Stores only dates for manual overrides
   manualWorkingDays: Set<string> = new Set(); // Stores dates forced to be laborable
+  employeeStartLocations: { id: string, latitude: number, longitude: number }[] = []; // Ubicaciones de inicio de empleados
+  empleadosConUbicacion: Profile[] = []; // Lista completa de empleados para el modal de edición
+  mostrarModalEditarEmpleados = false;
+  mostrarModalGestionarLimpiadoras = false;
+  numLimpiadorasExternas = 2;
+  limpiadoras: { nombre: string; home_address: string; home_latitude: number | null; home_longitude: number | null }[] = [];
+
 
   // List of Spanish Autonomous Communities for dropdown
   autonomousCommunities = [
@@ -67,7 +87,6 @@ export class OptimizacionComponent implements OnInit {
   constructor(private http: HttpClient, private supabase: SupabaseService, private modalService: ModalService) {}
 
   async ngOnInit() {
-    // Recuperar región preferida de localStorage como valor inicial
     const savedRegion = localStorage.getItem('optifincas_preferred_region');
     if (savedRegion) {
       this.selectedRegion = savedRegion;
@@ -75,8 +94,17 @@ export class OptimizacionComponent implements OnInit {
 
     this.generateCalendar();
     await this.cargarComunidades();
-    await this.fetchRegionalHolidays(); // Primero cargamos festivos para visualización
-    await this.cargarPlanificacion();   // Luego la planificación que sobreescribe festivos manuales
+    await this.fetchRegionalHolidays();
+    await this.cargarPlanificacion();
+
+    // Cargar limpiadoras guardadas
+    this.cargarLimpiadorasDeLocalStorage();
+    
+    // Si no hay limpiadoras guardadas, inicializar por defecto
+    if (this.limpiadoras.length === 0) {
+      this.numLimpiadorasExternas = this.numEmployees;
+      this.rebuildLimpiadorasTable();
+    }
   }
 
   @HostListener('window:beforeunload', ['$event'])
@@ -84,6 +112,137 @@ export class OptimizacionComponent implements OnInit {
     if (this.hasUnsavedHolidayChanges) {
       $event.returnValue = true;
     }
+  }
+
+  async buscarCoordenadasLimpiadora(limpiadora: any) {
+    if (!limpiadora?.home_address || limpiadora.home_address.trim() === '') {
+      this.modalService.showAlert('Dirección requerida', 'Introduce una dirección para calcular coordenadas.');
+      return;
+    }
+
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(limpiadora.home_address)}`;
+    this.loading = true;
+    try {
+      const data = await lastValueFrom(this.http.get<any[]>(url));
+      if (data?.length) {
+        limpiadora.home_latitude = parseFloat(data[0].lat);
+        limpiadora.home_longitude = parseFloat(data[0].lon);
+        this.modalService.showAlert('Ubicación Encontrada', 'Coordenadas obtenidas correctamente.');
+      } else {
+        this.modalService.showAlert('Ubicación No Encontrada', 'No se encontraron coordenadas para esa dirección.');
+      }
+    } catch (err) {
+      console.error('Error geocoding:', err);
+      this.modalService.showAlert('Error de Conexión', 'No se pudo contactar con el servicio de geocodificación.');
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  // Reemplaza la función abrirModalGestionarLimpiadoras con esta:
+  abrirModalGestionarLimpiadoras() {
+    console.log('Abriendo modal de limpiadoras'); // Para debugging
+    // Inicializar limpiadoras si están vacías
+    if (this.limpiadoras.length === 0) {
+      this.numLimpiadorasExternas = Math.max(1, this.numEmployees);
+      this.rebuildLimpiadorasTable();
+    }
+    this.mostrarModalGestionarLimpiadoras = true;
+  }
+
+  // Método para cerrar modal de limpiadoras (sin llamar a funciones inexistentes)
+  cerrarModalLimpiadoras() {
+    this.mostrarModalGestionarLimpiadoras = false;
+  }
+
+
+  //////////////////////////////////////////////////////////////////////////////////////////
+
+  private guardarLimpiadorasEnLocalStorage() {
+    const datosGuardar = {
+      numLimpiadoras: this.numLimpiadorasExternas,
+      limpiadoras: this.limpiadoras.map(l => ({
+        home_address: l.home_address,
+        home_latitude: l.home_latitude,
+        home_longitude: l.home_longitude
+      }))
+    };
+    localStorage.setItem('optifincas_limpiadoras', JSON.stringify(datosGuardar));
+  }
+
+  private cargarLimpiadorasDeLocalStorage() {
+    const guardado = localStorage.getItem('optifincas_limpiadoras');
+    if (guardado) {
+      try {
+        const datos = JSON.parse(guardado);
+        this.numLimpiadorasExternas = datos.numLimpiadoras || 2;
+        this.limpiadoras = datos.limpiadoras.map((l: any, idx: number) => ({
+          nombre: `Empleada ${idx + 1}`,
+          home_address: l.home_address || '',
+          home_latitude: l.home_latitude ?? null,
+          home_longitude: l.home_longitude ?? null
+        }));
+        
+        // Actualizar employeeStartLocations
+        this.employeeStartLocations = this.limpiadoras.map((l, idx) => ({
+          id: `limpiadora_${idx + 1}`,
+          latitude: l.home_latitude ?? 0,
+          longitude: l.home_longitude ?? 0
+        }));
+        
+        this.numEmployees = this.limpiadoras.length;
+      } catch (e) {
+        console.error('Error cargando limpiadoras:', e);
+      }
+    }
+  }
+
+  // Modifica guardarCambiosLimpiadoras para que guarde en localStorage:
+  async guardarCambiosLimpiadoras() {
+    const sinCoordenadas = this.limpiadoras.filter(l => !l.home_latitude || !l.home_longitude);
+    if (sinCoordenadas.length > 0) {
+      const confirmed = await this.modalService.showConfirm(
+        'Coordenadas Pendientes',
+        `Hay ${sinCoordenadas.length} limpiadora(s) sin ubicación definida. ¿Deseas continuar?`
+      );
+      if (!confirmed) return;
+    }
+
+    const confirmed = await this.modalService.showConfirm('Guardar Cambios', '¿Guardar ubicaciones de limpiadoras?');
+    if (!confirmed) return;
+
+    // Actualizar employeeStartLocations
+    this.employeeStartLocations = this.limpiadoras.map((l, idx) => ({
+      id: `limpiadora_${idx + 1}`,
+      latitude: l.home_latitude ?? 0,
+      longitude: l.home_longitude ?? 0,
+    }));
+
+    this.numEmployees = this.limpiadoras.length;
+    
+    // Guardar en localStorage
+    this.guardarLimpiadorasEnLocalStorage();
+
+    this.modalService.showAlert('Éxito', `Configuración guardada. Total de empleadas: ${this.numEmployees}`);
+    this.mostrarModalGestionarLimpiadoras = false;
+  }
+
+  // Modifica rebuildLimpiadorasTable para preservar datos existentes:
+  rebuildLimpiadorasTable() {
+    const n = Math.max(1, Number(this.numLimpiadorasExternas) || 1);
+    const nuevasLimpiadoras: { nombre: string; home_address: string; home_latitude: number | null; home_longitude: number | null }[] = [];
+
+    for (let i = 0; i < n; i++) {
+      const existente = this.limpiadoras[i];
+      nuevasLimpiadoras.push({
+        nombre: `Empleada ${i + 1}`,
+        home_address: existente?.home_address || '',
+        home_latitude: existente?.home_latitude ?? null,
+        home_longitude: existente?.home_longitude ?? null,
+      });
+    }
+    this.limpiadoras = nuevasLimpiadoras;
+    this.guardarLimpiadorasEnLocalStorage();
   }
 
 
@@ -345,14 +504,16 @@ export class OptimizacionComponent implements OnInit {
       const currentManualHolidays = Array.from(this.manualHolidays).filter(h => h.startsWith(datePrefix));
       const currentManualWorking = Array.from(this.manualWorkingDays).filter(h => h.startsWith(datePrefix));
       
-      const payload = { 
+      const payload: OptimizationPayload = {
+        // Incluimos employeeStartLocations directamente en la inicialización del objeto
         numEmployees: this.numEmployees, 
         communities: allCommunities, 
         month: m, 
         year: y, 
         manualHolidays: currentManualHolidays, 
         manualWorkingDays: currentManualWorking, 
-        region: this.selectedRegion 
+        region: this.selectedRegion,
+        employeeStartLocations: this.employeeStartLocations.map(loc => ({ latitude: loc.latitude, longitude: loc.longitude }))
       };
       
       this.loadingMessage = `Calculando rutas para ${this.getViewDateLabel()}...`;
