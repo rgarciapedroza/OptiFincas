@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.api.ia import router as ia_router
 from app.api.rutas import router as api_router
-from app.api.optimizacion import router as optimizacion_router
+from app.api.router_optimizacion import router as optimizacion_router
 from app.api.contacto import router as contacto_router
 
 # Configuración de Logging Profesional

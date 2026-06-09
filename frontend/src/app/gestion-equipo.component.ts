@@ -7,6 +7,22 @@ import { Profile } from './models';
   selector: 'app-gestion-equipo',
   template: `
     <div class="card-container">
+      <!-- SECCIÓN DE KPIs / RESUMEN -->
+      <div class="summary-cards" style="margin-bottom: 30px; grid-template-columns: repeat(3, 1fr);">
+        <div class="card card-neto">
+          <span class="val">{{ numComunidades }}</span>
+          Comunidades
+        </div>
+        <div class="card card-ingreso">
+          <span class="val">{{ miembros.length }}</span>
+          Equipo Activo
+        </div>
+        <div class="card card-gasto">
+          <span class="val">{{ solicitudes.length }}</span>
+          Solicitudes Pendientes
+        </div>
+      </div>
+
       <!-- SECCIÓN DE NOTIFICACIONES / SOLICITUDES PENDIENTES -->
       <div *ngIf="solicitudes.length > 0" style="margin-bottom: 40px; background: linear-gradient(135deg, #fffbeb 0%, #fff7ed 100%); border: 1px solid #fde68a; border-radius: 16px; padding: 25px; box-shadow: 0 10px 15px -3px rgba(251, 191, 36, 0.1);">
         <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px;">
@@ -103,22 +119,47 @@ export class GestionEquipoComponent implements OnInit {
   mostrarModalInvitacion = false;
   nuevoEmail = '';
   orgId: string | null = null;
+  numComunidades = 0;
 
   constructor(public supabase: SupabaseService, public modalService: ModalService) {}
 
   async ngOnInit() {
     this.loading = true;
-    const session = await this.supabase.getSession();
-    if (session) {
-      const { data: profile } = await this.supabase.getProfile(session.user.id);
-      if (profile && profile.organizacion_id) {
-        this.orgId = profile.organizacion_id;
-        console.log(`[GESTION-EQUIPO] Owner orgId: ${this.orgId}`);
-        await this.cargarMiembros();
-        await this.cargarSolicitudes();
+    try {
+      const session = await this.supabase.getSession();
+      if (!session) return;
+
+      // Obtenemos el perfil con reintento por si la DB está sincronizando
+      let profile = (await this.supabase.getProfile(session.user.id)).data;
+      if (!profile?.organizacion_id) {
+        await new Promise(r => setTimeout(r, 800));
+        profile = (await this.supabase.getProfile(session.user.id)).data;
       }
+
+      if (profile?.organizacion_id) {
+        this.orgId = profile.organizacion_id;
+        console.log(`[GESTION-EQUIPO] OrgID detectado: ${this.orgId}. Cargando datos...`);
+        
+        // Cargamos todo en paralelo para evitar retrasos visuales
+        await Promise.all([
+          this.cargarMiembros(),
+          this.cargarSolicitudes(),
+          this.cargarEstadisticas()
+        ]);
+      } else {
+        this.modalService.showAlert('Sin Organización', 'Tu cuenta aún no está vinculada a ningún despacho profesional.');
+      }
+    } catch (e: any) {
+      console.error('[GESTION-EQUIPO] Error de inicialización:', e);
+      this.modalService.showAlert('Error', 'Fallo al cargar el equipo y las solicitudes.');
+    } finally {
+      this.loading = false;
     }
-    this.loading = false;
+  }
+
+  async cargarEstadisticas() {
+    const { data: coms } = await this.supabase.getComunidades();
+    this.numComunidades = coms?.length || 0;
   }
 
   async cargarMiembros() {

@@ -251,21 +251,24 @@ export class AuthComponent implements OnInit {
             return;
           }
 
-          // 1.5. Verificar si el nombre del despacho ya está en uso por otra empresa
-          const { data: orgExists } = await this.supabase.verificarOrganizacionExiste(this.orgName);
-          if (orgExists) {
-            this.error = 'Este nombre de despacho ya está registrado. Si eres un empleado, contacta con tu administrador.';
-            this.loading = false;
-            return;
+          // 1.5 Verificar si la organización ya existe por nombre para evitar crear duplicados
+          const { data: orgData } = await this.supabase.verificarOrganizacionExiste(this.orgName);
+          
+          if (orgData) {
+            // El despacho ya existe. Informamos al usuario de que se unirá a un equipo existente.
+            this.modalService.showAlert('Despacho Detectado', `El despacho "${this.orgName}" ya está registrado en OptiFincas. Tu cuenta se creará como "Pendiente" y deberás esperar a que el administrador principal apruebe tu acceso.`);
           }
 
-          // 2. Si el perfil NO existe, procedemos con el registro normal
+          // 2. Si el perfil NO existe, procedemos con el registro
           const { error } = await this.supabase.signUp(this.email, this.password, {
-            data: { is_professional: true, org_name: this.orgName }
+            // Pasamos el ID encontrado (si existe) para que la lógica de BD vincule en lugar de crear
+            data: { is_professional: true, org_name: this.orgName, vincular_org_id: orgData?.id || null }
           });
           if (error) throw error;
 
           // Después del registro, el usuario es automáticamente logueado por Supabase.
+          // Damos 500ms para que se completen procesos asíncronos antes de cerrar la sesión.
+          await new Promise(resolve => setTimeout(resolve, 500));
           // Para forzar que confirmen email antes de entrar, cerramos la sesión inmediatamente.
           await this.supabase.signOut();
 

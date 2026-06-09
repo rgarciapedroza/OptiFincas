@@ -30,10 +30,13 @@
         </div>
       </div>
 
-      <button class="btn btn-setup" (click)="mostrarConfiguracionOptimizacion = true">
+      <button class="btn btn-setup" (click)="mostrarConfiguracionOptimizacion = true" title="Editar personal y gestionar fincas">
+        <!-- boton gestion fincas -->
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
         Gestionar Fincas
       </button>
+
+      
       <button class="btn btn-reset" (click)="resetManualHolidays()" title="Restablecer ajustes del mes">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><polyline points="3 3 3 8 8 8"></polyline></svg>
       </button>
@@ -128,10 +131,31 @@
             </select>
           </div>
         </div>
+        <!-- En el modal de configuración, reemplaza la sección modal-actions-group -->
         <div class="modal-actions-group">
-          <button class="btn btn-outline-danger" (click)="clearAllCommunities()" [disabled]="communities.length === 0">Limpiar Todo</button>
+          <button class="btn-icon-only" (click)="clearAllCommunities()" [disabled]="communities.length === 0" title="Limpiar todas las comunidades">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              <line x1="10" y1="11" x2="10" y2="17"/>
+              <line x1="14" y1="11" x2="14" y2="17"/>
+            </svg>
+          </button>
           <input type="file" #fileInput style="display: none" (change)="importarExcelComunidades($event)">
-          <button class="btn btn-outline" (click)="fileInput.click()">Subir Excel</button>
+          <button class="btn-icon-only" (click)="fileInput.click()" title="Importar comunidades desde Excel">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="12" y1="18" x2="12" y2="12"/>
+              <line x1="9" y1="15" x2="15" y2="15"/>
+            </svg>
+          </button>
+          <button class="btn-icon-only btn-manage-cleaners" (click)="abrirModalGestionarLimpiadoras()" title="Gestionar limpiadoras">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+              <path d="M17 3.5a4 4 0 0 1 0 7"/>
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -216,6 +240,81 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" (click)="mostrarModalEdicionComunidad = false">Cancelar</button>
       <button class="btn btn-success" (click)="guardarComunidad()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL GESTIÓN LIMPIADORAS -->
+<div class="modal-overlay" *ngIf="mostrarModalGestionarLimpiadoras" style="z-index: 1100;">
+  <div class="modal-card modal-cleaners">
+    <div class="modal-header">
+      <h3 style="margin: 0;">Gestionar Limpiadoras</h3>
+      <button class="btn-action" (click)="cerrarModalLimpiadoras()" style="font-size: 24px;">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="cleaners-header">
+        <div class="cleaners-count-control">
+          <label>NUMERO DE LIMPIADORAS:</label>
+          <input type="number" [(ngModel)]="numLimpiadorasExternas" (change)="rebuildLimpiadorasTable()" min="1" max="20">
+        </div>
+        <small style="color: #6b7280; font-size: 0.7rem;">Las limpiadoras son externas y no tienen cuenta en el sistema</small>
+      </div>
+
+      <div class="cleaners-table-container" *ngIf="limpiadoras.length > 0">
+        <table class="cleaners-table">
+          <thead>
+            <tr>
+              <th style="width: 20%">EMPLEADA</th>
+              <th style="width: 50%">UBICACION DE INICIO</th>
+              <th style="width: 20%">COORDENADAS</th>
+              <th style="width: 10%"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let limpiadora of limpiadoras; let i = index">
+              <td class="cleaner-name">Empleada {{ i + 1 }}</td>
+              <td>
+                <div class="address-input-group">
+                  <input type="text" [(ngModel)]="limpiadora.home_address" 
+                         placeholder="Ej: Calle Mayor 1, Madrid" 
+                         class="address-input">
+                  <button class="btn-locate" (click)="buscarCoordenadasLimpiadora(limpiadora)" 
+                          title="Obtener coordenadas desde direccion">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                      <circle cx="12" cy="10" r="3"/>
+                    </svg>
+                  </button>
+                </div>
+              </td>
+              <td>
+                <span class="coords-badge" *ngIf="limpiadora.home_latitude && limpiadora.home_longitude">
+                  {{ limpiadora.home_latitude | number:'1.4-4' }}, {{ limpiadora.home_longitude | number:'1.4-4' }}
+                </span>
+                <span class="coords-badge pending" *ngIf="!limpiadora.home_latitude || !limpiadora.home_longitude">
+                  Pendiente
+                </span>
+              </td>
+              <td style="text-align: center;">
+                <button class="btn-icon-small" (click)="buscarCoordenadasLimpiadora(limpiadora)" 
+                        title="Actualizar coordenadas">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                  </svg>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div *ngIf="limpiadoras.length === 0" class="empty-state">
+        Configura el numero de limpiadoras para comenzar
+      </div>
+    </div>
+    <div class="modal-cleaners-footer">
+      <button class="btn-secondary-modal" (click)="cerrarModalLimpiadoras()">Cancelar</button>
+      <button class="btn-success-modal" (click)="guardarCambiosLimpiadoras()">Guardar Cambios</button>
     </div>
   </div>
 </div>
