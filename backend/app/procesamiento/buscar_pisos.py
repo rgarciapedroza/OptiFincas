@@ -63,81 +63,87 @@ def normalizar_texto(texto: str) -> str:
 def get_patrones_piso(community_id: Optional[int] = None) -> List[Dict]: # Retorna la lista de objetos RegexRule
     """
     Obtiene los patrones regex. Prioridad:
-    1. Configuración específica de la comunidad.
-    2. Configuración global del sistema.
+    1. Tabla dedicada 'patrones_piso_config' (comunidad o global).
+    2. Fallback a 'sistema_config' (clave 'patrones_piso').
     3. Fallback local (hardcoded).
-    
-    Se espera que los patrones estén almacenados como una lista de objetos
-    { "description": "...", "pattern": "..." } y se extrae solo el patrón.
     """
     client = supabase_service_role_client if supabase_service_role_client else supabase_client
     try:
-        # 1. Intentar obtener patrones específicos de la comunidad
-        # Se espera que patrones_piso sea un JSONB con [{description: "...", pattern: "..."}]
-        if community_id:
-            res_comm = client.table("comunidades").select("patrones_piso").eq("id", community_id).maybe_single().execute()
-            if res_comm.data and res_comm.data.get("patrones_piso"):
-                val = res_comm.data["patrones_piso"] # Ya es un objeto JSONB, no necesita json.loads() aquí
-                # Robustez contra doble serialización
-                while isinstance(val, str):
-                    try:
-                        val = json.loads(val)
-                    except:
-                        break
-                if isinstance(val, list):
-                    return [r for r in val if isinstance(r, dict) and "pattern" in r] # Devuelve el objeto completo
+        # 1. Intentar con la tabla dedicada (Recomendado)
+        query = client.table("patrones_piso_config")\
+            .select("*")\
+            .eq("active", True)\
+            .order("priority", desc=True)
 
-        # 2. Si no hay específicos, intentar configuración global
-        # Se espera que valor sea un JSONB con [{description: "...", pattern: "..."}]
-        res = client.table("sistema_config").select("valor").eq("clave", "patrones_piso").maybe_single().execute()
-        if res.data and res.data.get("valor") is not None:
-            val = res.data["valor"] # Ya es un objeto JSONB, no necesita json.loads() aquí
-            while isinstance(val, str):
+        if community_id:
+            res = query.or_(f"community_id.is.null,community_id.eq.{community_id}").execute()
+        else:
+            res = query.is_("community_id", "null").execute()
+
+        if res.data and len(res.data) > 0:
+            return res.data
+
+        # 2. Fallback a sistema_config (si la tabla anterior está vacía o no existe)
+        res_config = client.table("sistema_config")\
+            .select("valor")\
+            .eq("clave", "patrones_piso")\
+            .maybe_single().execute()
+
+        if res_config.data and res_config.data.get("valor"):
+            val = res_config.data["valor"]
+            # Si el valor viene como string (JSON), lo parseamos
+            if isinstance(val, str):
                 try:
                     val = json.loads(val)
                 except:
-                    break
+                    pass
             
-            if isinstance(val, list) and len(val) > 0:
-                if isinstance(val[0], str):
-                    # Formato antiguo: lista de strings, convertir a dicts con descripción genérica
-                    return [{"description": f"Patrón predeterminado {i+1}", "pattern": p} for i, p in enumerate(val)]
-                elif isinstance(val[0], dict) and "pattern" in val[0]:
-                    return [r for r in val if isinstance(r, dict) and "pattern" in r] # Devuelve el objeto completo
+            if isinstance(val, list):
+                return val
+
     except Exception as e:
         logger.warning(f"No se pudo cargar config de regex desde DB, usando fallback: {e}")
     
-    return [
-        {"description": "PISO/PIZO/PIS0 + número y letra (ej: PISO 4, PISO 4J)", "pattern": r'\b(?:PISO|PIZO|PIS0)\s*(\d{1,2}\s*[A-Z]?)\b'},
-        {"description": "PLANTA/PLNTA/PLTA + número y letra (ej: PLANTA 2)", "pattern": r'\b(?:PLANTA|PLNTA|PLTA)\s*(\d{1,2}\s*[A-Z]?)\b'},
-        {"description": "P. + número y letra (ej: P. 4, P 4J)", "pattern": r'\bP\.?\s*(\d{1,2}\s*[A-Z]?)\b'},
-        {"description": "PL. + número y letra (ej: PL. 2)", "pattern": r'\bPL\.?\s*(\d{1,2}\s*[A-Z]?)\b'},
-        {"description": "Número, guion o barra, y letra (ej: 4-J, 4/J)", "pattern": r'\b(\d{1,2}\s*[-/]\s*[A-Z])\b'},
-        {"description": "Número y letra juntos o separados por espacio (ej: 4J, 4 J)", "pattern": r'\b(\d{1,2}\s*[A-Z])\b'},
-        {"description": "Número + IZQ/DRCHA/EXT/INT (ej: 4 IZQ, 4 DRCHA)", "pattern": r'\b(\d{1,2}\s*(?:IZQUIERDA|IZQ|DERECHA|DRCHA|DCHA|EXTERIOR|EXT|INTERIOR|INT))\b'},
-        {"description": "Número ordinal (º/ª) + letra (ej: 4º, 4ªJ)", "pattern": r'\b(\d{1,2}[ºª]\s*[A-Z]?)\b'},
-    ]
-
-PATRON_PISO_LEGACY = re.compile(r"\b(\d{1,2}\s*[A-Z]|[A-Z]\s*\d{1,2}|\d{1,2}\s*[-/]\s*[A-Z])\b", re.IGNORECASE)
+    return []
 
 def extraer_piso(texto: str, community_id: Optional[int] = None) -> Optional[str]:
     if not texto:
         return None
+
     try:
         texto = str(texto).upper().replace(",", " ").replace(".", " ")
-        for rule in get_patrones_piso(community_id):
-            m = re.search(rule["pattern"], texto, re.IGNORECASE)
+
+        reglas = get_patrones_piso(community_id)
+        for rule in reglas:
+            pattern = rule.get("pattern")
+            if not pattern or not isinstance(pattern, str):
+                continue
+
+            # Limpieza de escapes: 
+            # Si viene de sistema_config (JSON), puede traer caracteres de retroceso \x08 por \b
+            # o dobles barras \\s que Python lee como literales.
+            pattern_norm = pattern.replace('\x08', r'\b')
+            if '\\\\' in pattern_norm:
+                try:
+                    pattern_norm = pattern_norm.encode("utf-8").decode("unicode_escape").replace('\x08', r'\b')
+                except:
+                    pass
+
+            m = re.search(pattern_norm, texto, re.IGNORECASE)
             if m:
                 if rule.get("assigned_value"):
-                    return rule["assigned_value"].upper()
+                    return str(rule["assigned_value"]).upper()
+
                 # Tomamos el primer grupo de captura que tenga contenido
                 for group in m.groups():
                     if group:
                         res = re.sub(r"[\s\-/ºª]", "", str(group))
                         return res.upper()
+
         return None
-    except:
+    except Exception:
         return None
+
 
 def es_piso_identificado(piso) -> bool:
     if pd.isna(piso) or piso is None:
