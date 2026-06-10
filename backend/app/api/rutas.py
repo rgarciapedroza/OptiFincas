@@ -3,10 +3,12 @@ from typing import List, Dict, Optional, Any, Union
 from app.controllers.movimientos_bancarios_controller import importar_movimientos_controller, get_movimientos_by_community_controller, eliminar_extracto_controller, get_extractos_by_community_controller, get_finanzas_comunidad_controller
 from app.controllers.pisos_controller import importar_censo_pisos_controller, get_piso_controller, create_piso_controller, update_piso_controller, delete_piso_controller, borrar_censo_comunidad_controller, get_pisos_by_community_controller, buscar_piso_por_email_controller, sync_pisos_from_profile_controller
 from app.controllers.extracto_controller import procesar_extracto_db_controller, confirmar_controller, descargar_controller, descargar_excel_controller, entrenar_controller, opciones_controller, persistir_extracto_db_controller
+from app.servicios.admin_rules_service import get_all_category_rules_service, create_category_rule_service, update_category_rule_service, delete_category_rule_service, get_all_piso_patterns_service, create_piso_pattern_service, update_piso_pattern_service, delete_piso_pattern_service, reload_classifier_rules_service
 from app.servicios.auth_supabase import get_current_user
 from app.schemas import PisoCreate, PisoUpdate, FinanzasReportRequest, MovimientoClasificado
 from app.servicios.evaluacion import ejecutar_test_accuracy
 from app.api.contacto import router as contacto_router
+from app.servicios.supabase_db import supabase_service_role_client
 
 
 router = APIRouter()
@@ -292,3 +294,57 @@ async def get_piso_propietario_route(email: str, user_id: str = Depends(get_curr
     """Busca y desencripta la información del piso para el portal del propietario."""
     # Este controlador debe buscar en la DB y aplicar la desencriptación AES
     return buscar_piso_por_email_controller(email)
+
+
+# --- Gestión de Reglas de Clasificación (Panel Administrador) ---
+
+@router.get("/admin/reglas-categorias", tags=["Administración"], summary="Listar todas las reglas de categorías")
+async def get_all_reglas_categorias(user_id: str = Depends(get_current_user)):
+    """Obtiene todas las reglas de palabras clave para categorías."""
+    return await get_all_category_rules_service()
+
+@router.post("/admin/reglas-categorias", tags=["Administración"], summary="Añadir nueva regla de categoría")
+async def create_regla_categoria(data: Dict = Body(...), user_id: str = Depends(get_current_user)):
+    """Inserta una nueva palabra clave asociada a una categoría y tipo."""
+    return await create_category_rule_service(data)
+
+@router.put("/admin/reglas-categorias/{regla_id}", tags=["Administración"], summary="Editar regla de categoría")
+async def update_regla_categoria(regla_id: int, data: Dict = Body(...), user_id: str = Depends(get_current_user)):
+    """Actualiza una regla de categoría existente."""
+    return await update_category_rule_service(regla_id, data)
+
+@router.delete("/admin/reglas-categorias/{regla_id}", tags=["Administración"], summary="Eliminar regla de categoría")
+async def delete_regla_categoria(regla_id: int, user_id: str = Depends(get_current_user)):
+    """Borra una regla de categoría de la base de datos."""
+    return await delete_category_rule_service(regla_id, user_id)
+
+
+# --- Gestión de Patrones de Piso (Regex Admin) ---
+
+@router.get("/admin/patrones-piso", tags=["Administración"], summary="Listar patrones Regex de detección")
+async def get_all_patrones_piso(user_id: str = Depends(get_current_user)):
+    """Obtiene la lista de patrones regex configurados para detección de pisos."""
+    return await get_all_piso_patterns_service()
+
+@router.post("/admin/patrones-piso", tags=["Administración"], summary="Añadir nuevo patrón Regex")
+async def create_patron_piso(data: Dict = Body(...), user_id: str = Depends(get_current_user)):
+    """Crea un nuevo patrón de detección, usualmente generado por IA."""
+    return await create_piso_pattern_service(data)
+
+@router.put("/admin/patrones-piso/{patron_id}", tags=["Administración"], summary="Editar patrón Regex")
+async def update_patron_piso(patron_id: int, data: Dict = Body(...), user_id: str = Depends(get_current_user)):
+    """Actualiza la configuración de un patrón regex."""
+    return await update_piso_pattern_service(patron_id, data)
+
+@router.delete("/admin/patrones-piso/{patron_id}", tags=["Administración"], summary="Eliminar patrón Regex")
+async def delete_patron_piso(patron_id: int, user_id: str = Depends(get_current_user)):
+    """Elimina un patrón de detección del sistema."""
+    return await delete_piso_pattern_service(patron_id)
+
+@router.post("/admin/recargar-clasificador", tags=["Administración"], summary="Forzar recarga de reglas en memoria")
+async def reload_classifier_rules(user_id: str = Depends(get_current_user)):
+    """
+    Fuerza al clasificador global a recargar las reglas desde la base de datos.
+    Útil después de hacer cambios masivos en el panel de administración.
+    """
+    return await reload_classifier_rules_service()

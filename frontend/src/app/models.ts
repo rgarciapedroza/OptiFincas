@@ -22,6 +22,7 @@ export interface RegexRule {
   description: string;
   pattern: string;
   assigned_value?: string; // Nuevo: Valor a asignar si la regla coincide (ej: "PLAZAS GARAJE")
+  is_system?: boolean; // Diferenciar reglas globales de personalizadas
 }
 
 // Definición de interfaz para Detalle Histórico

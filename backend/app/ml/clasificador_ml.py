@@ -14,12 +14,12 @@ Versión: 1.0
 import re
 import json
 import os
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 from collections import Counter
 import logging
 from difflib import SequenceMatcher
 from app.procesamiento.buscar_pisos import normalizar_texto # Importar normalizar_texto
-from app.servicios.supabase_db import supabase_client
+from app.servicios.supabase_db import supabase_client, supabase_service_role_client
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -55,9 +55,11 @@ class ClasificadorML:
         la clasificación por categorías quedará deshabilitada y se devolverán categorías genéricas.
         """
         try:
-            res = supabase_client.table("categorias_reglas").select("*").execute()
+            client = supabase_service_role_client if supabase_service_role_client else supabase_client
+            res = client.table("categorias_reglas").select("*").execute()
             if res.data and len(res.data) > 0:
-                nuevas_reglas: Dict[str, Dict[str, object]] = {}
+                self.reglas_raw = res.data # Almacenamos para inicializar con aislamiento de comunidad
+                nuevas_reglas: Dict[str, Dict[str, Any]] = {}
                 for r in res.data:
                     cat = r['categoria_asignada']
                     if cat not in nuevas_reglas:
@@ -66,10 +68,11 @@ class ClasificadorML:
 
                 self.reglas = nuevas_reglas
                 logger.info(f"✅ [Configuración Dinámica] Cargadas {len(res.data)} reglas desde la base de datos.")
-                self._inicializar_palabras()  # Inicializar palabras_categoria con las reglas de la DB
+                self._inicializar_palabras()
                 return
 
             logger.warning("⚠️ [Configuración Dinámica] No se encontraron reglas en la tabla categorias_reglas.")
+            self.reglas_raw = []
             self.reglas = {}
             self.palabras_categoria = {}
             self.categorias = []
@@ -77,6 +80,7 @@ class ClasificadorML:
         except Exception as e:
             logger.error(f"[Configuración Dinámica] Error al cargar reglas desde DB: {e}")
             # Sin reglas hardcodeadas: categorías genéricas
+            self.reglas_raw = []
             self.reglas = {}
             self.palabras_categoria = {}
             self.categorias = []
@@ -86,10 +90,13 @@ class ClasificadorML:
         if reset:
             self.palabras_categoria = {}
             
-        for categoria, info in self.reglas.items():
-            for palabra in info["palabras"]:
-                # Normalizamos también la palabra clave para que coincida con el texto normalizado del extracto
-                self.palabras_categoria[normalizar_texto(palabra).lower()] = categoria
+        if hasattr(self, 'reglas_raw'):
+            for r in self.reglas_raw:
+                cid = r.get('community_id')
+                key = normalizar_texto(r['palabra_clave']).lower()
+                if cid not in self.palabras_categoria:
+                    self.palabras_categoria[cid] = {}
+                self.palabras_categoria[cid][key] = r['categoria_asignada']
         
         self.categorias = list(self.reglas.keys())
     
@@ -138,12 +145,12 @@ class ClasificadorML:
             "categorias": dict(categorias_ejemplos)
         }
     
-    def detectar_piso(self, concepto: str, community_id: int) -> Optional[str]:
+    def detectar_piso(self, concepto: str, community_id: Optional[int]) -> Optional[str]:
         """Detecta piso usando los patrones cargados desde BD (sistema_config/patrones_piso).
 
         Implementación delegada a `app.procesamiento.buscar_pisos.extraer_piso`.
         """
-        if not concepto:
+        if not concepto or community_id is None:
             return None
 
         # Import local para evitar ciclos y mantener el clasificador ML ligero
@@ -192,36 +199,48 @@ class ClasificadorML:
 
         # Match por palabra clave (keywords vienen de BD)
         concepto_lc = concepto_normalizado.lower()
-        for palabra, categoria in self.palabras_categoria.items():
-            if palabra in concepto_lc:
-                confianza = min(0.9, 0.5 + (len(palabra) / 20))
-                
-                # Prioridad: Si la categoría es una regla explícita de la BD, damos un bonus
-                # para desempatar a favor del usuario sobre el conocimiento del modelo.
-                if categoria in self.reglas:
-                    confianza += 0.05
 
-                if confianza > mejor_confianza:
-                    mejor_confianza = confianza
-                    mejor_coincidencia = categoria
+        # Prioridad de búsqueda: 1. Reglas específicas de la comunidad, 2. Reglas globales (cid=None)
+        cids_a_buscar = [community_id, None] if community_id is not None else [None]
+        
+        for cid_target in cids_a_buscar:
+            if mejor_coincidencia: break
+            if cid_target not in self.palabras_categoria: continue
+            
+            keywords_dict = self.palabras_categoria[cid_target]
+
+            for palabra, categoria in keywords_dict.items():
+                if palabra in concepto_lc:
+                    confianza = min(0.9, 0.5 + (len(palabra) / 20))
+                    if categoria in self.reglas:
+                        confianza += 0.05
+
+                    if confianza > mejor_confianza:
+                        mejor_confianza = confianza
+                        mejor_coincidencia = categoria
 
         # Match difuso (también usando keywords de BD)
         if mejor_coincidencia is None:
-            for palabra_clave, categoria in self.palabras_categoria.items():
-                sim = SequenceMatcher(
-                    None,
-                    palabra_clave, # Ya está normalizada en _inicializar_palabras
-                    concepto_lc,
-                ).ratio()
+            # Intentamos match difuso solo con las reglas permitidas para este contexto
+            for cid_target in cids_a_buscar:
+                if mejor_coincidencia: break
+                if cid_target not in self.palabras_categoria: continue
                 
-                # Aplicar el mismo bonus de prioridad para reglas explícitas en match difuso
-                if categoria in self.reglas:
-                    sim += 0.05
+                for palabra_clave, categoria in self.palabras_categoria[cid_target].items():
+                    sim = SequenceMatcher(
+                        None,
+                        palabra_clave,
+                        concepto_lc,
+                    ).ratio()
+                    
+                    # Aplicar el mismo bonus de prioridad para reglas explícitas en match difuso
+                    if categoria in self.reglas:
+                        sim += 0.05
 
-                # Buscamos la mejor coincidencia difusa, no solo la primera
-                if sim > 0.65 and sim > mejor_confianza:
-                    mejor_confianza = sim
-                    mejor_coincidencia = categoria
+                    # Buscamos la mejor coincidencia difusa, no solo la primera
+                    if sim > 0.65 and sim > mejor_confianza:
+                        mejor_confianza = sim
+                        mejor_coincidencia = categoria
 
         if mejor_coincidencia is None:
             mejor_coincidencia = "Sin clasificar"
@@ -235,7 +254,7 @@ class ClasificadorML:
             "metodo": "ml"
         }
     
-    def clasificar_movimientos(self, movimientos: List[Dict]) -> Tuple[List[Dict], List[str]]:
+    def clasificar_movimientos(self, movimientos: List[Dict], community_id: Optional[int] = None) -> Tuple[List[Dict], List[str]]:
         """Clasifica una lista de movimientos"""
         resultados = []
         pisos_encontrados = set()
@@ -244,7 +263,7 @@ class ClasificadorML:
             concepto = mov.get("concepto", "")
             importe = mov.get("importe", 0.0)
             
-            clasificacion = self.clasificar(concepto, importe)
+            clasificacion = self.clasificar(concepto, importe, community_id=community_id)
             
             mov["piso"] = clasificacion["piso"]
             mov["tipo"] = clasificacion["tipo"]

@@ -28,6 +28,9 @@ export class OptimizacionComponent implements OnInit {
   loadingMessage = 'Procesando documentos...';
   error = '';
   
+  // Exponer Number para evitar TypeError en plantillas minificadas
+  public Number = Number;
+
   // Estado de Configuración
   mostrarConfiguracionOptimizacion = false;
   mostrarModalEdicionComunidad = false;
