@@ -30,43 +30,6 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 DATA_DIR = os.path.join(BASE_DIR, "data")
 MODELS_DIR = os.path.join(DATA_DIR, "models")
 
-# Reglas de respaldo (Fallback) definidas como constante de configuración
-REGLAS_FALLBACK = {
-    "ADMINISTRACION": {
-        "palabras": ["comunidad", "cuota", "derrama", "mensualidad"],
-        "tipo": "ingreso"
-    },
-    "ENERGIA ASCENSOR": {
-        "palabras": ["energia", "endesa", "luz", "electricidad", "iberdrola"],
-        "tipo": "gasto"
-    },
-    "LUZ PORTAL Y ESCALERA": {
-        "palabras": ["portal", "escalera", "limpieza portal"],
-        "tipo": "gasto"
-    },
-    "SEGURO COMUNIDAD": {
-        "palabras": ["generali", "seguro", "poliza", "mapfre", "allianz"],
-        "tipo": "gasto"
-    },
-    "MANTENIMIENTO ASCENSOR": {
-        "palabras": ["otis", "ascensor", "mantenimiento"],
-        "tipo": "gasto"
-    },
-    "LIMPIEZA": {
-        "palabras": ["limpieza", "productos"],
-        "tipo": "gasto"
-    },
-    "GASTOS VARIOS": {
-        "palabras": ["comision", "cargo", "notificacion"],
-        "tipo": "gasto"
-    },
-    "INGRESOS SIN IDENTIFICAR": {
-        "palabras": [],
-        "tipo": "ingreso"
-    }
-}
-
-
 class ClasificadorML:
     """
     Clasificador híbrido que usa ML + regex para clasificar movimientos
@@ -79,50 +42,54 @@ class ClasificadorML:
         self.palabras_categoria = {}
         self.ejemplos_entrenamiento = []
         
-        # Patrones regex para detección de piso
-        self.patrones_piso = [
-            r'\b(?:PISO|PIZO|PIS0)\s*(\d{1,2}\s*[A-Z]?)\b',    # PISO 4, PISO 4J
-            r'\b(?:PLANTA|PLNTA|PLTA)\s*(\d{1,2}\s*[A-Z]?)\b',# PLANTA 2
-            r'\bP\.?\s*(\d{1,2}\s*[A-Z]?)\b',                 # P. 4, P 4J
-            r'\bPL\.?\s*(\d{1,2}\s*[A-Z]?)\b',                # PL. 2
-            r'\b(\d{1,2}\s*[-/]\s*[A-Z])\b',                  # 4-J, 4/J
-            r'\b(\d{1,2}\s*[A-Z])\b',                         # 4J, 4 J
-            r'\b(\d{1,2}\s*(?:IZQUIERDA|IZQ|DERECHA|DRCHA|DCHA|EXTERIOR|EXT|INTERIOR|INT))\b', # 4 IZQ, 4 DRCHA
-            r'\b(\d{1,2}[ºª]\s*[A-Z]?)\b',                    # 4º, 4ª, 4ºJ
-    ]
+
 
         self.reglas = {}
         self.cargar_reglas_desde_db()
         self._inicializar_palabras()
 
     def cargar_reglas_desde_db(self):
-        """Carga las reglas de clasificación desde la DB con un fallback estático."""
+        """Carga las reglas de clasificación desde la DB.
+
+        Nota: No se usan reglas hardcodeadas en el código. Si no hay datos en DB (o falla la conexión),
+        la clasificación por categorías quedará deshabilitada y se devolverán categorías genéricas.
+        """
         try:
             res = supabase_client.table("categorias_reglas").select("*").execute()
             if res.data and len(res.data) > 0:
-                nuevas_reglas = {}
+                nuevas_reglas: Dict[str, Dict[str, object]] = {}
                 for r in res.data:
                     cat = r['categoria_asignada']
                     if cat not in nuevas_reglas:
                         nuevas_reglas[cat] = {"palabras": [], "tipo": r['tipo']}
                     nuevas_reglas[cat]["palabras"].append(r['palabra_clave'])
-                
+
                 self.reglas = nuevas_reglas
                 logger.info(f"✅ [Configuración Dinámica] Cargadas {len(res.data)} reglas desde la base de datos.")
-                self._inicializar_palabras() # Inicializar palabras_categoria con las reglas de la DB
+                self._inicializar_palabras()  # Inicializar palabras_categoria con las reglas de la DB
                 return
-        except Exception as e:
-            logger.warning(f"⚠️ [Resiliencia] Error al conectar con la DB ({e}). Activando reglas de respaldo (Fallback) para garantizar operatividad.")
 
-        # Uso de la constante de respaldo
-        self.reglas = REGLAS_FALLBACK
+            logger.warning("⚠️ [Configuración Dinámica] No se encontraron reglas en la tabla categorias_reglas.")
+            self.reglas = {}
+            self.palabras_categoria = {}
+            self.categorias = []
+
+        except Exception as e:
+            logger.error(f"[Configuración Dinámica] Error al cargar reglas desde DB: {e}")
+            # Sin reglas hardcodeadas: categorías genéricas
+            self.reglas = {}
+            self.palabras_categoria = {}
+            self.categorias = []
     
-    def _inicializar_palabras(self):
+    def _inicializar_palabras(self, reset: bool = True):
         """Inicializa el diccionario de palabras por categoría"""
-        self.palabras_categoria = {}
+        if reset:
+            self.palabras_categoria = {}
+            
         for categoria, info in self.reglas.items():
             for palabra in info["palabras"]:
-                self.palabras_categoria[palabra.lower()] = categoria
+                # Normalizamos también la palabra clave para que coincida con el texto normalizado del extracto
+                self.palabras_categoria[normalizar_texto(palabra).lower()] = categoria
         
         self.categorias = list(self.reglas.keys())
     
@@ -171,29 +138,25 @@ class ClasificadorML:
             "categorias": dict(categorias_ejemplos)
         }
     
-    def detectar_piso(self, concepto: str) -> Optional[str]:
+    def detectar_piso(self, concepto: str, community_id: int) -> Optional[str]:
+        """Detecta piso usando los patrones cargados desde BD (sistema_config/patrones_piso).
+
+        Implementación delegada a `app.procesamiento.buscar_pisos.extraer_piso`.
+        """
         if not concepto:
             return None
 
-        concepto = str(concepto).upper()
+        # Import local para evitar ciclos y mantener el clasificador ML ligero
+        from app.procesamiento.buscar_pisos import extraer_piso
 
-        for patron in self.patrones_piso:
-            match = re.search(patron, concepto, re.IGNORECASE)
-            if match:
-                for grupo in match.groups():
-                    if not grupo:
-                        continue
+        # `extraer_piso` ya maneja normalización y busca contra los patrones desde DB.
+        return extraer_piso(concepto, community_id)
 
-                    # Limpiar el resultado (quitar espacios sobrantes)
-                    piso_limpio = re.sub(r'\s+', '', grupo).upper()
-                    if piso_limpio:
-                        return piso_limpio
-
-        return None
 
 
     
-    def clasificar(self, concepto: str, importe: float) -> Dict:
+    def clasificar(self, concepto: str, importe: float, community_id: Optional[int] = None) -> Dict:
+        
         """Clasifica un movimiento bancario"""
         if not concepto:
             return {
@@ -204,57 +167,72 @@ class ClasificadorML:
                 "metodo": "ninguno"
             }
         
-        concepto_normalizado = normalizar_texto(concepto) # Usar la misma normalización que buscar_pisos
-        piso = self.detectar_piso(concepto_normalizado) # Usar concepto_normalizado aquí
+        # Detección de piso usando el concepto original para no perder símbolos como º o ª
+        # necesarios para que las reglas Regex de la base de datos funcionen correctamente.
+        piso = self.detectar_piso(concepto, community_id)
         
-        # 1. Determinar el tipo de forma ESTRICTAMENTE NUMÉRICA desde el principio
+        concepto_normalizado = normalizar_texto(concepto)
+        
+        # 1. Determinar el tipo por importe (regla técnica; no depende de keywords)
         mejor_tipo = "ingreso" if importe >= 0 else "gasto"
-        
+
+        # 2. Clasificar SOLO con reglas cargadas desde BD.
+        # Si no hay reglas en BD o no hay match, devolver categoría genérica.
+        if not self.palabras_categoria:
+            return {
+                "categoria": "Sin clasificar",
+                "tipo": mejor_tipo,
+                "confianza": 0.0,
+                "piso": piso,
+                "metodo": "ml"
+            }
+
         mejor_coincidencia = None
         mejor_confianza = 0.0
-        
-        # Búsqueda de palabras clave
-        for palabra, categoria in self.palabras_categoria.items(): # Las palabras clave ya están en minúsculas
-            if palabra in concepto_normalizado.lower(): # Comparar con el concepto normalizado y en minúsculas
+
+        # Match por palabra clave (keywords vienen de BD)
+        concepto_lc = concepto_normalizado.lower()
+        for palabra, categoria in self.palabras_categoria.items():
+            if palabra in concepto_lc:
                 confianza = min(0.9, 0.5 + (len(palabra) / 20))
                 
+                # Prioridad: Si la categoría es una regla explícita de la BD, damos un bonus
+                # para desempatar a favor del usuario sobre el conocimiento del modelo.
+                if categoria in self.reglas:
+                    confianza += 0.05
+
                 if confianza > mejor_confianza:
                     mejor_confianza = confianza
                     mejor_coincidencia = categoria
 
-        # similitud difusa
-        for palabra_clave, categoria in self.palabras_categoria.items(): # Las palabras clave ya están en minúsculas
-            sim = SequenceMatcher(None, normalizar_texto(palabra_clave), concepto_normalizado.lower()).ratio() # Normalizar palabra clave también
-            if sim > 0.65:  
-                mejor_coincidencia = categoria
-                mejor_confianza = sim
-                break
+        # Match difuso (también usando keywords de BD)
+        if mejor_coincidencia is None:
+            for palabra_clave, categoria in self.palabras_categoria.items():
+                sim = SequenceMatcher(
+                    None,
+                    palabra_clave, # Ya está normalizada en _inicializar_palabras
+                    concepto_lc,
+                ).ratio()
+                
+                # Aplicar el mismo bonus de prioridad para reglas explícitas en match difuso
+                if categoria in self.reglas:
+                    sim += 0.05
 
-        # Reglas estáticas por defecto
+                # Buscamos la mejor coincidencia difusa, no solo la primera
+                if sim > 0.65 and sim > mejor_confianza:
+                    mejor_confianza = sim
+                    mejor_coincidencia = categoria
+
         if mejor_coincidencia is None:
-            for categoria, info in self.reglas.items():
-                for palabra in info["palabras"]:
-                    if palabra.lower() in concepto_normalizado.lower(): # Comparar con el concepto normalizado y en minúsculas
-                        confianza = 0.9 if len(palabra) > 5 else 0.7
-                        
-                        if confianza > mejor_confianza:
-                            mejor_confianza = confianza
-                            mejor_coincidencia = categoria
-                            break
-        
-        if mejor_coincidencia is None:
-            if mejor_tipo == "ingreso":
-                mejor_coincidencia = "INGRESOS SIN IDENTIFICAR"
-            else:
-                mejor_coincidencia = "GASTOS VARIOS"
-            mejor_confianza = 0.3
-        
+            mejor_coincidencia = "Sin clasificar"
+            mejor_confianza = 0.0
+
         return {
             "categoria": mejor_coincidencia,
             "tipo": mejor_tipo,
             "confianza": mejor_confianza,
             "piso": piso,
-            "metodo": "ml" if self.modelo_entrenado else "regex"
+            "metodo": "ml"
         }
     
     def clasificar_movimientos(self, movimientos: List[Dict]) -> Tuple[List[Dict], List[str]]:
@@ -331,7 +309,10 @@ class ClasificadorML:
             with open(ruta, 'r', encoding='utf-8') as f:
                 datos = json.load(f)
             
+            # Mezclar palabras guardadas con las reglas de la base de datos
             self.palabras_categoria = datos.get("palabras_categoria", {})
+            self._inicializar_palabras(reset=False)
+            
             self.ejemplos_entrenamiento = datos.get("ejemplos", [])
             self.modelo_entrenado = datos.get("modelo_entrenado", False)
             

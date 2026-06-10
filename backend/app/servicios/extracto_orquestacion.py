@@ -169,11 +169,12 @@ async def procesar_extracto_db_service(
     if anio_search:
         anio_detectado = int(anio_search.group())
     resultado = procesar_extracto_y_registros(
-        extracto,
-        None,
-        clasificador,
+        extracto=extracto,
+        registros=None,
+        clasificador=clasificador,
         db_historico=df_historico,
         extractos_map=extractos_map,
+        community_id=community_id
     )
     if resultado.get("movimientos_clasificados"):
         for m in resultado["movimientos_clasificados"]:

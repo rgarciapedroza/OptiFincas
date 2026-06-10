@@ -112,7 +112,7 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv, community
 
         if importe == 0: continue
 
-        resultado_ml = clasificador.clasificar(concepto_completo, importe)
+        resultado_ml = clasificador.clasificar(concepto_completo, importe, community_id)
         
         # Normalizar el piso devuelto por el ML para evitar que la cadena "NONE" se trate como un piso identificado
         piso_ml = resultado_ml["piso"]
@@ -184,7 +184,14 @@ def completar_pisos(movimientos_sin_piso, excel_registros, es_csv: bool, extract
             m["CONCEPTO"] = formatear_piso(m["piso"])
     return recuperados
 
-def procesar_extracto_y_registros(extracto: UploadFile, registros: Optional[UploadFile], clasificador, db_historico: Optional[pd.DataFrame] = None, extractos_map: Dict = None) -> Dict:
+def procesar_extracto_y_registros(
+    extracto: UploadFile, 
+    registros: Optional[UploadFile], 
+    clasificador, 
+    db_historico: Optional[pd.DataFrame] = None, 
+    extractos_map: Optional[Dict] = None,
+    community_id: Optional[int] = None
+) -> Dict:
     df_extracto = cargar_extracto_a_df(extracto)
 
     # Manejo de registros opcionales (archivo o base de datos)
@@ -195,10 +202,11 @@ def procesar_extracto_y_registros(extracto: UploadFile, registros: Optional[Uplo
     else:
         excel_registros = {}
 
-    community_id = None
-    if db_historico is not None and not db_historico.empty:
-        if 'community_id' in db_historico.columns:
-            community_id = int(db_historico['community_id'].iloc[0])
+    # Si no se pasó explícitamente, intentamos extraerlo del histórico como último recurso
+    if community_id is None:
+        if db_historico is not None and not db_historico.empty:
+            if 'community_id' in db_historico.columns:
+                community_id = int(db_historico['community_id'].iloc[0])
 
     columnas = detectar_columnas(df_extracto)
 
