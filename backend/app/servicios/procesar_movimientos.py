@@ -166,13 +166,13 @@ def construir_movimientos(df_extracto, columnas, clasificador, es_csv, community
 
     return movimientos_con_piso, movimientos_sin_piso
 
-def completar_pisos(movimientos_sin_piso, excel_registros, es_csv: bool, extractos_map: Dict = None):
+def completar_pisos(movimientos_sin_piso, excel_registros, es_csv: bool, extractos_map: Optional[Dict] = None, community_id: Optional[int] = None):
     print(f"\n[DEBUG completar_pisos] Recibidos {len(movimientos_sin_piso)} movimientos para buscar en histórico.")
     if movimientos_sin_piso:
         print(f"[DEBUG completar_pisos] Primer movimiento sin piso: {movimientos_sin_piso[0].get('concepto_original', '')} / {movimientos_sin_piso[0].get('ordenante', '')}")
     
     # Nota: Si buscar_pisos_en_historico requiere extractos_map, asegúrate de actualizar su firma también
-    recuperados = buscar_pisos_en_historico(excel_registros, movimientos_sin_piso, extractos_map)
+    recuperados = buscar_pisos_en_historico(excel_registros, movimientos_sin_piso, extractos_map, community_id)
     print(f"[DEBUG completar_pisos] Histórico devolvió {len(recuperados)} movimientos.")
     if any(m.get('piso') for m in recuperados):
         print(f"[DEBUG completar_pisos] Movimientos con piso asignado: {[m.get('piso') for m in recuperados if m.get('piso')]}")
@@ -215,8 +215,8 @@ def procesar_extracto_y_registros(
     movimientos_con_piso, movimientos_sin_piso = construir_movimientos( # type: ignore
         df_extracto, columnas, clasificador, es_csv, community_id
     )
-
-    recuperados = completar_pisos(movimientos_sin_piso, excel_registros, es_csv, extractos_map)
+    
+    recuperados = completar_pisos(movimientos_sin_piso, excel_registros, es_csv, extractos_map, community_id)
     
     movimientos_finales = movimientos_con_piso + recuperados
     movimientos_finales = sorted(movimientos_finales, key=lambda m: m["id"])

@@ -1,16 +1,3 @@
-"""
-Clasificador ML para movimientos bancarios
-============================================
-
-Sistema de clasificación que combina:
-1. Machine Learning (Naive Bayes / Random Forest)
-2. Regex patterns como fallback
-3. Detección automática de piso
-
-Autor: Sistema de Clasificación
-Versión: 1.0
-"""
-
 import re
 import json
 import os
@@ -18,47 +5,35 @@ from typing import Dict, List, Tuple, Optional, Any
 from collections import Counter
 import logging
 from difflib import SequenceMatcher
-from app.procesamiento.buscar_pisos import normalizar_texto # Importar normalizar_texto
+from app.procesamiento.buscar_pisos import normalizar_texto
 from app.servicios.supabase_db import supabase_client, supabase_service_role_client
 
-# Configurar logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Ruta del archivo de datos
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 MODELS_DIR = os.path.join(DATA_DIR, "models")
 
 class ClasificadorML:
-    """
-    Clasificador híbrido que usa ML + regex para clasificar movimientos
-    """
+    """Clasificador híbrido (Keywords + ML) para movimientos bancarios."""
     
     def __init__(self):
-        """Inicializa el clasificador con reglas por defecto"""
         self.modelo_entrenado = False
         self.categorias = []
         self.palabras_categoria = {}
         self.ejemplos_entrenamiento = []
-        
-
-
         self.reglas = {}
         self.cargar_reglas_desde_db()
         self._inicializar_palabras()
 
     def cargar_reglas_desde_db(self):
-        """Carga las reglas de clasificación desde la DB.
-
-        Nota: No se usan reglas hardcodeadas en el código. Si no hay datos en DB (o falla la conexión),
-        la clasificación por categorías quedará deshabilitada y se devolverán categorías genéricas.
-        """
+        """Carga el conjunto de reglas de categorías desde Supabase."""
         try:
             client = supabase_service_role_client if supabase_service_role_client else supabase_client
             res = client.table("categorias_reglas").select("*").execute()
             if res.data and len(res.data) > 0:
-                self.reglas_raw = res.data # Almacenamos para inicializar con aislamiento de comunidad
+                self.reglas_raw = res.data
                 nuevas_reglas: Dict[str, Dict[str, Any]] = {}
                 for r in res.data:
                     cat = r['categoria_asignada']
@@ -67,26 +42,21 @@ class ClasificadorML:
                     nuevas_reglas[cat]["palabras"].append(r['palabra_clave'])
 
                 self.reglas = nuevas_reglas
-                logger.info(f"✅ [Configuración Dinámica] Cargadas {len(res.data)} reglas desde la base de datos.")
                 self._inicializar_palabras()
                 return
 
-            logger.warning("⚠️ [Configuración Dinámica] No se encontraron reglas en la tabla categorias_reglas.")
             self.reglas_raw = []
             self.reglas = {}
             self.palabras_categoria = {}
             self.categorias = []
 
         except Exception as e:
-            logger.error(f"[Configuración Dinámica] Error al cargar reglas desde DB: {e}")
-            # Sin reglas hardcodeadas: categorías genéricas
             self.reglas_raw = []
             self.reglas = {}
             self.palabras_categoria = {}
             self.categorias = []
     
     def _inicializar_palabras(self, reset: bool = True):
-        """Inicializa el diccionario de palabras por categoría"""
         if reset:
             self.palabras_categoria = {}
             
@@ -101,7 +71,6 @@ class ClasificadorML:
         self.categorias = list(self.reglas.keys())
     
     def add_ejemplo(self, concepto: str, importe: float, tipo: str, categoria: str, piso: Optional[str] = None):
-        """Añade un ejemplo para entrenamiento"""
         self.ejemplos_entrenamiento.append({
             "concepto": concepto,
             "importe": importe,
@@ -113,10 +82,8 @@ class ClasificadorML:
         if categoria not in self.palabras_categoria:
             self.palabras_categoria[categoria.lower()] = categoria
         
-        logger.info(f"Añadido ejemplo: {categoria} ({tipo}) - {concepto[:30]}...")
     
     def entrenar(self) -> Dict:
-        """Entrena el modelo con los ejemplos disponibles"""
         if not self.ejemplos_entrenamiento:
             return {
                 "estado": "sin_datos",
@@ -146,45 +113,28 @@ class ClasificadorML:
         }
     
     def detectar_piso(self, concepto: str, community_id: Optional[int]) -> Optional[str]:
-        """Detecta piso usando los patrones cargados desde BD (sistema_config/patrones_piso).
-
-        Implementación delegada a `app.procesamiento.buscar_pisos.extraer_piso`.
-        """
         if not concepto or community_id is None:
             return None
 
-        # Import local para evitar ciclos y mantener el clasificador ML ligero
         from app.procesamiento.buscar_pisos import extraer_piso
-
-        # `extraer_piso` ya maneja normalización y busca contra los patrones desde DB.
         return extraer_piso(concepto, community_id)
 
-
-
-    
     def clasificar(self, concepto: str, importe: float, community_id: Optional[int] = None) -> Dict:
-        
-        """Clasifica un movimiento bancario"""
         if not concepto:
             return {
                 "categoria": "Sin clasificar",
-                "tipo": "desconocido",
+                "tipo": "ingreso" if importe >= 0 else "gasto",
                 "confianza": 0.0,
                 "piso": None,
                 "metodo": "ninguno"
             }
         
-        # Detección de piso usando el concepto original para no perder símbolos como º o ª
-        # necesarios para que las reglas Regex de la base de datos funcionen correctamente.
         piso = self.detectar_piso(concepto, community_id)
         
         concepto_normalizado = normalizar_texto(concepto)
         
-        # 1. Determinar el tipo por importe (regla técnica; no depende de keywords)
         mejor_tipo = "ingreso" if importe >= 0 else "gasto"
 
-        # 2. Clasificar SOLO con reglas cargadas desde BD.
-        # Si no hay reglas en BD o no hay match, devolver categoría genérica.
         if not self.palabras_categoria:
             return {
                 "categoria": "Sin clasificar",
@@ -197,10 +147,7 @@ class ClasificadorML:
         mejor_coincidencia = None
         mejor_confianza = 0.0
 
-        # Match por palabra clave (keywords vienen de BD)
         concepto_lc = concepto_normalizado.lower()
-
-        # Prioridad de búsqueda: 1. Reglas específicas de la comunidad, 2. Reglas globales (cid=None)
         cids_a_buscar = [community_id, None] if community_id is not None else [None]
         
         for cid_target in cids_a_buscar:
@@ -219,9 +166,7 @@ class ClasificadorML:
                         mejor_confianza = confianza
                         mejor_coincidencia = categoria
 
-        # Match difuso (también usando keywords de BD)
         if mejor_coincidencia is None:
-            # Intentamos match difuso solo con las reglas permitidas para este contexto
             for cid_target in cids_a_buscar:
                 if mejor_coincidencia: break
                 if cid_target not in self.palabras_categoria: continue
@@ -233,11 +178,9 @@ class ClasificadorML:
                         concepto_lc,
                     ).ratio()
                     
-                    # Aplicar el mismo bonus de prioridad para reglas explícitas en match difuso
                     if categoria in self.reglas:
                         sim += 0.05
 
-                    # Buscamos la mejor coincidencia difusa, no solo la primera
                     if sim > 0.65 and sim > mejor_confianza:
                         mejor_confianza = sim
                         mejor_coincidencia = categoria

@@ -3,13 +3,12 @@ import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { SupabaseService } from './supabase.service';
 import { ModalService } from './modal.service';
-import { Piso, Profile } from './models'; // Importamos solo lo necesario para determinarPropietario
+import { Piso, Profile } from './models';
 
 @Component({
   selector: 'app-root',
   templateUrl: './app.component.html',
   styles: [`
-    /* Estilos del Modal Profesional */
     .custom-modal-backdrop { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 10000; animation: fadeIn 0.2s ease; }
     .custom-modal { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); max-width: 400px; width: 90%; text-align: center; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
     .modal-icon { width: 60px; height: 60px; background: #f1f5f9; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; color: #6366f1; }
@@ -49,7 +48,7 @@ export class AppComponent implements OnInit {
   session: any = null;
   userProfile: Profile | null = null;
   loadingSession = true;
-  error = ''; // Para errores de autenticación globales
+  error = '';
   userRole: 'admin' | 'propietario' | null = null;
   specificRole: string | null = null;
   notificacionesEquipo = 0;
@@ -71,7 +70,6 @@ export class AppComponent implements OnInit {
     this.loadingSession = true;
     this.loading = false;
 
-    // Escuchar cambios en las solicitudes para actualizar el contador del sidebar en tiempo real
     this.supabase.solicitudesRefresh$.subscribe(async () => {
       if (this.session && this.specificRole === 'owner') {
         const { data: profile } = await this.supabase.getProfile(this.session.user.id);
@@ -81,7 +79,6 @@ export class AppComponent implements OnInit {
       }
     });
 
-    // Suscribirse a cambios de autenticación (esto emite el estado inicial automáticamente)
     this.supabase.authChanges(async (event, session) => {
       console.log(`[AUTH] Evento: ${event} | Sesión: ${session ? 'Activa' : 'Nula'}`);
       
@@ -91,15 +88,12 @@ export class AppComponent implements OnInit {
             this.session = session;
             const email = session.user.email?.toLowerCase().trim() || '';
 
-            // Solo procesamos si el email es nuevo o si venimos de un evento de login explícito
             if (this.emailProcesado !== email || event === 'SIGNED_IN') {
               this.emailProcesado = email;
               await this.procesarAccesoUsuario(email);
             }
           } else {
             this.limpiarEstadoSesion();
-            // Ya no redirigimos a /login automáticamente. 
-            // Si no hay sesión, el router mostrará por defecto la LandingComponent ('')
             if (
               this.router.url.includes('comunidades') || 
               this.router.url.includes('optimizacion') || 
@@ -118,7 +112,7 @@ export class AppComponent implements OnInit {
       });
     });
 
-    // Seguro de desbloqueo: si nada ocurre en 4 segundos, liberamos la UI
+    // Timeout de seguridad para liberar la UI
     setTimeout(() => {
       if (this.loading || this.loadingSession) {
         console.warn('[AUTH] Tiempo de espera de validación agotado (Timeout).');
@@ -133,7 +127,6 @@ export class AppComponent implements OnInit {
   async verificarSolicitudesPendientes(orgId: string) {
     if (!orgId) return;
     const { data } = await this.supabase.getPendingRequests(orgId);
-    // console.log(`[APP-COMPONENT] Solicitudes pendientes para org ${orgId}:`, data); // Eliminado para limpiar la consola
     this.notificacionesEquipo = data?.length || 0;
   }
 
@@ -147,6 +140,7 @@ export class AppComponent implements OnInit {
   }
 
   async procesarAccesoUsuario(email: string) {
+    console.log(`[AUTH] procesarAccesoUsuario iniciado para: ${email}`);
     if (this.isValidating) {
       console.log('[AUTH] Validación en curso, ignorando llamada duplicada.');
       return;
@@ -157,7 +151,6 @@ export class AppComponent implements OnInit {
       return;
     }
 
-    // Pista de metadatos para evitar falsos positivos de "vecino"
     const isProfessionalMetadata = this.session?.user?.user_metadata?.is_professional === true;
     console.log(`[AUTH] Procesando acceso para: ${email}. Perfil profesional esperado: ${isProfessionalMetadata}`);
 
@@ -165,9 +158,6 @@ export class AppComponent implements OnInit {
     this.loading = true;
     this.loadingMessage = 'Verificando permisos...';
 
-    // EXCEPCIÓN DE SEGURIDAD: Si el usuario está en la página de restablecer contraseña,
-    // detenemos cualquier redirección automática. Supabase crea una sesión temporal
-    // que no debe dar acceso al resto de la aplicación hasta que la contraseña se cambie.
     if (this.router.url.includes('restablecer-password')) {
       this.loading = false;
       this.isValidating = false;
@@ -191,7 +181,6 @@ export class AppComponent implements OnInit {
       if (profileError) {
         console.error('[AUTH] Error recuperando perfil:', profileError);
         
-        // Error de recursión o error interno (500): NO CERRAR SESIÓN
         if (profileError.message?.includes('recursion') || (profileError as any).status === 500) {
           this.error = 'Error de base de datos (RLS Recursion). Por favor, ejecute el script SQL de limpieza.';
           this.loading = false;
@@ -204,13 +193,13 @@ export class AppComponent implements OnInit {
 
       if (!profile) {
         console.warn('[AUTH] Perfil no encontrado para el usuario logueado.');
+        console.log('[AUTH] Llamando a determinarPropietario desde !profile');
         await this.determinarPropietario(email);
         return;
       }
 
       if (profile && (profile.role === 'admin' || profile.role === 'owner' || profile.role === 'superadmin')) {
         
-        // 1. Manejo de SuperAdmin (Acceso Global)
         const isAtLoginOrLanding = this.router.url === '/' || this.router.url.includes('login');
 
         if (profile.role === 'superadmin') {
@@ -228,8 +217,6 @@ export class AppComponent implements OnInit {
           return;
         }
 
-        // 2. Control de Acceso Profesional (SOLID: Fail-fast principle)
-        // Si el estado no es estrictamente 'approved', redirigimos a la página de bloqueo/espera
         if (profile.status !== 'approved') {
           console.warn(`[AUTH] Acceso restringido. Estado actual: ${profile.status}`);
           this.router.navigate(['/esperando-aprobacion'], { 
@@ -243,13 +230,11 @@ export class AppComponent implements OnInit {
           return;
         }
 
-        // Usuario identificado como Admin/Owner
         this.userRole = 'admin'; 
         this.specificRole = profile.role;
-        this.error = ''; // Limpiamos errores previos si la sesión es válida
+        this.error = '';
         if (profile.role === 'owner') await this.verificarSolicitudesPendientes(profile.organizacion_id);
         
-        // Si el usuario es un admin/owner aprobado, y está en la página de espera, redirigirlo a comunidades.
         if (this.router.url.includes('esperando-aprobacion') && profile.status === 'approved') {
           await this.router.navigate(['/comunidades']);
         }
@@ -258,8 +243,6 @@ export class AppComponent implements OnInit {
           await this.router.navigate(['/comunidades']);
         }
       } else {
-        // Bloqueamos la búsqueda en el censo SOLO si la cuenta fue creada como profesional.
-        // Los propietarios (isProfessionalMetadata = false) deben pasar siempre al censo.
         if (isProfessionalMetadata) {
           console.warn('[AUTH] El usuario está registrado como profesional pero no tiene rol de gestión o está pendiente.');
           this.userRole = null;
@@ -267,6 +250,7 @@ export class AppComponent implements OnInit {
           this.isValidating = false;
           return;
         }
+        console.log('[AUTH] Llamando a determinarPropietario desde else (no admin/owner/superadmin)');
         await this.determinarPropietario(email.toLowerCase().trim());
       }
     } catch (err) {
@@ -279,7 +263,7 @@ export class AppComponent implements OnInit {
   }
 
   async determinarPropietario(email: string) {
-    // Si el usuario es un Owner/Admin aprobado, NO debemos entrar aquí
+    console.log(`[AUTH] determinarPropietario iniciado para: ${email}`);
     if (this.userRole === 'admin') return;
 
     const token = this.session?.access_token;
@@ -289,23 +273,25 @@ export class AppComponent implements OnInit {
     this.loadingMessage = 'Buscando vinculación en censo...';
 
     try {
+      console.log('[AUTH] Llamando a supabase.buscarPisoPorEmail');
       const { data, error } = await this.supabase.buscarPisoPorEmail(email);
       
       if (error) {
-        // No es un error crítico, simplemente el usuario no está en el censo
         console.warn('[AUTH] El usuario no es admin ni propietario registrado.');
-        this.error = ''; // No es un error, es un usuario sin asignar
+        this.error = '';
         this.loading = false;
         return;
       }
 
       if (data && data.length > 0) {
+        console.log('[AUTH] Piso encontrado para propietario. Navegando a /portal-propietario');
         this.userRole = 'propietario';
         this.loading = false;
         await this.router.navigate(['/portal-propietario']);
       } else {
         console.warn('[AUTH] Acceso denegado: Usuario no encontrado.');
         this.userRole = null;
+        console.log('[AUTH] No se encontró piso para propietario. userRole = null.');
         this.loading = false;
       }
     } catch (err) {

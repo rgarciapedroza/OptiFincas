@@ -1,4 +1,5 @@
 import io
+import re
 import logging
 import pandas as pd
 from fastapi import UploadFile, HTTPException, BackgroundTasks
@@ -160,21 +161,17 @@ async def get_finanzas_comunidad_controller(community_id: int, mes: int, anio: i
         # Asegurar tipos e importes limpios
         df['importe'] = df['importe'].apply(limpiar_importe)
         
-        def normalizar_piso_simple(p):
-            if not p: return ""
-            return re.sub(r'[^A-Z0-9]', '', str(p).upper())
-
-        df['piso_norm'] = df['piso_detectado'].apply(normalizar_piso_simple)
+        df['piso_norm'] = df['piso_detectado'].apply(normalizar_piso_tecnico)
         ingresos = df[df['importe'] > 0]
         gastos = df[df['importe'] < 0]
 
         # 3. Resumen de Ingresos por Piso
         resumen_pisos = []
-        codigos_norm_comunidad = {normalizar_piso_simple(p['codigo']) for p in pisos_res.data}
+        codigos_norm_comunidad = {normalizar_piso_tecnico(p['codigo']) for p in pisos_res.data}
 
         for p in pisos_res.data:
             codigo = p['codigo']
-            codigo_norm = normalizar_piso_simple(codigo)
+            codigo_norm = normalizar_piso_tecnico(codigo)
             
             # Coincidencia exacta sobre versión normalizada
             movs_piso = ingresos[ingresos['piso_norm'] == codigo_norm]

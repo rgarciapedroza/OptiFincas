@@ -166,7 +166,7 @@
             <tbody>
               <tr *ngFor="let item of finanzasData.ingresosPorPiso" [style.background]="item.esMio ? '#f5f3ff' : 'transparent'" [style.border-left]="item.esMio ? '4px solid #6366f1' : 'none'">
                 <td style="font-weight: 600;">{{ utils.formatearPiso(item.codigo) }} <span *ngIf="item.esMio" style="color:#6366f1; font-size:0.65rem; font-weight: 900;">(TUYO)</span></td>
-                <td style="text-align: right; font-weight: 700;">{{ item.pagado ? (item.importe | number:'1.2-2') + '€' : '-' }}</td>
+                <td style="text-align: right; font-weight: 700; color: #10b981;">{{ item.pagado ? (item.importe | number:'1.2-2') + '€' : '-' }}</td>
                 <td style="text-align: center;"><span class="badge" [class.badge-success]="item.pagado" [class.badge-danger]="!item.pagado">{{ item.pagado ? 'Pagado' : 'Pendiente' }}</span></td>
               </tr>
             </tbody>
@@ -185,8 +185,8 @@
             <tbody>
               <tr *ngFor="let g of finanzasData.gastos">
                 <td>
-                  <div style="font-weight: 600; color: #1e293b;">{{ g.categoria }}</div>
-                  <div style="font-size: 0.65rem; color: #64748b; text-transform: uppercase;">{{ g.concepto }}</div>
+                  <div style="font-weight: 600; color: #ef4444;">{{ g.categoria }}</div>
+                  <div style="font-size: 0.65rem; color: #ef4444; text-transform: uppercase; opacity: 0.8;">{{ g.concepto }}</div>
                 </td>
                 <td style="text-align: right; color: #ef4444; font-weight: 700;">{{ g.importe | number:'1.2-2' }}€</td>
                 <td style="text-align: center;">
@@ -516,44 +516,69 @@
   <!-- SECCIÓN: CONTACTO -->
 <div *ngIf="seccionPrincipalActiva === 'contactar'" class="tab-content contacto-tab" style="animation: fadeIn 0.4s ease;">
     <div class="contactar-layout">
-      <div class="section-title-wrapper">
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-        <h2>Contactar con la Administración</h2>
+      <div class="section-title-wrapper" style="justify-content: center;">
+        <div class="property-icon-bg" style="margin-bottom: 0;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+        </div>
+        <h2>Centro de Atención</h2>
       </div>
 
       <p class="contactar-intro">
-        Utiliza este formulario para enviar consultas, incidencias o sugerencias directamente a la administración de tu comunidad.
+        ¿Tienes alguna incidencia o duda? Envía un mensaje directo a la administración de <b>{{ selectedPiso?.comunidades?.nombre }}</b>.
       </p>
 
-      <div class="form-group">
-        <label for="contactReason">Motivo de la consulta</label>
-        <select id="contactReason" [(ngModel)]="contactForm.reason">
-          <option value="" disabled>Selecciona un motivo</option>
-          <option *ngFor="let reason of contactReasons" [value]="reason">{{ reason }}</option>
-        </select>
-      </div>
-
-      <div class="form-group">
-        <label for="contactMessage">Tu mensaje</label>
-        <textarea id="contactMessage" [(ngModel)]="contactForm.message" rows="5" placeholder="Describe tu consulta o incidencia aquí..."></textarea>
-      </div>
-
-      <div class="form-group">
-        <label for="contactPhoto">Adjuntar foto (opcional)</label>
-        <div class="file-input-wrapper">
-          <input type="file" id="contactPhoto" (change)="onContactPhotoSelected($event)" accept="image/*" hidden>
-          <label for="contactPhoto" class="btn-file-upload-pretty" [class.file-selected]="contactForm.photo">
-            <svg class="file-upload-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-            <span class="file-upload-text">{{ contactForm.photo ? contactForm.photo.name : 'Subir imagen de la incidencia' }}</span>
+      <div class="contact-form-card">
+        <div class="form-group">
+          <label for="contactReason">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 8px;"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            Motivo de la consulta
           </label>
+          <select id="contactReason" [(ngModel)]="contactForm.reason" class="select-modern">
+            <option value="" disabled>Selecciona una opción...</option>
+            <option *ngFor="let reason of contactReasons" [value]="reason">{{ reason }}</option>
+          </select>
         </div>
-      </div>
 
-      <div class="contactar-actions">
-        <button class="btn btn-primary" (click)="sendContactMessage()" [disabled]="sendingContact || !contactForm.reason || !contactForm.message" style="margin-top: 20px;">
-          <span *ngIf="!sendingContact">Enviar Mensaje</span>
-          <span *ngIf="sendingContact">Enviando...</span>
-        </button>
+        <div class="form-group">
+          <label for="contactMessage">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 8px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            Tu mensaje detallado
+          </label>
+          <textarea id="contactMessage" [(ngModel)]="contactForm.message" rows="5" class="textarea-modern" placeholder="Escribe aquí los detalles para que podamos ayudarte mejor..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right: 8px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+            Evidencia visual (opcional)
+          </label>
+          <div class="file-upload-modern">
+            <input type="file" id="contactPhoto" (change)="onContactPhotoSelected($event)" accept="image/*" hidden>
+            <label for="contactPhoto" class="btn-upload-label" [class.has-file]="contactForm.photo">
+              <div class="upload-content">
+                <svg *ngIf="!contactForm.photo" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                <svg *ngIf="contactForm.photo" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><polyline points="20 6 9 17 4 11"></polyline></svg>
+                <div class="upload-text">
+                  <span class="main-text">{{ contactForm.photo ? contactForm.photo.name : 'Haz clic para subir una foto' }}</span>
+                  <span class="sub-text">{{ contactForm.photo ? 'Archivo seleccionado correctamente' : 'Formatos: JPG, PNG. Máx 5MB' }}</span>
+                </div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="contactar-actions">
+          <button class="btn btn-send-modern" (click)="sendContactMessage()" [disabled]="sendingContact || !contactForm.reason || !contactForm.message">
+            <span *ngIf="!sendingContact" style="display: flex; align-items: center; gap: 10px;">
+              Enviar Comunicación
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            </span>
+            <span *ngIf="sendingContact" class="loading-inline">
+              <div class="spinner-small" style="width: 18px; height: 18px; border-width: 2px;"></div>
+              Procesando envío...
+            </span>
+          </button>
+        </div>
       </div>
     </div>
   </div>

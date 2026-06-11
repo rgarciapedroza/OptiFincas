@@ -1,31 +1,15 @@
-# Sistema de Procesamiento de Extractos Bancarios
+# OptiFincas - Plataforma Integral de Gestión de Comunidades
 
 ## Descripción
-
-Sistema completo para procesar extractos bancarios con las siguientes características:
-
-1. **Reconocimiento automático de piso** (ej: "2J" desde "Carmen Santana Fleitas 2J")
-2. **Clasificación automática** de movimientos (ingreso/gasto, categoría)
-3. **Edición manual** de clasificaciones antes de descargar
-4. **Descarga** en CSV o Excel
+OptiFincas es una solución web diseñada para la digitalización y optimización de la administración de fincas. La plataforma combina el procesamiento inteligente de datos financieros con la optimización logística de servicios de limpieza, proporcionando una herramienta integral tanto para administradores profesionales como para propietarios.
 
 ## Arquitectura
+El sistema utiliza una arquitectura moderna basada en microservicios desacoplados y persistencia en la nube:
 
-El sistema se compone de dos partes principales:
-
-1.  **Backend (Python FastAPI):**
-    *   Ubicación: `backend/`
-    *   Tecnología: Python con el framework FastAPI.
-    *   Funcionalidad: Procesa los archivos de extractos bancarios, aplica lógica de Machine Learning y expresiones regulares para la clasificación de movimientos y detección de pisos, y expone una API RESTful para el frontend.
-
-2.  **Frontend (Angular):**
-    *   Ubicación: `frontend/`
-    *   Tecnología: Angular (TypeScript) con Node.js para el entorno de desarrollo y gestión de dependencias.
-    *   Funcionalidad: Proporciona la interfaz de usuario para subir archivos, visualizar y editar los movimientos clasificados, y descargar los resultados.
-
-La comunicación entre el Frontend y el Backend se realiza a través de la API REST.
-
-El sistema está completamente **contenedorizado** con Docker, lo que garantiza su portabilidad.
+- **Backend**: API REST desarrollada con **Python 3.12** y **FastAPI**. Implementa motores de búsqueda difusa, clasificadores híbridos y algoritmos de optimización.
+- **Frontend**: Aplicación SPA desarrollada con **Angular 18**, con un diseño orientado a la experiencia de usuario (UX) y gestión de roles.
+- **Base de Datos y Auth**: **Supabase** (PostgreSQL) para la gestión de datos en tiempo real, almacenamiento de documentos y autenticación segura.
+- **Infraestructura**: Despliegue mediante contenedores **Docker** para asegurar la reproducibilidad del entorno.
 
 ```
 OptiFincas/
@@ -42,7 +26,7 @@ OptiFincas/
 **Pantalla 1: Subir Archivos**
 - Sube el extracto bancario (CSV/Excel)
 - (Opcional) Sube el Excel contable
-- Haz clic en "Entrenar Modelo" para procesar
+- El sistema procesa y entrena el modelo automáticamente
 - Haz clic en "Siguiente" para ir a编辑ar
 
 **Pantalla 2: Revisar y Editar**
@@ -57,7 +41,7 @@ OptiFincas/
 - Descarga el CSV clasificado
 - Descarga el Excel completo con resumen
 
-**Pantalla 3: Optimización de Rutas y Horarios**
+**Pantalla 4: Optimización de Rutas y Horarios**
 - Introduce el número de empleadas (actualmente 2).
 - Añade las comunidades a visitar, especificando:
   - Dirección
@@ -81,23 +65,34 @@ Ejemplo:
 El sistema usa:
 1. **Machine Learning** - Aprende de los ejemplos
 2. **Regex** - Detección por palabras clave
-3. **Importe** - Si es positivo = ingreso, negativo = gasto
 
 Categorías por defecto:
 - **Ingresos**: Ingreso Cuota, Ingreso Alquiler, Ingreso Otros
 - **Gastos**: Gasto Luz, Gasto Agua, Gasto Gas, Gasto Limpieza, Gasto Mantenimiento, Gasto Seguro, Gasto Basura, Gasto Varios
 
-## Ejecutar el Sistema
+## Manual de Instalación y Ejecución (para el TFG)
 
-Para iniciar el sistema completo (Backend, Frontend y Base de Datos) de forma profesional:
+### Requisitos
+- Docker Desktop instalado (recomendado para evitar problemas de dependencias).
 
-1.  Asegúrate de tener instalado **Docker Desktop**.
-2.  Abre una terminal en la carpeta raíz del proyecto (`OptiFincas/`).
-3.  Ejecuta el comando:
-    ```bash
-    docker compose up --build
-    ```
-4.  Accede a la aplicación en `http://localhost:4200` y a la documentación de la API en `http://localhost:8000/docs`.
+### Instalación
+1. Abre una terminal en la carpeta raíz del proyecto (`OptiFincas/`).
+2. Ejecuta el siguiente comando para construir y levantar todos los contenedores (Backend + Frontend + Postgres):
+   ```bash
+   docker compose up --build
+   ```
+
+### Ejecución
+3. Espera a que los contenedores terminen de iniciarse.
+4. Abre el Frontend en: `http://localhost:4200`.
+5. Abre la documentación del Backend (API) en: `http://localhost:8000/docs`.
+
+### Si se ejecuta sin Docker (solo por compatibilidad)
+- Es necesario configurar el archivo `backend/.env` (incluido `DATABASE_URL`) y asegurar que existe un Postgres accesible.
+
+### Verificación rápida
+- Si el Frontend carga correctamente y en `/docs` se muestran los endpoints de FastAPI, la instalación es correcta.
+
 
 ## API Endpoints
 

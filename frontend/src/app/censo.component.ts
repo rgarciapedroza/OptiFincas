@@ -8,13 +8,14 @@ import { lastValueFrom } from 'rxjs';
 
 @Component({
   selector: 'app-censo',
-  templateUrl: './censo.component.html', // Crea este archivo pegando el HTML de propietarios
+  templateUrl: './censo.component.html',
   styleUrls: ['./comunidades.component.css']
 })
 export class CensoComponent implements OnInit {
   pisos: Piso[] = [];
   communityId: string | null = null;
   loading = false;
+  mostrarPanelJunta = true;
   cargosDisponibles = ['Ninguno', 'Presidente', 'Vicepresidente', 'Secretario', 'Tesorero', 'Vocal'];
 
   pisoForm: Piso = { 
@@ -73,7 +74,6 @@ export class CensoComponent implements OnInit {
     const headers = { 'Authorization': `Bearer ${session?.access_token}` };
     const data = await lastValueFrom(this.http.get<Piso[]>(`/api/comunidades/${this.communityId}/pisos`, { headers })) || [];
     
-    // Ordenación alfanumérica natural (maneja correctamente 1, 2, 10...)
     this.pisos = data.sort((a, b) => 
       a.codigo.localeCompare(b.codigo, undefined, { numeric: true, sensitivity: 'base' }));
   }
@@ -106,8 +106,10 @@ export class CensoComponent implements OnInit {
   }
 
   prepararEdicionPiso(p: Piso) {
-    this.pisoForm = { ...p };
-    // Aseguramos que el ID de comunidad esté presente incluso en edición
+    this.pisoForm = { 
+      ...p,
+      cargo: p.cargo || 'Ninguno'
+    };
     if (!this.pisoForm.community_id && this.communityId) {
       this.pisoForm.community_id = parseInt(this.communityId);
     }
@@ -131,7 +133,6 @@ export class CensoComponent implements OnInit {
   }
 
   async guardarPiso() {
-    // Reglas de negocio de Rosmary
     if (!this.pisoForm.codigo) {
       this.modalService.showAlert('Campo Requerido', 'El código de la propiedad (ej: 1ºA) es obligatorio.');
       return;
@@ -147,13 +148,11 @@ export class CensoComponent implements OnInit {
       return;
     }
 
-    // Aseguramos que siempre enviamos el ID de la comunidad
     if (!this.communityId) {
       this.modalService.showAlert('Error', 'No se ha podido detectar la comunidad actual. Por favor, recarga la página.');
       return;
     }
 
-    // Validación: No permitir más de un cargo por persona (email) en la comunidad
     if (this.pisoForm.cargo && this.pisoForm.cargo !== 'Ninguno' && this.pisoForm.email) {
       const emailNorm = this.pisoForm.email.toLowerCase().trim();
       const duplicado = this.pisos.find(p => 
@@ -166,11 +165,10 @@ export class CensoComponent implements OnInit {
         return;
       }
 
-      // Nueva Validación 2: No puede haber dos personas con el mismo tipo de cargo en la misma comunidad
       const cargoDuplicadoTipo = this.pisos.find(p =>
-        p.community_id === Number(this.communityId) && // Asegurarse de que es la misma comunidad
-        p.id !== this.editandoPisoId && // Excluir el piso actual que se está editando
-        p.cargo === this.pisoForm.cargo // Comprobar el mismo cargo exacto
+        p.community_id === Number(this.communityId) &&
+        p.id !== this.editandoPisoId &&
+        p.cargo === this.pisoForm.cargo
       );
       if (cargoDuplicadoTipo) {
         this.modalService.showAlert('Cargo Duplicado', `Ya existe un "${this.pisoForm.cargo}" en el piso ${cargoDuplicadoTipo.codigo} de esta comunidad. Solo puede haber uno de cada cargo.`);
@@ -180,15 +178,15 @@ export class CensoComponent implements OnInit {
 
     this.loading = true;
     try {
-      // Copiamos los datos y eliminamos campos técnicos que el backend no debe recibir o que maneja él
       const datos = { 
         ...this.pisoForm,
         cargo: this.pisoForm.cargo === 'Ninguno' ? null : this.pisoForm.cargo
       };
       delete (datos as any).id;
       delete (datos as any).created_at;
+      delete (datos as any).profile_full_name;
+      delete (datos as any).profile_avatar_url;
 
-      // Forzamos el ID de comunidad justo antes de enviar para evitar pérdidas
       const communityIdNumber = Number(this.communityId);
       if (!communityIdNumber || Number.isNaN(communityIdNumber)) {
         throw new Error('ID de comunidad inválido');
@@ -216,19 +214,24 @@ export class CensoComponent implements OnInit {
     }
   }
 
-  /**
-   * Elimina el cargo de un propietario específico.
-   * @param piso El objeto Piso del que se eliminará el cargo.
-   */
   async eliminarCargo(piso: Piso) {
     const confirmado = await this.modalService.showConfirm('Eliminar Cargo', `¿Estás seguro de eliminar el cargo de "${piso.cargo}" a ${piso.propietario} (${piso.codigo})?`);
     if (confirmado) {
       this.loading = true;
       try {
-        const payload = { ...piso, cargo: 'Ninguno' }; // Establecer el cargo a 'Ninguno'
+        const payload = { 
+          ...piso, 
+          cargo: null 
+        };
+        
+        delete (payload as any).id;
+        delete (payload as any).created_at;
+        delete (payload as any).profile_full_name;
+        delete (payload as any).profile_avatar_url;
+
         await this.supabase.updatePiso(piso.id!, payload);
         this.modalService.showAlert('Éxito', 'El cargo ha sido eliminado correctamente.');
-        await this.cargarPisos(); // Recargar para actualizar la lista
+        await this.cargarPisos();
       } catch (e: any) {
         this.modalService.showAlert('Error', 'No se pudo eliminar el cargo: ' + (e.message || 'Error desconocido'));
       } finally {
