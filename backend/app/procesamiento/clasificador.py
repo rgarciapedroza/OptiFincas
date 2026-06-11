@@ -3,14 +3,6 @@ from typing import Dict, List
 
 class ClasificadorMovimientos:
     """Clasificador legacy (legacy/compatibilidad).
-
-    Nota de arquitectura:
-    - Este módulo NO debe contener reglas de negocio (keywords hardcodeadas).
-    - La clasificación real de categorías debe resolverse en `ClasificadorML`
-      consultando la tabla `categorias_reglas` en BD.
-
-    Este clasificador se mantiene solo por compatibilidad con código existente,
-    devolviendo categorías genéricas.
     """
 
     def clasificar(self, concepto: str, importe: float) -> Dict:

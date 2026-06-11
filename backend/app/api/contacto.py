@@ -21,8 +21,8 @@ async def enviar_contacto(
     photo_filename = None  # Inicializar photo_filename
 
     try:
-        # 0. LÓGICA PROFESIONAL: Buscar el email del administrador de la comunidad específica
-        destinatario_final = settings.ADMIN_EMAIL # Fallback por si no hay comunidad
+        # Buscar el email del administrador de la comunidad específica
+        destinatario_final = settings.ADMIN_EMAIL
         nombre_comunidad = "General"
 
         logger.info(f"[CONTACTO] Destinatario inicial (fallback): {destinatario_final}")
@@ -47,11 +47,7 @@ async def enviar_contacto(
         # Manejar la foto si se proporciona
         if photo and photo.filename:
             photo_filename = photo.filename
-            # En un sistema real, aquí subirías la foto a Supabase Storage y guardarías la URL
-            # import uuid
-            # path_in_storage = f"incidencias/{uuid.uuid4()}_{photo.filename}"
-            # supabase_service_role_client.storage.from_('incidencias').upload(path_in_storage, await photo.read())
-            # photo_url = supabase_service_role_client.storage.from_('incidencias').get_public_url(path_in_storage)
+            
 
         incidencia_data = {
             "user_email": userEmail,

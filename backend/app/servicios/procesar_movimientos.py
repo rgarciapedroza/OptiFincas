@@ -179,8 +179,6 @@ def completar_pisos(movimientos_sin_piso, excel_registros, es_csv: bool, extract
 
     for m in recuperados:
         if m.get("piso"):
-            # The 'es_historico' and 'detalle_historico' should already be set by buscar_pisos_en_registro
-            # We just need to update the 'CONCEPTO' for display in the UI
             m["CONCEPTO"] = formatear_piso(m["piso"])
     return recuperados
 

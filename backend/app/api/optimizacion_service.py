@@ -199,7 +199,7 @@ def process_optimization(request):
 
         fecha_aux += timedelta(days=7)
 
-        # ============================================================
+    # ============================================================
     # 3. Distribución dinámica de tareas en días laborables (CON BALANCEO)
     # ============================================================
     plan_por_dia_especifico = {}  # fecha -> lista de índices de comunidades
@@ -454,8 +454,6 @@ def process_optimization(request):
         print(f"⚠️ Desbalance detectado: max={max_horas:.1f}h, min={min_horas:.1f}h")
         print("Aplicando ajuste de balance...")
         
-        # Opcional: Podrías implementar una redistribución aquí
-        # Por ahora, el balanceo mejorado debería ayudar en próximas ejecuciones
     # ============================================================
     # 5. Generar archivo Excel
     # ============================================================

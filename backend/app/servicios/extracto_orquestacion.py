@@ -635,8 +635,6 @@ async def importar_movimientos_service(community_id: int, file: UploadFile, user
 
     estado_inicial_pagos = defaultdict(lambda: defaultdict(float))
     credito_inicial_pisos = defaultdict(float)
-    # Aumentamos el límite a 5000 para cargar todo el historial de la comunidad
-    # Eliminamos el filtro de importe > 0 para incluir aplicaciones de "Entrega a cuenta" (importe 0)
     resp_pagos = client.table("movimientos").select("piso_detectado, detalle_asignacion_cuotas, extractos_procesados(mes_contable, anio_contable), importe, fecha").eq("community_id", community_id).limit(5000).execute()
     if resp_pagos.data:
         for mov in resp_pagos.data:

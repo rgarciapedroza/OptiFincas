@@ -11,4 +11,4 @@ dist/
 backend/.env
 frontend/src/app/.env
 
-backend/data/tests/test_dataset.xlsx
+backend/data
